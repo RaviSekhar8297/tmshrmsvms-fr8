@@ -1,0 +1,164 @@
+.issues-page {
+  animation: fadeIn 0.3s ease;
+}
+
+.issues-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.issues-filters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.issue-item {
+  background: var(--bg-card);
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  padding: 20px;
+  transition: all var(--transition-base);
+}
+
+.issue-item:hover {
+  border-color: var(--primary);
+}
+
+.issue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.issue-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.issue-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.issue-actions .form-select-sm {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  min-width: 120px;
+}
+
+.issue-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.issue-content p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.issue-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.resolution-notes {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.resolution-notes strong {
+  color: var(--success);
+}
+
+@media (max-width: 1400px) {
+  .issues-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 992px) {
+  .issues-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .issues-stats {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .issues-filters {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .issue-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .issue-actions {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .issue-actions .form-select-sm {
+    width: 100%;
+    min-width: auto;
+  }
+  
+  .issue-item {
+    padding: 16px;
+    border-radius: 12px;
+  }
+  
+  .issue-meta {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .issues-stats {
+    gap: 10px;
+  }
+  
+  .issue-item {
+    padding: 12px;
+  }
+  
+  .issue-content h3 {
+    font-size: 1rem;
+  }
+}
+
+
+
+
+
+

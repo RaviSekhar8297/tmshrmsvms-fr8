@@ -1,0 +1,18 @@
+.modal-large {
+  max-width: 700px;
+}
+
+.modal-xl {
+  max-width: 900px;
+}
+
+.modal-full {
+  max-width: 95%;
+  max-height: 95vh;
+}
+
+
+
+
+
+

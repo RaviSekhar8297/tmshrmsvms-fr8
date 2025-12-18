@@ -1,0 +1,9 @@
+GET http://173.249.6.61:8007/api/tasks/by-employee
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNSwicm9sZSI6IkFkbWluIiwiZXhwIjoxNzY2NTg2OTE5fQ.-CMSCRBwPqeGGVSd7TGRJhcqkWmU7HE3We1lu2otvz8
+Content-Type: application/json
+
+
+###
+GET http://localhost:8000/api/tasks/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNSwicm9sZSI6IkFkbWluIiwiZXhwIjoxNzY2NTg2OTE5fQ.-CMSCRBwPqeGGVSd7TGRJhcqkWmU7HE3We1lu2otvz8
+Content-Type: application/json

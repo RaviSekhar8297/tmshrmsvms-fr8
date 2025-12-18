@@ -1,0 +1,15 @@
+/* Layout specific styles */
+
+.main-content {
+  margin-left: var(--sidebar-width);
+  padding-top: 81px; /* Match header height */
+  min-height: 100vh;
+  padding: 24px;
+  padding-top: 105px; /* header height + padding */
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 0;
+  }
+}
