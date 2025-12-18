@@ -202,6 +202,9 @@ def create_meeting(
     
     if meeting_type == "offline":
         meeting_link = None
+    elif meeting_link:
+        # User provided a custom link, use it as-is
+        pass
     elif not meeting_link:
         # Get attendee emails - include the logged-in user's email
         attendee_emails = []
@@ -218,43 +221,84 @@ def create_meeting(
         # To avoid 403 errors, we do NOT send attendees when using the service account.
         service_account_attendees = []
         
-        # Priority 1: Try service account first (most reliable for Meet links)
-        try:
-            calendar_result = create_calendar_event_with_service_account(
-                title=meeting_data.title,
-                description=meeting_data.description or "",
-                start_datetime=meeting_data.meeting_datetime,
-                duration_minutes=meeting_data.duration_minutes,
-                attendees_emails=service_account_attendees  # keep empty to avoid DWD requirement
-            )
-            meeting_link = calendar_result.get('meeting_link')
-            calendar_event_id = calendar_result.get('calendar_event_id')
-            print(f"Successfully created Google Meet link using service account: {meeting_link}")
-        except Exception as e:
-            print(f"Service account failed, trying user OAuth credentials: {e}")
-            # Priority 2: Try user OAuth credentials if available
-            if current_user.google_calendar_credentials:
+        # Priority 1: Try user OAuth credentials first (most reliable, supports attendees)
+        if current_user.google_calendar_credentials:
+            try:
+                calendar_result = create_calendar_event(
+                    credentials_dict=current_user.google_calendar_credentials,
+                    title=meeting_data.title,
+                    description=meeting_data.description or "",
+                    start_datetime=meeting_data.meeting_datetime,
+                    duration_minutes=meeting_data.duration_minutes,
+                    attendees_emails=attendee_emails
+                )
+                meeting_link = calendar_result.get('meeting_link')
+                calendar_event_id = calendar_result.get('calendar_event_id')
+                print(f"Successfully created Google Meet link using user OAuth: {meeting_link}")
+            except Exception as e2:
+                print(f"Error creating Google Calendar event with user OAuth: {e2}")
+                import traceback
+                traceback.print_exc()
+                # Try service account as fallback
                 try:
-                    calendar_result = create_calendar_event(
-                        credentials_dict=current_user.google_calendar_credentials,
+                    calendar_result = create_calendar_event_with_service_account(
                         title=meeting_data.title,
                         description=meeting_data.description or "",
                         start_datetime=meeting_data.meeting_datetime,
                         duration_minutes=meeting_data.duration_minutes,
-                        attendees_emails=attendee_emails
+                        attendees_emails=service_account_attendees  # keep empty to avoid DWD requirement
                     )
                     meeting_link = calendar_result.get('meeting_link')
                     calendar_event_id = calendar_result.get('calendar_event_id')
-                    print(f"Successfully created Google Meet link using user OAuth: {meeting_link}")
-                except Exception as e2:
-                    print(f"Error creating Google Calendar event with user OAuth: {e2}")
+                    print(f"Successfully created Google Meet link using service account: {meeting_link}")
+                except Exception as e3:
+                    print(f"Service account also failed: {e3}")
                     import traceback
                     traceback.print_exc()
-                    # Fallback to generated link if calendar creation fails
-                    meeting_link = generate_meeting_link()
-            else:
-                # Fallback to generated link if no credentials available
-                meeting_link = generate_meeting_link()
+                    # Raise error - don't use fake link
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Failed to create Google Meet link. "
+                            "Please connect your Google Calendar account: "
+                            "1. Go to Meetings page, "
+                            "2. Click 'Connect Google Calendar' button, "
+                            "3. Authorize the app with Google, "
+                            "4. Then create your meeting again. "
+                            "OR select 'Zoom/Custom' platform and provide a meeting link manually."
+                        )
+                    )
+        else:
+            # Try service account if user OAuth not available
+            try:
+                calendar_result = create_calendar_event_with_service_account(
+                    title=meeting_data.title,
+                    description=meeting_data.description or "",
+                    start_datetime=meeting_data.meeting_datetime,
+                    duration_minutes=meeting_data.duration_minutes,
+                    attendees_emails=service_account_attendees  # keep empty to avoid DWD requirement
+                )
+                meeting_link = calendar_result.get('meeting_link')
+                calendar_event_id = calendar_result.get('calendar_event_id')
+                print(f"Successfully created Google Meet link using service account: {meeting_link}")
+            except Exception as e:
+                print(f"Service account failed: {e}")
+                import traceback
+                traceback.print_exc()
+                # Raise error with helpful message
+                error_detail = (
+                    "Failed to create Google Meet link. "
+                    "Please connect your Google Calendar account: "
+                    "1. Go to Meetings page, "
+                    "2. Click 'Connect Google Calendar' button, "
+                    "3. Authorize the app with Google, "
+                    "4. Then create your meeting again. "
+                    "OR select 'Zoom/Custom' platform and provide a meeting link manually."
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=error_detail
+                )
     
     meeting = Meeting(
         title=meeting_data.title,

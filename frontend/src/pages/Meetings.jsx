@@ -3,7 +3,7 @@ import {
   FiPlus, FiSearch, FiVideo, FiClock, FiUsers, 
   FiCalendar, FiEdit2, FiTrash2, FiExternalLink, FiX
 } from 'react-icons/fi';
-import { meetingsAPI, usersAPI } from '../services/api';
+import { meetingsAPI, usersAPI, googleCalendarAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
@@ -21,6 +21,8 @@ const Meetings = () => {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [meetingNotes, setMeetingNotes] = useState('');
   const [notesLoading, setNotesLoading] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [checkingCalendar, setCheckingCalendar] = useState(true);
   const notesPopupRef = useRef(null);
   const { isEmployee, user } = useAuth();
 
@@ -39,7 +41,32 @@ const Meetings = () => {
 
   useEffect(() => {
     fetchData();
+    checkCalendarStatus();
   }, [filter]);
+
+  const checkCalendarStatus = async () => {
+    try {
+      const response = await googleCalendarAPI.getStatus();
+      setCalendarConnected(response.data.connected);
+    } catch (error) {
+      console.error('Error checking calendar status:', error);
+      setCalendarConnected(false);
+    } finally {
+      setCheckingCalendar(false);
+    }
+  };
+
+  const handleConnectCalendar = async () => {
+    try {
+      const response = await googleCalendarAPI.getAuthUrl();
+      const authUrl = response.data.authorization_url;
+      // Open in same window to allow OAuth flow
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Error connecting calendar:', error);
+      toast.error('Failed to connect Google Calendar. Please check your credentials.');
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -81,11 +108,47 @@ const Meetings = () => {
         status: formData.status || undefined
       };
 
+      // Validate form data
+      // Validate form data
       if (!isOffline && data.platform !== 'gmeet' && !data.link) {
         throw new Error('Please provide meeting link');
       }
       if (isOffline && !data.location) {
         throw new Error('Please provide meeting location/area for offline meeting');
+      }
+      // Block submission if trying to use Google Meet without calendar connection
+      if (!isOffline && data.platform === 'gmeet' && !calendarConnected && !checkingCalendar) {
+        const action = window.confirm(
+          '⚠️ Google Calendar is not connected!\n\n' +
+          'To create Google Meet links automatically, you need to connect your Google Calendar account.\n\n' +
+          'Click OK to connect Google Calendar now.\n' +
+          'Click Cancel to switch to a different platform (Zoom/Custom) and provide a meeting link manually.'
+        );
+        
+        if (action) {
+          // User wants to connect - redirect to OAuth
+          handleConnectCalendar();
+          setSubmitting(false);
+          return;
+        } else {
+          // User cancelled - show error and stop submission
+          toast.error(
+            'Cannot create meeting with Google Meet (auto) without Google Calendar connection.\n\n' +
+            'Please either:\n' +
+            '1. Connect Google Calendar (click "Connect Google Calendar" button), OR\n' +
+            '2. Change platform to "Zoom" or "Custom" and provide a meeting link',
+            {
+              duration: 8000,
+              style: {
+                maxWidth: '500px',
+                whiteSpace: 'pre-line',
+                fontSize: '14px'
+              }
+            }
+          );
+          setSubmitting(false);
+          return;
+        }
       }
 
       if (editingMeeting) {
@@ -98,13 +161,46 @@ const Meetings = () => {
       } else {
         await meetingsAPI.create(data);
         toast.success('Meeting created successfully');
+        // Refresh calendar status after creating meeting
+        checkCalendarStatus();
       }
       
       setShowModal(false);
       resetForm();
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save meeting');
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to save meeting';
+      console.error('Meeting creation error:', error);
+      
+      // Check if error is about Google Calendar
+      if (errorMessage.includes('Google Calendar') || errorMessage.includes('Google Meet link') || errorMessage.includes('Failed to create')) {
+        // Show detailed error with action buttons
+        const shouldConnect = window.confirm(
+          errorMessage + '\n\n' +
+          'Would you like to connect Google Calendar now?\n\n' +
+          'Click OK to connect, or Cancel to switch to a different platform (Zoom/Custom) and provide a meeting link manually.'
+        );
+        
+        if (shouldConnect) {
+          handleConnectCalendar();
+        } else {
+          toast.error(
+            'Please either:\n' +
+            '1. Connect Google Calendar (click button above), OR\n' +
+            '2. Change platform to "Zoom" or "Custom" and provide a meeting link',
+            {
+              duration: 10000,
+              style: {
+                maxWidth: '500px',
+                whiteSpace: 'pre-line',
+                fontSize: '14px'
+              }
+            }
+          );
+        }
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -299,6 +395,46 @@ const Meetings = () => {
           </button>
         )}
       </div>
+
+      {/* Google Calendar Connection Banner */}
+      {!checkingCalendar && !calendarConnected && (
+        <div style={{
+          background: '#fff3cd',
+          border: '1px solid #ffc107',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+            <FiCalendar style={{ color: '#856404', fontSize: '20px' }} />
+            <div>
+              <strong style={{ color: '#856404' }}>Google Calendar Not Connected</strong>
+              <p style={{ margin: '4px 0 0 0', color: '#856404', fontSize: '14px' }}>
+                Connect your Google Calendar to automatically create real Google Meet links when scheduling meetings.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleConnectCalendar}
+            style={{
+              background: '#ffc107',
+              color: '#000',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Connect Google Calendar
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="meetings-filters">
@@ -521,17 +657,56 @@ const Meetings = () => {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Meeting Type</label>
+              <label className="form-label">Meeting Platform</label>
               <select
                 className="form-select"
                 value={formData.platform}
-                onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ 
+                    ...formData, 
+                    platform: e.target.value,
+                    link: e.target.value === 'gmeet' ? '' : formData.link // Clear link if switching to gmeet
+                  });
+                }}
                 disabled={formData.meeting_type === 'offline'}
               >
                 <option value="gmeet">Google Meet (auto)</option>
                 <option value="zoom">Zoom (enter link)</option>
                 <option value="custom">Custom link</option>
               </select>
+              {formData.platform === 'gmeet' && !calendarConnected && !checkingCalendar && formData.meeting_type === 'online' && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '8px 12px',
+                  background: '#fff3cd',
+                  border: '1px solid #ffc107',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  color: '#856404'
+                }}>
+                  ⚠️ Google Calendar not connected. 
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleConnectCalendar();
+                    }}
+                    style={{
+                      marginLeft: '8px',
+                      background: '#ffc107',
+                      color: '#000',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      fontSize: '12px'
+                    }}
+                  >
+                    Connect Now
+                  </button>
+                </div>
+              )}
             </div>
             {formData.meeting_type === 'online' && (
               <div className="form-group">

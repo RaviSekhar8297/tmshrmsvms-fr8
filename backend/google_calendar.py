@@ -22,10 +22,14 @@ GOOGLE_CALENDAR_ID = settings.GOOGLE_CALENDAR_ID or "primary"
 def _validate_google_credentials():
     """Validate that Google credentials are set. Called when Google Calendar functions are used."""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-        raise ValueError(
+        error_msg = (
             "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in environment variables. "
-            "Create a .env file in the backend directory with these values."
+            "Please update backend/.env file with your Google OAuth credentials:\n"
+            "GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com\n"
+            "GOOGLE_CLIENT_SECRET=your-client-secret\n"
+            "Then restart the backend server."
         )
+        raise ValueError(error_msg)
 
 # Scopes required for Calendar API
 # Request all scopes that Google might grant to avoid scope mismatch errors
@@ -232,18 +236,57 @@ def create_calendar_event(credentials_dict, title, description, start_datetime, 
             sendUpdates='none'  # do not send invites; avoids DWD requirement
         ).execute()
         
-        # Extract Google Meet link
+        # Extract Google Meet link - check multiple possible locations
         meet_link = None
+        
+        # Method 1: Check hangoutLink (legacy)
         if 'hangoutLink' in created_event:
             meet_link = created_event['hangoutLink']
-        elif 'conferenceData' in created_event and 'entryPoints' in created_event['conferenceData']:
-            for entry in created_event['conferenceData']['entryPoints']:
-                if entry.get('entryPointType') == 'video':
-                    meet_link = entry.get('uri')
-                    break
+            print(f"Found Meet link in hangoutLink: {meet_link}")
+        
+        # Method 2: Check conferenceData.entryPoints
+        if not meet_link and 'conferenceData' in created_event:
+            conference_data = created_event['conferenceData']
+            print(f"Conference data: {json.dumps(conference_data, indent=2, default=str)}")
+            
+            if 'entryPoints' in conference_data:
+                for entry in conference_data['entryPoints']:
+                    entry_type = entry.get('entryPointType')
+                    uri = entry.get('uri')
+                    print(f"Entry point - Type: {entry_type}, URI: {uri}")
+                    
+                    if entry_type == 'video' and uri:
+                        meet_link = uri
+                        print(f"Found Meet link in entryPoints: {meet_link}")
+                        break
+        
+        # Method 3: Check conferenceData.hangoutLink
+        if not meet_link and 'conferenceData' in created_event:
+            conference_data = created_event['conferenceData']
+            if 'hangoutLink' in conference_data:
+                meet_link = conference_data['hangoutLink']
+                print(f"Found Meet link in conferenceData.hangoutLink: {meet_link}")
+        
+        # Validate Meet link format
+        if meet_link:
+            # Ensure it's a proper Meet URL
+            if not meet_link.startswith('https://meet.google.com/'):
+                # If it's just a meeting code, construct full URL
+                if meet_link.startswith('meet.google.com/'):
+                    meet_link = 'https://' + meet_link
+                elif '/' not in meet_link and '-' in meet_link:
+                    # If it's just the code like "abc-defg-hij", construct URL
+                    meet_link = f'https://meet.google.com/{meet_link}'
+            
+            print(f"Final Meet link: {meet_link}")
+        else:
+            print("WARNING: No Meet link found in created event!")
+            print(f"Event data: {json.dumps(created_event, indent=2, default=str)}")
+            # Raise error if no Meet link found
+            raise Exception("Failed to extract Google Meet link from created calendar event. Please check your Google Calendar API permissions.")
         
         return {
-            'meeting_link': meet_link or created_event.get('htmlLink', ''),
+            'meeting_link': meet_link,
             'calendar_event_id': created_event.get('id'),
             'event_link': created_event.get('htmlLink', '')
         }
@@ -276,7 +319,7 @@ def get_service_account_credentials():
         service_account_path = settings.GOOGLE_SERVICE_ACCOUNT_PATH
         if not os.path.exists(service_account_path):
             print(f"Service account file not found at: {service_account_path}")
-            return None
+            raise Exception(f"Service account file not found at: {service_account_path}")
         
         credentials = service_account.Credentials.from_service_account_file(
             service_account_path,
@@ -287,7 +330,7 @@ def get_service_account_credentials():
         print(f'Error loading service account credentials: {e}')
         import traceback
         traceback.print_exc()
-        return None
+        raise Exception(f"Service account credentials not available: {str(e)}")
 
 def create_calendar_event_with_service_account(title, description, start_datetime, duration_minutes, attendees_emails=None):
     """
