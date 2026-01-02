@@ -79,10 +79,10 @@ const Punch = () => {
         apiKey = await fetchGoogleMapsApiKey();
       }
       
-      // Use fallback API key if backend key is not available
+      // API key should be set in backend .env file
       if (!apiKey) {
-        apiKey = 'AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg';
-        setGoogleMapsApiKey(apiKey);
+        console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
+        return;
       }
       
       if (apiKey) {
@@ -168,8 +168,9 @@ const Punch = () => {
       if (fetchedKey) {
         apiKey = fetchedKey;
       } else {
-        // Use fallback API key
-        apiKey = 'AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg';
+        // API key should be set in backend .env file
+        console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
+        return;
       }
     }
     
@@ -218,10 +219,10 @@ const Punch = () => {
             apiKey = await fetchGoogleMapsApiKey();
           }
           
-          // Use fallback API key if backend key is not available
+          // API key should be set in backend .env file
           if (!apiKey) {
-            apiKey = 'AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg';
-            setGoogleMapsApiKey(apiKey);
+            console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
+            return;
           }
           
           // Always try to geocode

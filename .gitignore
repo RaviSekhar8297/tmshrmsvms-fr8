@@ -49,3 +49,17 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+
+# Documentation files that may contain secrets
+*SETUP*.md
+*ERROR*.md
+*CALENDAR*.md
+FIX_*.md
+GOOGLE_*.md
+
+# Scripts with secrets
+replace_secrets*.ps1
+replace_secrets*.sh
+clean_git_history.ps1
+fix_secrets.ps1
+push_to_github.ps1

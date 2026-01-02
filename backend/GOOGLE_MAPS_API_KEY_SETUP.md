@@ -7,12 +7,12 @@ To enable location name display on the Punch page, you need to add the Google Ma
 1. Open the `backend/.env` file
 2. Add or update the following line:
    ```
-   GOOGLE_MAPS_API_KEY=AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg
+   GOOGLE_MAPS_API_KEY=your-google-maps-api-key
    ```
 
 3. Restart your backend server for the changes to take effect
 
-The API key is already configured in the code and will automatically:
+The API key will automatically:
 - Load the Google Maps JavaScript API
 - Convert GPS coordinates to location names (addresses)
 - Store the location name in the database instead of coordinates

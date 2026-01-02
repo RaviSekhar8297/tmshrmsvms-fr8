@@ -12,12 +12,12 @@ Write-Host "Replacing secrets in env.example and google_calendar.py..." -Foregro
 
 git filter-branch --force --tree-filter '
 if [ -f backend/env.example ]; then
-    sed -i "s/GOOGLE_CLIENT_ID=992284845003-hnkuf8dmorv8ae44nueber6cr34okv1u\.apps\.googleusercontent\.com/GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com/g" backend/env.example
-    sed -i "s/GOOGLE_CLIENT_SECRET=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/GOOGLE_CLIENT_SECRET=your-google-client-secret/g" backend/env.example
+    sed -i "s/GOOGLE_CLIENT_ID=.*/GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com/g" backend/env.example
+    sed -i "s/GOOGLE_CLIENT_SECRET=.*/GOOGLE_CLIENT_SECRET=your-google-client-secret/g" backend/env.example
 fi
 if [ -f backend/google_calendar.py ]; then
-    sed -i "s/992284845003-hnkuf8dmorv8ae44nueber6cr34okv1u\.apps\.googleusercontent\.com/your-google-client-id.apps.googleusercontent.com/g" backend/google_calendar.py
-    sed -i "s/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/your-google-client-secret/g" backend/google_calendar.py
+    sed -i "s/.*googleusercontent\.com.*/your-google-client-id.apps.googleusercontent.com/g" backend/google_calendar.py
+    sed -i "s/.*GOCSPX.*/your-google-client-secret/g" backend/google_calendar.py
 fi
 ' --prune-empty --tag-name-filter cat -- --all
 
