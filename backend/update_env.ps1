@@ -1,6 +1,9 @@
 # PowerShell script to update .env file with Google credentials
 # This will uncomment and set the Google OAuth credentials
 
+
+
+
 Write-Host "=== Updating .env file with Google Credentials ===" -ForegroundColor Yellow
 Write-Host ""
 

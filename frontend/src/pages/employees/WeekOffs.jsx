@@ -71,6 +71,12 @@ const WeekOffs = () => {
   };
 
   const handleDateClick = async (dateStr) => {
+    // Only HR can add/delete weekoffs
+    if (user?.role !== 'HR') {
+      toast.error('Only HR can add or remove week-offs');
+      return;
+    }
+    
     const isSelected = selectedDates.includes(dateStr);
     const empId = selectedEmployee === '0' ? '0' : selectedEmployee;
     const empName = selectedEmployee === '0' ? 'All' : employees.find(e => e.empid === selectedEmployee)?.name || 'All';
@@ -200,30 +206,33 @@ const WeekOffs = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Week-Offs</h1>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <select
-            value={selectedEmployee}
-            onChange={(e) => {
-              setSelectedEmployee(e.target.value);
-            }}
-            className="form-select"
-            style={{ minWidth: '200px' }}
-          >
-            <option value="0">All</option>
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.empid}>
-                {emp.name} ({emp.empid})
-              </option>
-            ))}
-          </select>
-          <button 
-            className="btn-primary" 
-            onClick={handleOpenCalendar}
-          >
-            <FiCalendar /> Select Dates
-          </button>
-        </div>
+        <h1>WEEK-OFF'S HISTORY</h1>
+        {/* Only HR role can add weekoffs */}
+        {user?.role === 'HR' && (
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <select
+              value={selectedEmployee}
+              onChange={(e) => {
+                setSelectedEmployee(e.target.value);
+              }}
+              className="form-select"
+              style={{ minWidth: '200px' }}
+            >
+              <option value="0">All</option>
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.empid}>
+                  {emp.name} ({emp.empid})
+                </option>
+              ))}
+            </select>
+            <button 
+              className="btn-primary" 
+              onClick={handleOpenCalendar}
+            >
+              <FiCalendar />  Date
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -264,12 +273,16 @@ const WeekOffs = () => {
                       </span>
                     </td>
                     <td>
-                      <button 
-                        className="btn-sm btn-secondary"
-                        onClick={() => handleDeleteWeekOff(weekOff)}
-                      >
-                        Delete
-                      </button>
+                      {/* Only HR role can delete weekoffs */}
+                      {user?.role === 'HR' && (
+                        <button 
+                          className="btn-sm btn-secondary"
+                          onClick={() => handleDeleteWeekOff(weekOff)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                      {user?.role !== 'HR' && <span>-</span>}
                     </td>
                   </tr>
                 ))

@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from database import get_db
-from models import User, AuthToken
-from schemas import LoginRequest, TokenResponse, UserResponse
+from models import User, AuthToken, SalaryStructure
+from schemas import LoginRequest, TokenResponse, UserResponse, ChangePasswordRequest
 from utils import verify_password, create_access_token, decode_token
 from config import settings
 
@@ -102,22 +102,41 @@ def logout(request: Request, db: Session = Depends(get_db), current_user: User =
     return {"message": "Logged out successfully"}
 
 @router.get("/me", response_model=UserResponse)
-def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Fetch salary_per_annum from SalaryStructure
+    # Query only the columns that exist in the database to avoid errors
+    try:
+        salary_structure = db.query(
+            SalaryStructure.salary_per_annum
+        ).filter(
+            SalaryStructure.empid == current_user.empid
+        ).first()
+        
+        salary_per_annum = None
+        if salary_structure and salary_structure.salary_per_annum:
+            salary_per_annum = float(salary_structure.salary_per_annum)
+    except Exception as e:
+        # If there's an error (e.g., column doesn't exist), set to None
+        print(f"Error fetching salary_per_annum: {e}")
+        salary_per_annum = None
+    
+    # Convert user to dict and add salary_per_annum
+    user_dict = UserResponse.model_validate(current_user).model_dump()
+    user_dict['salary_per_annum'] = salary_per_annum
+    
+    return user_dict
 
 @router.post("/change-password")
 def change_password(
-    old_password: str,
-    new_password: str,
+    password_data: ChangePasswordRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     from utils import hash_password
     
-    if not verify_password(old_password, current_user.password):
-        raise HTTPException(status_code=400, detail="Invalid old password")
-    
-    current_user.password = hash_password(new_password)
+    # Update password directly without requiring old password
+    # User is already authenticated via token
+    current_user.password = hash_password(password_data.new_password)
     db.commit()
     
     return {"message": "Password changed successfully"}

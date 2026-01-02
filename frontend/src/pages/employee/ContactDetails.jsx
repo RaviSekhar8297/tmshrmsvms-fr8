@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiPhone, FiMail, FiGrid, FiList } from 'react-icons/fi';
+import { FiPhone, FiMail, FiGrid, FiList, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import './Employee.css';
 
 const ContactDetails = () => {
@@ -12,7 +12,7 @@ const ContactDetails = () => {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 24;
 
   useEffect(() => {
     fetchContacts();
@@ -47,7 +47,7 @@ const ContactDetails = () => {
     <div className="page-container">
       <div className="page-header stacked">
         <div>
-          <h1>Contact Details</h1>
+          <h1>CONTACT - DETAILS</h1>
           <p className="page-subtitle">Find teammates quickly, switch grid or table, and export.</p>
         </div>
         <div className="header-actions filters-row toolbar">
@@ -196,25 +196,38 @@ const ContactDetails = () => {
                   </table>
                 </div>
               )}
-              <div className="pagination">
-                <button
-                  className="btn-secondary"
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <span className="page-indicator">
-                  Page {page} / {totalPages}
-                </span>
-                <button
-                  className="btn-secondary"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                </button>
-              </div>
+              {totalPages > 1 && (
+                <div className="pagination">
+                  <div className="pagination-info">
+                    Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, filteredContacts.length)} of {filteredContacts.length} contacts
+                  </div>
+                  <div className="pagination-controls">
+                    <button 
+                      className="pagination-btn"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      <FiChevronLeft />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        className={`pagination-btn ${page === pageNum ? 'active' : ''}`}
+                        onClick={() => setPage(pageNum)}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                    <button 
+                      className="pagination-btn"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                    >
+                      <FiChevronRight />
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </>

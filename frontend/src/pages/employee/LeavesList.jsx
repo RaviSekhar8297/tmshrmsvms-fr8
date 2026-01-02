@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { FiChevronLeft, FiChevronRight, FiRefreshCw } from 'react-icons/fi';
 import './Employee.css';
+import '../hr/HR.css';
 
 const LeavesList = () => {
   const { user } = useAuth();
@@ -12,6 +14,8 @@ const LeavesList = () => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const recordsPerPage = 25;
 
   useEffect(() => {
     fetchLeaves();
@@ -45,6 +49,28 @@ const LeavesList = () => {
       leave.status?.toLowerCase().includes(term)
     );
   });
+
+  // Calculate statistics
+  const totalLeaves = filteredLeaves.length;
+  const pendingLeaves = filteredLeaves.filter(l => l.status === 'pending').length;
+  const approvedLeaves = filteredLeaves.filter(l => l.status === 'approved').length;
+  const rejectedLeaves = filteredLeaves.filter(l => l.status === 'rejected').length;
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredLeaves.length / recordsPerPage);
+  const indexOfLastRecord = currentPage * recordsPerPage;
+  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+  const currentRecords = filteredLeaves.slice(indexOfFirstRecord, indexOfLastRecord);
+
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  useEffect(() => {
+    setCurrentPage(1); // Reset to page 1 when search/filter changes
+  }, [search, filter, fromDate, toDate]);
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -89,6 +115,25 @@ const LeavesList = () => {
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
               className="form-input"
+              style={{
+                padding: '10px 16px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                background: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                width: '100%'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = 'var(--primary)';
+                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = 'var(--border-color)';
+                e.target.style.boxShadow = 'none';
+              }}
             />
           </div>
           <div className="filter-field">
@@ -98,6 +143,25 @@ const LeavesList = () => {
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
               className="form-input"
+              style={{
+                padding: '10px 16px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                background: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                width: '100%'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = 'var(--primary)';
+                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = 'var(--border-color)';
+                e.target.style.boxShadow = 'none';
+              }}
             />
           </div>
           <div className="filter-field" style={{ minWidth: '160px' }}>
@@ -122,46 +186,157 @@ const LeavesList = () => {
         </div>
       </div>
 
+      {/* Statistics Cards */}
+      <div className="stats-grid" style={{ marginBottom: '24px' }}>
+        <div className="stat-card stat-blue">
+          <div className="stat-value">{totalLeaves}</div>
+          <div className="stat-label">Total Leaves</div>
+        </div>
+        <div className="stat-card stat-orange">
+          <div className="stat-value">{pendingLeaves}</div>
+          <div className="stat-label">Pending Leaves</div>
+        </div>
+        <div className="stat-card stat-green">
+          <div className="stat-value">{approvedLeaves}</div>
+          <div className="stat-label">Approved Leaves</div>
+        </div>
+        <div className="stat-card stat-red">
+          <div className="stat-value">{rejectedLeaves}</div>
+          <div className="stat-label">Rejected Leaves</div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="loading-container">
           <div className="spinner"></div>
           <p>Loading leaves...</p>
         </div>
       ) : (
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Applied Date</th>
-                <th>From Date</th>
-                <th>To Date</th>
-                <th>Duration</th>
-                <th>Leave Type</th>
-                <th>Status</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLeaves.length === 0 ? (
+        <>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="7" className="text-center">No leaves found</td>
+                  <th>Emp ID</th>
+                  <th>Name</th>
+                  <th>Applied Date</th>
+                  <th>From Date</th>
+                  <th>To Date</th>
+                  <th>Duration</th>
+                  <th>Leave Type</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th>Actions</th>
                 </tr>
-              ) : (
-                filteredLeaves.map((leave) => (
-                  <tr key={leave.id}>
-                    <td>{new Date(leave.applied_date).toLocaleDateString()}</td>
-                    <td>{new Date(leave.from_date).toLocaleDateString()}</td>
-                    <td>{new Date(leave.to_date).toLocaleDateString()}</td>
-                    <td>{leave.duration} days</td>
-                    <td>{leave.leave_type}</td>
-                    <td>{getStatusBadge(leave.status)}</td>
-                    <td>{leave.reason}</td>
+              </thead>
+              <tbody>
+                {currentRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" className="text-center">No leaves found</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  currentRecords.map((leave) => (
+                    <tr key={leave.id}>
+                      <td>{leave.employee_id || leave.empid || '-'}</td>
+                      <td>{leave.employee_name || leave.name || '-'}</td>
+                      <td>{new Date(leave.applied_date).toLocaleDateString()}</td>
+                      <td>{new Date(leave.from_date).toLocaleDateString()}</td>
+                      <td>{new Date(leave.to_date).toLocaleDateString()}</td>
+                      <td>{leave.duration} days</td>
+                      <td>{leave.leave_type}</td>
+                      <td>{getStatusBadge(leave.status)}</td>
+                      <td>{leave.reason}</td>
+                      <td>
+                        {leave.status === 'pending' ? (
+                          <button
+                            className="btn-sm btn-danger"
+                            onClick={async () => {
+                              if (window.confirm('Are you sure you want to delete this leave request?')) {
+                                try {
+                                  await api.delete(`/leaves/${leave.id}`);
+                                  toast.success('Leave request deleted successfully');
+                                  fetchLeaves();
+                                } catch (error) {
+                                  toast.error(error.response?.data?.detail || 'Failed to delete leave request');
+                                }
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                            Cannot delete
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="pagination-info" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, filteredLeaves.length)} of {filteredLeaves.length} leaves
+              </div>
+              <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    opacity: currentPage === 1 ? 0.5 : 1
+                  }}
+                >
+                  <FiChevronLeft />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => goToPage(page)}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      background: currentPage === page ? 'var(--primary)' : 'var(--bg-card)',
+                      color: currentPage === page ? 'white' : 'var(--text-primary)',
+                      cursor: 'pointer',
+                      fontWeight: currentPage === page ? 600 : 400
+                    }}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    opacity: currentPage === totalPages ? 0.5 : 1
+                  }}
+                >
+                  <FiChevronRight />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

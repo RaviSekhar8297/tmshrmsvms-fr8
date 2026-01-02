@@ -34,18 +34,18 @@
 
 .calendar-day {
   aspect-ratio: 1;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 8px;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 6px;
   background: var(--bg-hover);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   position: relative;
-  min-height: 58px;
-  box-shadow: var(--shadow-sm);
-  transition: background 0.2s, border-color 0.2s;
+  min-height: 80px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
   overflow: hidden;
 }
 
@@ -56,18 +56,22 @@
 }
 
 .calendar-day-number {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+  line-height: 1.2;
 }
 
 .calendar-day-info {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   font-size: 0.78rem;
+  width: 100%;
+  flex: 1;
+  justify-content: center;
 }
 
 .calendar-status {
@@ -87,28 +91,34 @@
 }
 
 .cal-present {
-  background: rgba(16, 185, 129, 0.18);
+  background: transparent;
   border-color: rgba(16, 185, 129, 0.8);
 }
 
 .cal-half {
-  background: rgba(245, 158, 11, 0.18);
+  background: transparent;
   border-color: rgba(245, 158, 11, 0.8);
 }
 
 .cal-abs {
-  background: rgba(239, 68, 68, 0.18);
+  background: transparent;
   border-color: rgba(239, 68, 68, 0.8);
 }
 
 .cal-weekoff {
-  background: rgba(139, 92, 246, 0.18);
+  background: transparent;
   border-color: rgba(139, 92, 246, 0.8);
 }
 
 .cal-leave {
-  background: rgba(59, 130, 246, 0.18);
+  background: transparent;
   border-color: rgba(59, 130, 246, 0.8);
+}
+
+.calendar-time-range {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 .punches-scroll-container {
@@ -315,5 +325,256 @@
 
 .btn-secondary:hover {
   background: var(--border-color);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  filter: brightness(1.1);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes celebrate {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 15px rgba(255, 107, 107, 0.7);
+  }
+  25% {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.9);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 25px rgba(255, 107, 107, 1);
+  }
+  75% {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.9);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-8px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-8px) rotate(5deg);
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.5) rotate(180deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    padding: 16px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+
+  /* Punch History Calendar Mobile Responsive */
+  .punch-calendar-full {
+    padding: 16px !important;
+  }
+
+  .punch-calendar-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .punch-calendar-title {
+    font-size: 1.2rem !important;
+    width: 100%;
+  }
+
+  .punch-calendar-selectors {
+    width: 100% !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+
+  .punch-month-select,
+  .punch-year-select {
+    width: 100% !important;
+  }
+
+  .calendar-container {
+    padding: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .calendar-header {
+    gap: 4px;
+    min-width: 320px;
+  }
+
+  .calendar-header-day {
+    font-size: 0.7rem;
+    padding: 6px 2px;
+    font-weight: 600;
+  }
+
+  .calendar-grid {
+    gap: 4px;
+    min-width: 320px;
+  }
+
+  .calendar-day {
+    min-height: 50px;
+    padding: 4px 2px;
+    font-size: 0.7rem;
+    border-radius: 8px;
+  }
+
+  .calendar-day-number {
+    font-size: 0.85rem;
+    margin-bottom: 2px;
+  }
+
+  .calendar-day-info {
+    font-size: 0.65rem;
+    gap: 1px;
+  }
+
+  .calendar-status {
+    font-size: 0.7rem;
+  }
+
+  .calendar-hours-top,
+  .calendar-hours-bottom {
+    font-size: 0.6rem;
+  }
+
+  .calendar-time-range {
+    font-size: 0.55rem;
+  }
+
+  /* Legend mobile responsive */
+  .punch-calendar-legend {
+    flex-direction: column !important;
+    gap: 10px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .punch-calendar-legend > div {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .data-table {
+    min-width: 600px;
+    font-size: 0.85rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 8px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* Cards display in column on mobile */
+  .punch-cards-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Location card and punch card container */
+  .location-card {
+    margin-bottom: 16px;
+  }
+
+  /* Lists with scroll */
+  ul,
+  .list-container,
+  .punch-list,
+  .history-list {
+    max-height: 500px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 8px;
+  }
 }
 

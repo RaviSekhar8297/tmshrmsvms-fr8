@@ -1,14 +1,106 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FiPlus, FiSearch, FiClock, FiUser, FiCalendar,
-  FiEdit2, FiTrash2, FiPlay, FiSquare, FiFolder, FiStar
+  FiEdit2, FiTrash2, FiPlay, FiSquare, FiFolder, FiStar, FiChevronDown, FiX
 } from 'react-icons/fi';
 import { tasksAPI, projectsAPI, usersAPI, ratingsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
 import './Tasks.css';
+
+// Searchable Select Component
+const SearchableSelect = ({ value, onChange, options, placeholder, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(opt => opt.value === value);
+  const filteredOptions = options.filter(opt => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (opt.label || '').toLowerCase().includes(search) || 
+           (opt.searchText || opt.label || '').toLowerCase().includes(search);
+  });
+
+  const handleSelect = (optionValue) => {
+    onChange(optionValue);
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  return (
+    <div className="searchable-select" ref={dropdownRef}>
+      <div
+        className={`searchable-select-trigger ${disabled ? 'disabled' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          readOnly
+          value={selectedOption?.label || placeholder || 'Select...'}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="searchable-select-input"
+        />
+        <FiChevronDown className={`searchable-select-arrow ${isOpen ? 'open' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="searchable-select-dropdown">
+          <div className="searchable-select-search">
+            <FiSearch />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search..."
+              autoFocus
+              className="searchable-select-search-input"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="searchable-select-clear"
+              >
+                <FiX size={14} />
+              </button>
+            )}
+          </div>
+          <div className="searchable-select-options">
+            {filteredOptions.length === 0 ? (
+              <div className="searchable-select-no-results">No results found</div>
+            ) : (
+              filteredOptions.map((option) => (
+                <div
+                  key={option.value}
+                  className={`searchable-select-option ${value === option.value ? 'selected' : ''}`}
+                  onClick={() => handleSelect(option.value)}
+                >
+                  {option.label}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Tasks = () => {
   const [tasks, setTasks] = useState([]);
@@ -26,6 +118,7 @@ const Tasks = () => {
   const [search, setSearch] = useState('');
   const { user, isEmployee } = useAuth();
   const [manualProjectName, setManualProjectName] = useState('');
+  const [useManualProject, setUseManualProject] = useState(false);
 
   const [formData, setFormData] = useState({
     project_id: '',
@@ -53,6 +146,8 @@ const Tasks = () => {
     completed: 0,
     delayed: 0
   });
+  const [activeTimers, setActiveTimers] = useState({}); // Store active timer for each task
+  const [tasksAssignedToManager, setTasksAssignedToManager] = useState([]); // Tasks assigned to manager
 
   useEffect(() => {
     fetchData();
@@ -90,18 +185,51 @@ const Tasks = () => {
   }, [filter, user, isEmployee]);
 
   useEffect(() => {
+    // Create a set of current task IDs for quick lookup
+    const currentTaskIds = new Set(tasks.map(t => t.id));
+    
     // Fetch durations for all tasks
     const fetchDurations = async () => {
+      // First, clean up durations for tasks that no longer exist
+      setTaskDurations(prevDurations => {
+        const cleaned = {};
+        Object.keys(prevDurations).forEach(taskId => {
+          if (currentTaskIds.has(parseInt(taskId))) {
+            cleaned[taskId] = prevDurations[taskId];
+          }
+        });
+        return cleaned;
+      });
+      
+      // Fetch durations only for existing tasks
       const durations = {};
-      for (const task of tasks) {
+      const tasksToFetch = tasks.filter(task => currentTaskIds.has(task.id));
+      
+      for (const task of tasksToFetch) {
         try {
           const response = await tasksAPI.getDurations(task.id);
           durations[task.id] = response.data;
         } catch (error) {
-          console.error(`Error fetching duration for task ${task.id}:`, error);
+          // Handle 404 errors gracefully - task was deleted
+          if (error.response?.status === 404) {
+            // Task was deleted, remove from state
+            setTaskDurations(prev => {
+              const updated = { ...prev };
+              delete updated[task.id];
+              return updated;
+            });
+            // Remove from current task IDs to prevent further fetches
+            currentTaskIds.delete(task.id);
+          } else {
+            console.error(`Error fetching duration for task ${task.id}:`, error);
+          }
         }
       }
-      setTaskDurations(durations);
+      
+      // Update with new durations
+      if (Object.keys(durations).length > 0) {
+        setTaskDurations(prev => ({ ...prev, ...durations }));
+      }
     };
     
     if (tasks.length > 0) {
@@ -111,9 +239,20 @@ const Tasks = () => {
       const hasActiveTasks = tasks.some(task => !(task.status === 'done' && task.percent_complete === 100));
       if (hasActiveTasks) {
         // Update durations every second for live timers (01, 02, 03...)
-        const interval = setInterval(fetchDurations, 1000);
+        const interval = setInterval(() => {
+          // Double-check tasks still exist before fetching
+          const validTasks = tasks.filter(t => currentTaskIds.has(t.id));
+          if (validTasks.length > 0) {
+            fetchDurations();
+          } else {
+            clearInterval(interval);
+          }
+        }, 1000);
         return () => clearInterval(interval);
       }
+    } else {
+      // Clear durations when no tasks
+      setTaskDurations({});
     }
   }, [tasks]);
 
@@ -163,6 +302,14 @@ const Tasks = () => {
         if (user?.role === 'Admin') {
           buildManagerHierarchy(employeesRes.data, managersRes.data, tasksRes.data);
         }
+        
+        // For Manager role: Get tasks assigned to them
+        if (user?.role === 'Manager') {
+          const assignedTasks = tasksRes.data.filter(task => task.assigned_to_id === user.id);
+          setTasksAssignedToManager(assignedTasks);
+          // Fetch active timers for assigned tasks
+          fetchActiveTimers(assignedTasks);
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -174,6 +321,18 @@ const Tasks = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check for duplicate title
+    const titleTrimmed = formData.title.trim();
+    const duplicateTask = tasks.find(task => 
+      task.title.trim().toLowerCase() === titleTrimmed.toLowerCase() &&
+      (!editingTask || task.id !== editingTask.id)
+    );
+    
+    if (duplicateTask) {
+      toast.error('Task title already exists. Please use a different title.');
+      return;
+    }
     
     try {
       const data = {
@@ -206,12 +365,15 @@ const Tasks = () => {
 
   const handleEdit = (task) => {
     setEditingTask(task);
+    // For managers editing tasks assigned to them, preserve assigned_to_id
+    const isManagerEditingAssignedTask = user?.role === 'Manager' && task.assigned_to_id === user.id;
+    
     setFormData({
       project_id: task.project_id || '',
       title: task.title,
       description: task.description || '',
       priority: task.priority || 'medium',
-      assigned_to_id: task.assigned_to_id || '',
+      assigned_to_id: isManagerEditingAssignedTask ? task.assigned_to_id : (task.assigned_to_id || ''),
       assigned_by_id: task.assigned_by_id || '',
       start_date: task.start_date || '',
       due_date: task.due_date || '',
@@ -220,16 +382,70 @@ const Tasks = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return;
+  const handleDelete = (id) => {
+    // Use toast for confirmation instead of window.confirm
+    const task = tasks.find(t => t.id === id);
+    const taskTitle = task?.title || 'this task';
     
-    try {
-      await tasksAPI.delete(id);
-      toast.success('Task deleted successfully');
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to delete task');
-    }
+    // Show confirmation toast with buttons
+    toast((t) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '250px' }}>
+        <span style={{ marginBottom: '4px' }}>Are you sure you want to delete "{taskTitle}"?</span>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              try {
+                await tasksAPI.delete(id);
+                toast.success('Task deleted successfully');
+                // Remove from durations immediately
+                setTaskDurations(prev => {
+                  const updated = { ...prev };
+                  delete updated[id];
+                  return updated;
+                });
+                fetchData();
+              } catch (error) {
+                toast.error(error.response?.data?.detail || 'Failed to delete task');
+              }
+            }}
+            style={{
+              padding: '6px 16px',
+              background: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.9rem'
+            }}
+          >
+            Yes, Delete
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+            }}
+            style={{
+              padding: '6px 16px',
+              background: '#e2e8f0',
+              color: '#1e293b',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.9rem'
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 10000,
+      id: `delete-confirm-${id}`,
+      position: 'top-center'
+    });
   };
 
   const handleStatusChange = async (taskId, newStatus) => {
@@ -239,6 +455,61 @@ const Tasks = () => {
       fetchData();
     } catch (error) {
       toast.error('Failed to update status');
+    }
+  };
+
+  const fetchActiveTimers = async (taskList) => {
+    const timers = {};
+    for (const task of taskList) {
+      try {
+        const response = await tasksAPI.getTimers(task.id);
+        const activeTimer = response.data.find(t => !t.end_time && t.user_id === user?.id);
+        if (activeTimer) {
+          timers[task.id] = activeTimer;
+        }
+      } catch (error) {
+        // Silently handle errors
+      }
+    }
+    setActiveTimers(timers);
+  };
+
+  const handleStartTimer = async (taskId) => {
+    try {
+      const response = await tasksAPI.startTimer(taskId);
+      setActiveTimers(prev => ({ ...prev, [taskId]: response.data }));
+      toast.success('Timer started');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to start timer');
+    }
+  };
+
+  const handleStopTimer = async (taskId) => {
+    const activeTimer = activeTimers[taskId];
+    if (!activeTimer) return;
+    
+    try {
+      await tasksAPI.stopTimer(activeTimer.id);
+      setActiveTimers(prev => {
+        const updated = { ...prev };
+        delete updated[taskId];
+        return updated;
+      });
+      toast.success('Timer stopped');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to stop timer');
+    }
+  };
+
+  const handleProgressChange = async (taskId, newProgress) => {
+    try {
+      await tasksAPI.update(taskId, { percent_complete: Math.min(100, Math.max(0, parseInt(newProgress))) });
+      toast.success('Progress updated');
+      fetchData();
+    } catch (error) {
+      toast.error('Failed to update progress');
     }
   };
 
@@ -256,6 +527,7 @@ const Tasks = () => {
       estimated_days: ''
     });
     setManualProjectName('');
+    setUseManualProject(false);
   };
 
   const getStatusColor = (status) => {
@@ -491,7 +763,7 @@ const Tasks = () => {
             >
               By Employee
             </button>
-            {user?.role === 'Admin' && (
+            {(user?.role === 'Admin' || user?.role === 'Manager') && (
               <button 
                 className={`toggle-btn ${viewMode === 'manager' ? 'active' : ''}`}
                 onClick={() => setViewMode('manager')}
@@ -782,15 +1054,244 @@ const Tasks = () => {
           )}
         </div>
       ) : viewMode === 'manager' ? (
-        <div className="managers-hierarchy-grid">
-          {filteredManagerHierarchy.length === 0 ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
-              <FiClock className="empty-state-icon" />
-              <h3>No managers found</h3>
-              <p>No managers match your search</p>
-            </div>
-          ) : (
-            filteredManagerHierarchy.map((manager) => (
+        // Show different view based on role
+        user?.role === 'Manager' ? (
+          // Manager's assigned tasks view
+          <div className="tasks-grid">
+            {tasksAssignedToManager.filter(task =>
+              task.title.toLowerCase().includes(search.toLowerCase())
+            ).length === 0 ? (
+              <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
+                <FiClock className="empty-state-icon" />
+                <h3>No tasks assigned to you</h3>
+                <p>Tasks assigned to you by HR/Admin will appear here</p>
+              </div>
+            ) : (
+              tasksAssignedToManager.filter(task =>
+                task.title.toLowerCase().includes(search.toLowerCase())
+              ).map((task) => {
+                const isOverdue = isTaskOverdue(task);
+                const activeTimer = activeTimers[task.id];
+                return (
+                  <div key={task.id} className={`task-card ${isOverdue ? 'overdue' : ''}`}>
+                    <div className="task-card-header">
+                      <span className={`badge badge-${getStatusColor(task.status)}`}>
+                        {task.status}
+                      </span>
+                      <span className={`badge badge-${getPriorityColor(task.priority)}`}>
+                        {task.priority}
+                      </span>
+                      {(task.is_delayed && task.delayed_days > 0) && (
+                        <span className="badge badge-danger">
+                          Delayed by {task.delayed_days} day{task.delayed_days !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      <div className="task-actions">
+                        <button 
+                          className="btn-icon" 
+                          onClick={() => handleEdit(task)}
+                          title="Edit Task"
+                        >
+                          <FiEdit2 />
+                        </button>
+                      </div>
+                    </div>
+
+                    <Link to={`/tasks/${task.id}`} className="task-card-body" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <h3 className="task-title">{task.title}</h3>
+                      <p className="task-desc">{task.description || 'No description'}</p>
+
+                      {/* Duration Information */}
+                      {taskDurations[task.id] && (
+                        <div className="task-durations" style={{ marginBottom: '12px' }}>
+                          <div className="duration-item" style={{ 
+                            fontSize: '0.85rem', 
+                            color: isTaskOverdue(task) ? '#ef4444' : '#64748b',
+                            fontWeight: 500,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <span>Assigned Duration:</span>
+                            <span style={{ 
+                              color: isTaskOverdue(task) ? '#ef4444' : '#1e293b',
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              letterSpacing: '1px'
+                            }}>
+                              {formatDuration(taskDurations[task.id].assigned_duration_seconds)}
+                            </span>
+                          </div>
+                          <div className="duration-item" style={{ 
+                            fontSize: '0.85rem', 
+                            color: '#64748b',
+                            fontWeight: 500,
+                            marginTop: '4px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <span>Working Duration:</span>
+                            <span style={{ 
+                              color: '#1e293b',
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              letterSpacing: '1px'
+                            }}>
+                              {formatDuration(taskDurations[task.id].working_duration_seconds)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="task-meta">
+                        <div className="meta-item">
+                          <FiFolder />
+                          <span>{task.project_id ? `Project #${task.project_id}` : 'No Project'}</span>
+                        </div>
+                        {task.assigned_by_name && (
+                          <div className="meta-item">
+                            <FiUser />
+                            <span>Assigned by: {task.assigned_by_name}</span>
+                          </div>
+                        )}
+                        {task.due_date && (
+                          <div className="meta-item">
+                            <FiCalendar />
+                            <span>{new Date(task.due_date).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="task-progress">
+                        <div className="progress-header">
+                          <span>Progress: {task.percent_complete}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={task.percent_complete}
+                          onChange={(e) => {
+                            const newProgress = parseInt(e.target.value);
+                            // Update immediately for visual feedback
+                            const updatedTasks = tasksAssignedToManager.map(t => 
+                              t.id === task.id ? { ...t, percent_complete: newProgress } : t
+                            );
+                            setTasksAssignedToManager(updatedTasks);
+                          }}
+                          onMouseUp={(e) => {
+                            e.stopPropagation();
+                            // Save when user releases the slider
+                            handleProgressChange(task.id, e.target.value);
+                          }}
+                          onTouchEnd={(e) => {
+                            e.stopPropagation();
+                            // Save when user releases on touch devices
+                            handleProgressChange(task.id, e.target.value);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="progress-slider"
+                          disabled={isTaskCompleted(task)}
+                          style={{
+                            width: '100%',
+                            marginTop: '8px',
+                            marginBottom: '8px',
+                            cursor: isTaskCompleted(task) ? 'not-allowed' : 'pointer'
+                          }}
+                        />
+                        <div className="progress-bar">
+                          <div 
+                            className={`progress-bar-fill ${task.percent_complete === 100 ? 'success' : 'primary'}`}
+                            style={{ width: `${task.percent_complete}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </Link>
+
+                    {/* Timer Controls and Status for Manager */}
+                    <div className="task-card-footer" style={{ padding: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {/* Status Dropdown */}
+                      <div>
+                        <select
+                          className="form-select"
+                          value={task.status}
+                          disabled={isTaskCompleted(task)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleStatusChange(task.id, e.target.value);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="todo">To Do</option>
+                          <option value="in-progress">In Progress</option>
+                          <option value="blocked">Blocked</option>
+                          <option value="review">Review</option>
+                          <option value="done">Done</option>
+                        </select>
+                      </div>
+                      
+                      {/* Timer Controls */}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <FiClock style={{ color: '#64748b' }} />
+                          <span style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                            {activeTimer ? 'Timer Running' : 'Timer Stopped'}
+                          </span>
+                        </div>
+                        {activeTimer ? (
+                          <button 
+                            className="btn btn-danger btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStopTimer(task.id);
+                            }}
+                            disabled={isTaskCompleted(task)}
+                          >
+                            <FiSquare /> Stop Timer
+                          </button>
+                        ) : (
+                          <button 
+                            className="btn btn-success btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartTimer(task.id);
+                            }}
+                            disabled={isTaskCompleted(task)}
+                          >
+                            <FiPlay /> Start Timer
+                          </button>
+                        )}
+                      </div>
+                      
+                      {/* Click to view details hint */}
+                      <div style={{ 
+                        textAlign: 'center', 
+                        fontSize: '0.75rem', 
+                        color: '#64748b',
+                        marginTop: '4px',
+                        fontStyle: 'italic'
+                      }}>
+                        Click on task to view ratings, comments & timer logs
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          // Admin's manager hierarchy view
+          <div className="managers-hierarchy-grid">
+            {filteredManagerHierarchy.length === 0 ? (
+              <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
+                <FiClock className="empty-state-icon" />
+                <h3>No managers found</h3>
+                <p>No managers match your search</p>
+              </div>
+            ) : (
+              filteredManagerHierarchy.map((manager) => (
               <div key={manager.id} className="manager-hierarchy-card">
                 <div className="manager-info">
                   <div className="avatar avatar-lg">
@@ -879,6 +1380,7 @@ const Tasks = () => {
             ))
           )}
         </div>
+        )
       ) : null}
 
       {/* Create/Edit Modal */}
@@ -916,64 +1418,142 @@ const Tasks = () => {
 
           <div className="form-group">
             <label className="form-label">Project</label>
-            <select
-              className="form-select"
-              value={formData.project_id}
-              onChange={(e) => {
-                const project_id = e.target.value;
-                // Reset assignee if not in new project's team
-                const newProject = projects.find((p) => p.id === (project_id ? parseInt(project_id) : null));
-                const teamEmpids = newProject?.teams?.map((m) => m.empid) || [];
-                const assigneeValid = !project_id || !formData.assigned_to_id
-                  ? true
-                  : (() => {
-                      const currentAssignee = employees.find(emp => emp.id === parseInt(formData.assigned_to_id));
-                      return currentAssignee ? teamEmpids.includes(currentAssignee.empid) : false;
-                    })();
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {!useManualProject ? (
+                <>
+                  <select
+                    className="form-select"
+                    style={{ flex: 1 }}
+                    value={formData.project_id}
+                    onChange={(e) => {
+                      const project_id = e.target.value;
+                      // Reset assignee if not in new project's team
+                      const newProject = projects.find((p) => p.id === (project_id ? parseInt(project_id) : null));
+                      const teamEmpids = newProject?.teams?.map((m) => m.empid) || [];
+                      const assigneeValid = !project_id || !formData.assigned_to_id
+                        ? true
+                        : (() => {
+                            const currentAssignee = employees.find(emp => emp.id === parseInt(formData.assigned_to_id));
+                            return currentAssignee ? teamEmpids.includes(currentAssignee.empid) : false;
+                          })();
 
-                setFormData({
-                  ...formData,
-                  project_id,
-                  assigned_to_id: assigneeValid ? formData.assigned_to_id : ''
-                });
-              }}
-            >
-              <option value="">No Project</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-            <small className="form-hint">Leave as "No Project" and enter a name below if needed.</small>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Project Name (manual)</label>
-            <input
-              type="text"
-              className="form-input"
-              value={manualProjectName}
-              onChange={(e) => setManualProjectName(e.target.value)}
-              placeholder="Enter project name when not selecting from list"
-            />
+                      setFormData({
+                        ...formData,
+                        project_id,
+                        assigned_to_id: assigneeValid ? formData.assigned_to_id : ''
+                      });
+                    }}
+                  >
+                    <option value="">No Project</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setUseManualProject(true);
+                      setFormData({ ...formData, project_id: '' });
+                    }}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    Enter manually
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{ flex: 1 }}
+                    value={manualProjectName}
+                    onChange={(e) => setManualProjectName(e.target.value)}
+                    placeholder="Enter project name"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setUseManualProject(false);
+                      setManualProjectName('');
+                    }}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    Select Project
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Assign To</label>
-              <select
-                className="form-select"
+              <SearchableSelect
                 value={formData.assigned_to_id}
-                onChange={(e) => setFormData({ ...formData, assigned_to_id: e.target.value })}
-              >
-                <option value="">Unassigned</option>
-                {availableAssignees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} ({emp.empid})
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => {
+                  let assignedById = formData.assigned_by_id;
+                  
+                  // If Admin role and employee selected, auto-set Assigned By (Manager)
+                  if (user?.role === 'Admin' && value) {
+                    const selectedEmployee = employees.find(emp => emp.id === parseInt(value));
+                    if (selectedEmployee && selectedEmployee.report_to_id) {
+                      // Find the manager by empid (report_to_id)
+                      const manager = managers.find(m => m.empid === selectedEmployee.report_to_id) ||
+                                     employees.find(emp => emp.empid === selectedEmployee.report_to_id && emp.role === 'Manager');
+                      if (manager) {
+                        assignedById = manager.id.toString();
+                      } else {
+                        assignedById = ''; // Manager not found
+                      }
+                    } else {
+                      assignedById = ''; // No report_to_id
+                    }
+                  } else if (!value) {
+                    assignedById = ''; // Unassigned
+                  }
+                  
+                  setFormData({ ...formData, assigned_to_id: value, assigned_by_id: assignedById });
+                }}
+                options={[
+                  { value: '', label: 'Unassigned' },
+                  ...availableAssignees.map((emp) => ({
+                    value: emp.id.toString(),
+                    label: `${emp.name} (${emp.empid})`,
+                    searchText: `${emp.name} ${emp.empid}`
+                  }))
+                ]}
+                placeholder="Search employee..."
+                disabled={user?.role === 'Manager' && editingTask && editingTask.assigned_to_id === user.id}
+              />
+              {user?.role === 'Manager' && editingTask && editingTask.assigned_to_id === user.id && (
+                <small className="form-hint">You cannot reassign tasks assigned to you</small>
+              )}
+              {user?.role === 'Admin' && formData.assigned_to_id && (() => {
+                const selectedEmployee = employees.find(emp => emp.id === parseInt(formData.assigned_to_id));
+                if (selectedEmployee) {
+                  const reportToId = selectedEmployee.report_to_id;
+                  if (reportToId) {
+                    const manager = employees.find(emp => emp.empid === reportToId) || 
+                                   managers.find(m => m.empid === reportToId);
+                    return (
+                      <small className="form-hint" style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                        Reports to: {manager ? manager.name : reportToId}
+                      </small>
+                    );
+                  } else {
+                    return (
+                      <small className="form-hint" style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                        Reports to: not assigned
+                      </small>
+                    );
+                  }
+                }
+                return null;
+              })()}
             </div>
             {user?.role === 'Admin' && (
               <div className="form-group">
@@ -1014,7 +1594,31 @@ const Tasks = () => {
                 type="date"
                 className="form-input"
                 value={formData.start_date}
-                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                onClick={(e) => e.target.showPicker?.()}
+                onChange={(e) => {
+                  const newStartDate = e.target.value;
+                  let newEstimatedDays = formData.estimated_days;
+                  let newDueDate = formData.due_date;
+                  
+                  // Validate: due date cannot be before start date
+                  if (newStartDate && formData.due_date) {
+                    const start = new Date(newStartDate);
+                    const due = new Date(formData.due_date);
+                    if (due < start) {
+                      toast.error('Due date cannot be before start date');
+                      newDueDate = ''; // Clear due date if invalid
+                    } else {
+                      // Auto-calculate estimated days if both dates are valid
+                      const diffTime = due - start;
+                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                      if (diffDays > 0) {
+                        newEstimatedDays = diffDays.toString();
+                      }
+                    }
+                  }
+                  
+                  setFormData({ ...formData, start_date: newStartDate, due_date: newDueDate, estimated_days: newEstimatedDays });
+                }}
               />
             </div>
             <div className="form-group">
@@ -1023,7 +1627,31 @@ const Tasks = () => {
                 type="date"
                 className="form-input"
                 value={formData.due_date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                min={formData.start_date || ''}
+                onClick={(e) => e.target.showPicker?.()}
+                onChange={(e) => {
+                  const newDueDate = e.target.value;
+                  let newEstimatedDays = formData.estimated_days;
+                  
+                  // Validate: due date cannot be before start date
+                  if (formData.start_date && newDueDate) {
+                    const start = new Date(formData.start_date);
+                    const due = new Date(newDueDate);
+                    if (due < start) {
+                      toast.error('Due date cannot be before start date');
+                      return; // Don't update if invalid
+                    }
+                    
+                    // Auto-calculate estimated days if both dates are valid
+                    const diffTime = due - start;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    if (diffDays > 0) {
+                      newEstimatedDays = diffDays.toString();
+                    }
+                  }
+                  
+                  setFormData({ ...formData, due_date: newDueDate, estimated_days: newEstimatedDays });
+                }}
               />
             </div>
           </div>
@@ -1035,9 +1663,14 @@ const Tasks = () => {
               className="form-input"
               value={formData.estimated_days}
               onChange={(e) => setFormData({ ...formData, estimated_days: e.target.value })}
-              placeholder="Number of days"
+              placeholder="Auto-calculated from dates or enter manually"
               min="1"
             />
+            <small className="form-hint">
+              {formData.start_date && formData.due_date 
+                ? `Auto-calculated: ${Math.ceil((new Date(formData.due_date) - new Date(formData.start_date)) / (1000 * 60 * 60 * 24))} days`
+                : 'Enter manually or select start and due dates to auto-calculate'}
+            </small>
           </div>
 
           <div className="modal-footer">

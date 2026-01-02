@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiStar, FiPlus, FiUser, FiTrendingUp, FiAward, FiCheckCircle, FiSearch, FiClock } from 'react-icons/fi';
+import { FiStar, FiPlus, FiUser, FiTrendingUp, FiAward, FiCheckCircle, FiSearch, FiClock, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { ratingsAPI, tasksAPI, usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
@@ -25,6 +25,8 @@ const Ratings = () => {
   const [showModal, setShowModal] = useState(false);
   const [viewMode, setViewMode] = useState('list');
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
   const { isEmployee, user } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -178,6 +180,17 @@ const Ratings = () => {
       emp.empid?.toLowerCase().includes(query)
     );
   });
+
+  // Pagination for By Employee tab
+  const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
+  const indexOfLastRecord = currentPage * itemsPerPage;
+  const indexOfFirstRecord = indexOfLastRecord - itemsPerPage;
+  const currentEmployees = filteredEmployees.slice(indexOfFirstRecord, indexOfLastRecord);
+
+  // Reset to page 1 when search changes or view mode changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, viewMode]);
 
   const filteredManagers = ratingsByManager.filter((manager) => {
     const query = search.toLowerCase();
@@ -464,8 +477,9 @@ const Ratings = () => {
           )}
         </div>
       ) : viewMode === 'employee' ? (
+        <>
         <div className="employees-ratings-grid">
-          {filteredEmployees.map((emp) => {
+          {currentEmployees.map((emp) => {
             // Find matching task stats for this employee
             const empTasks = tasksByEmployee.find(t => t.id === emp.id) || {};
             const empTaskStats = {
@@ -555,6 +569,73 @@ const Ratings = () => {
             );
           })}
         </div>
+        {/* Pagination for By Employee tab */}
+        {totalPages > 1 && (
+          <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="pagination-info" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, filteredEmployees.length)} of {filteredEmployees.length} employees
+            </div>
+            <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button 
+                className="pagination-btn"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === 1 ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <FiChevronLeft />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                  onClick={() => setCurrentPage(page)}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    background: currentPage === page ? 'var(--primary-color)' : 'var(--bg-card)',
+                    color: currentPage === page ? 'white' : 'var(--text-primary)',
+                    cursor: 'pointer',
+                    minWidth: '40px'
+                  }}
+                >
+                  {page}
+                </button>
+              ))}
+              <button 
+                className="pagination-btn"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  opacity: currentPage === totalPages ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <FiChevronRight />
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       ) : viewMode === 'manager' && user?.role === 'Admin' ? (
         <div className="employees-ratings-grid">
           {filteredManagers.map((manager) => (

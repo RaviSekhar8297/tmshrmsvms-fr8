@@ -96,10 +96,41 @@ def google_calendar_callback_post(
 def get_calendar_status(
     current_user: User = Depends(get_current_user)
 ):
-    """Check if user has Google Calendar connected"""
-    return {
-        "connected": current_user.google_calendar_credentials is not None
-    }
+    """Check if user has Google Calendar connected and return connected email"""
+    try:
+        if not current_user.google_calendar_credentials:
+            return {
+                "connected": False,
+                "email": None
+            }
+        
+        # Get email from credentials
+        try:
+            from google_calendar import get_user_email_from_credentials
+            connected_email = get_user_email_from_credentials(current_user.google_calendar_credentials)
+            return {
+                "connected": True,
+                "email": connected_email
+            }
+        except ImportError:
+            # Function not available - return connected status without email
+            return {
+                "connected": True,
+                "email": None
+            }
+        except Exception as e:
+            # If we can't get email, still return connected status
+            print(f"Error getting email from credentials: {e}")
+            return {
+                "connected": True,
+                "email": None
+            }
+    except Exception as e:
+        print(f"Error checking calendar status: {e}")
+        return {
+            "connected": False,
+            "email": None
+        }
 
 @router.delete("/disconnect")
 def disconnect_google_calendar(

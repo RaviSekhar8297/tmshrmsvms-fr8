@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -7,15 +7,17 @@ import {
   FiStar, FiVideo, FiLogOut, FiChevronDown, FiChevronRight,
   FiClock, FiList, FiEdit, FiPlus, FiTruck, FiDollarSign,
   FiBriefcase, FiSend, FiShield, FiCalendar as FiCalendarIcon,
-  FiTrendingUp, FiPhone, FiMail, FiGift
+  FiTrendingUp, FiPhone, FiMail, FiGift, FiGitBranch
 } from 'react-icons/fi';
 import './Sidebar.css';
 
-const LOGO_URL = 'https://www.brihaspathi.com/highbtlogo%20white-%20tm.png';
+const LOGO_URL_DARK = 'https://www.brihaspathi.com/highbtlogo%20white-%20tm.png';
+const LOGO_URL_LIGHT = 'https://www.brihaspathi.com/highbtlogo%20tm%20(1).png';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout, isEmployee } = useAuth();
   const location = useLocation();
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [expandedSections, setExpandedSections] = useState({
     tms: true,
     employee: false,
@@ -25,6 +27,25 @@ const Sidebar = ({ isOpen, onClose }) => {
     attendance: false,
     vms: false
   });
+
+  useEffect(() => {
+    // Check theme on mount and when it changes
+    const checkTheme = () => {
+      const theme = document.documentElement.getAttribute('data-theme');
+      setIsDarkMode(theme !== 'light');
+    };
+    
+    checkTheme();
+    
+    // Listen for theme changes
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
 
   const toggleSection = (section) => {
     setExpandedSections(prev => {
@@ -65,60 +86,79 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/ratings', icon: FiStar, label: 'Ratings', roles: ['Admin', 'Manager', 'Employee', 'HR'] },
   ];
 
-  // Employee Section (for Employee role)
-  const employeeItems = [
-    { path: '/employee/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Employee'] },
-    { path: '/employee/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Employee'] },
-    { path: '/employee/permission', icon: FiShield, label: 'Permission', roles: ['Employee'] },
-    { path: '/employee/requests', icon: FiSend, label: 'Requests', roles: ['Employee'] },
-    { path: '/employee/holidays', icon: FiGift, label: 'Holidays', roles: ['Employee'] },
-    { path: '/employee/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Employee'] },
-    { path: '/employee/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Employee'] },
+  // Self Section (for Employee role) - using /self/ paths
+  const employeeSelfItems = [
+    { path: '/self/punch', icon: FiClock, label: 'Punch', roles: ['Employee'] },
+    { path: '/self/hierarchy', icon: FiGitBranch, label: 'Hierarchy', roles: ['Employee'] },
+    { path: '/self/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Employee'] },
+    { path: '/self/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Employee'] },
+    { path: '/self/permission', icon: FiShield, label: 'Permission', roles: ['Employee'] },
+    { path: '/self/requests', icon: FiSend, label: 'Requests', roles: ['Employee'] },
+    { path: '/employee/apply-loan', icon: FiDollarSign, label: 'Apply Loan', roles: ['Employee'] },
+    { path: '/self/holidays', icon: FiGift, label: 'Holidays', roles: ['Employee'] },
+    { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Employee'] },
+    { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Employee'] },
+    { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Employee'] },
   ];
 
   // Self Section (for Manager, HR, Admin)
   const selfItems = [
     { path: '/self/punch', icon: FiClock, label: 'Punch', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/hierarchy', icon: FiGitBranch, label: 'Hierarchy', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/permission', icon: FiShield, label: 'Permission', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/requests', icon: FiSend, label: 'Requests', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/employee/apply-loan', icon: FiDollarSign, label: 'Apply Loan', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/week-offs', icon: FiCalendar, label: 'Week-Offs', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/holidays', icon: FiGift, label: 'Holidays', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Admin', 'Manager', 'HR'] },
   ];
 
-  // Employees Section (for Manager, HR, Admin - managing employees)
+  // Employees Section (for Manager - managing employees)
+  const managerEmployeesItems = [
+    { path: '/employees/data', icon: FiFileText, label: 'Data', roles: ['Manager'] },
+    { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Manager'] },
+    { path: '/employees/permission', icon: FiShield, label: 'Permission', roles: ['Manager'] },
+    { path: '/employees/requests', icon: FiSend, label: 'Requests', roles: ['Manager'] },
+    { path: '/employees/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Manager'] },
+  ];
+
+  // Employees Section (for HR, Admin - managing employees)
   const employeesItems = [
-    { path: '/employees/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Admin', 'Manager'] },
-    { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/employees/permission', icon: FiShield, label: 'Permission', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/employees/requests', icon: FiSend, label: 'Requests', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/employees/week-offs', icon: FiCalendar, label: 'Week-Offs', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/employees/holidays', icon: FiGift, label: 'Holidays', roles: ['Admin', 'Manager'] },
-    { path: '/employees/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/employees/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Admin', 'Manager'] },
+    { path: '/employees/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Admin'] },
+    { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'HR'] },
+    { path: '/employees/balance-leaves', icon: FiList, label: 'Balance Leaves', roles: ['HR'] },
+    { path: '/employees/data', icon: FiFileText, label: 'Data', roles: ['HR'] },
+    { path: '/employees/letters', icon: FiMail, label: 'Letters', roles: ['HR'] },
+    { path: '/employees/permission', icon: FiShield, label: 'Permission', roles: ['Admin', 'HR'] },
+    { path: '/employees/requests', icon: FiSend, label: 'Requests', roles: ['Admin', 'HR'] },
+    { path: '/employees/holidays', icon: FiGift, label: 'Holidays', roles: ['Admin'] },
+    { path: '/employees/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Admin', 'HR'] },
+    { path: '/employees/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Admin'] },
   ];
 
-  // Payroll Section (for HR, Admin)
+  // Payroll Section (for Employee, Manager, HR, Admin)
   const payrollItems = [
-    { path: '/payroll/structure', icon: FiBriefcase, label: 'Structure', roles: ['Admin', 'HR'] },
+    { path: '/payroll/structure', icon: FiBriefcase, label: 'Structure', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
     { path: '/payroll/generate', icon: FiPlus, label: 'Generate', roles: ['Admin', 'HR'] },
-    { path: '/payroll/payslip', icon: FiFileText, label: 'Payslip', roles: ['Admin', 'HR'] },
+    { path: '/payroll/payslip', icon: FiFileText, label: 'Payslip', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
     { path: '/payroll/salary', icon: FiDollarSign, label: 'Salary', roles: ['Admin', 'HR'] },
   ];
 
-  // Attendance Section (for HR, Admin)
+  // Attendance Section (for Employee, Manager, HR, Admin)
   const attendanceItems = [
+    { path: '/attendance/cycle', icon: FiCalendar, label: 'Cycle', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
     { path: '/attendance/count', icon: FiClock, label: 'Count', roles: ['Admin', 'HR'] },
-    { path: '/attendance/history', icon: FiList, label: 'History', roles: ['Admin', 'HR'] },
+    { path: '/attendance/history', icon: FiList, label: 'History', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
     { path: '/attendance/modify', icon: FiEdit, label: 'Modify', roles: ['Admin', 'HR'] },
   ];
 
   // VMS Module Items
   const vmsItems = [
-    { path: '/vms/add', icon: FiPlus, label: 'Add', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/vms/list', icon: FiList, label: 'List', roles: ['Admin', 'Manager', 'Employee', 'HR'] },
+    { path: '/vms/list', icon: FiList, label: 'Visitors', roles: ['Admin', 'Manager', 'Employee', 'HR'] },
     { path: '/vms/items', icon: FiTruck, label: 'Items', roles: ['Admin', 'Manager', 'Employee', 'HR'] },
   ];
 
@@ -147,6 +187,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     '/self/holidays': 'Holidays',
     '/self/work-report': 'Work Report',
     '/self/contact-details': 'Contact Details',
+    '/employee/apply-loan': 'Apply Loan',
   };
 
   const getCurrentTitle = () => {
@@ -197,7 +238,12 @@ const Sidebar = ({ isOpen, onClose }) => {
       <div className="sidebar-header">
         <div className="logo">
           <div className="logo-icon">
-            <img src={LOGO_URL} alt="TMS Logo" className="sidebar-logo-image" />
+            <img 
+              src={isDarkMode ? LOGO_URL_DARK : LOGO_URL_LIGHT} 
+              alt="TMS Logo" 
+              className="sidebar-logo-image" 
+              style={isDarkMode ? {} : { filter: 'none' }}
+            />
           </div>
           <span className="logo-text">TMS</span>
         </div>
@@ -219,24 +265,26 @@ const Sidebar = ({ isOpen, onClose }) => {
         {/* TMS Section - for all roles */}
         {renderSection('tms', 'TMS', tmsItems)}
         
-        {/* Employee Section - only for Employee role */}
-        {user?.role === 'Employee' && renderSection('employee', 'Employee', employeeItems)}
+        {/* Self Section - for Employee role */}
+        {user?.role === 'Employee' && renderSection('self', 'Self', employeeSelfItems)}
         
         {/* Self Section - for Manager, HR, Admin */}
         {(user?.role === 'Manager' || user?.role === 'HR' || user?.role === 'Admin') && 
           renderSection('self', 'Self', selfItems)}
         
-        {/* Employees Section - for Manager, HR, Admin */}
-        {(user?.role === 'Manager' || user?.role === 'HR' || user?.role === 'Admin') && 
+        {/* Employees Section - for Manager (limited items) */}
+        {user?.role === 'Manager' && 
+          renderSection('employees', 'Employees', managerEmployeesItems)}
+        
+        {/* Employees Section - for HR, Admin */}
+        {(user?.role === 'HR' || user?.role === 'Admin') && 
           renderSection('employees', 'Employees', employeesItems)}
         
-        {/* Payroll Section - for HR, Admin */}
-        {(user?.role === 'HR' || user?.role === 'Admin') && 
-          renderSection('payroll', 'Payroll', payrollItems)}
+        {/* Payroll Section - for Employee, Manager, HR, Admin */}
+        {renderSection('payroll', 'Payroll', payrollItems)}
         
-        {/* Attendance Section - for HR, Admin */}
-        {(user?.role === 'HR' || user?.role === 'Admin') && 
-          renderSection('attendance', 'Attendance', attendanceItems)}
+        {/* Attendance Section - for Employee, Manager, HR, Admin */}
+        {renderSection('attendance', 'Attendance', attendanceItems)}
         
         {/* VMS Section */}
         {renderSection('vms', 'VMS', vmsItems)}

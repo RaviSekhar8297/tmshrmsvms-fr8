@@ -137,9 +137,9 @@ def create_week_off_date(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a date-based week-off"""
-    if current_user.role not in ["Admin", "Manager", "HR"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    """Create a date-based week-off - Only HR can add"""
+    if current_user.role != "HR":
+        raise HTTPException(status_code=403, detail="Access denied - Only HR can add week-offs")
     
     try:
         # Parse date
@@ -222,9 +222,9 @@ def delete_week_off_date(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete a date-based week-off"""
-    if current_user.role not in ["Admin", "Manager", "HR"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    """Delete a date-based week-off - Only HR can delete"""
+    if current_user.role != "HR":
+        raise HTTPException(status_code=403, detail="Access denied - Only HR can delete week-offs")
     
     try:
         target_date = datetime.fromisoformat(date).date()

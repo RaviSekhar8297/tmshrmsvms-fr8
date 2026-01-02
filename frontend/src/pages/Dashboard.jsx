@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
   FiFolder, FiCheckSquare, FiAlertCircle, FiUsers, 
-  FiCalendar, FiClock, FiArrowRight, FiTrendingUp
+  FiCalendar, FiClock, FiArrowRight, FiTrendingUp, FiFileText, FiCheckCircle,
+  FiChevronLeft, FiChevronRight
 } from 'react-icons/fi';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, policiesAPI } from '../services/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import Modal from '../components/Modal';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -19,6 +21,14 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [unreadPolicies, setUnreadPolicies] = useState([]);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [acknowledgingPolicy, setAcknowledgingPolicy] = useState(null);
+  const [currentPolicyIndex, setCurrentPolicyIndex] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [policySubmitted, setPolicySubmitted] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const acknowledgeSectionRef = useRef(null);
 
   const todayMatches = (dateStr) => {
     if (!dateStr) return false;
@@ -45,8 +55,6 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-    
     // Check for calendar connection status from OAuth callback
     const calendarConnected = searchParams.get('calendar_connected');
     const calendarError = searchParams.get('calendar_error');
@@ -68,7 +76,7 @@ const Dashboard = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [statsRes, activitiesRes, progressRes] = await Promise.all([
         dashboardAPI.getStats(),
@@ -81,44 +89,158 @@ const Dashboard = () => {
       setProgress(progressRes.data);
       
       // Fetch birthdays and anniversaries separately to handle errors gracefully
-      try {
-        const birthdaysRes = await dashboardAPI.getBirthdays();
-        const birthdayData = birthdaysRes.data || [];
-        const todaysOrAllBirthdays = filterByToday(
-          birthdayData,
-          ['dob', 'date', 'date_of_birth', 'birth_date'],
-          true // show all if no birthdays today
-        );
-        setBirthdays(todaysOrAllBirthdays);
-      } catch (error) {
-        console.error('Error fetching birthdays:', error);
-        setBirthdays([]);
-      }
-      
-      try {
-        const anniversariesRes = await dashboardAPI.getAnniversaries();
-        const anniversaryData = anniversariesRes.data || [];
-        const todaysOrAll = filterByToday(
-          anniversaryData,
-          ['doj', 'date', 'joining_date', 'anniversary_date'],
-          true // fall back to all if no anniversaries today
-        ).map((person) => {
-          const joiningDate = person.doj || person.joining_date || person.date || person.anniversary_date;
-          return {
-            ...person,
-            years: person.years ?? getYearsCompleted(joiningDate),
-          };
-        });
-        setAnniversaries(todaysOrAll);
-      } catch (error) {
-        console.error('Error fetching anniversaries:', error);
-        setAnniversaries([]);
+      // Only fetch if user is authenticated
+      if (user) {
+        try {
+          const birthdaysRes = await dashboardAPI.getBirthdays();
+          const birthdayData = birthdaysRes.data || [];
+          const todaysOrAllBirthdays = filterByToday(
+            birthdayData,
+            ['dob', 'date', 'date_of_birth', 'birth_date'],
+            true // show all if no birthdays today
+          );
+          setBirthdays(todaysOrAllBirthdays);
+        } catch (error) {
+          // Silently handle 401 errors - token might be expired
+          if (error.response?.status !== 401) {
+            console.error('Error fetching birthdays:', error);
+          }
+          setBirthdays([]);
+        }
+        
+        try {
+          const anniversariesRes = await dashboardAPI.getAnniversaries();
+          const anniversaryData = anniversariesRes.data || [];
+          const todaysOrAll = filterByToday(
+            anniversaryData,
+            ['doj', 'date', 'joining_date', 'anniversary_date'],
+            true // fall back to all if no anniversaries today
+          ).map((person) => {
+            const joiningDate = person.doj || person.joining_date || person.date || person.anniversary_date;
+            return {
+              ...person,
+              years: person.years ?? getYearsCompleted(joiningDate),
+            };
+          });
+          setAnniversaries(todaysOrAll);
+        } catch (error) {
+          // Silently handle 401 errors - token might be expired
+          if (error.response?.status !== 401) {
+            console.error('Error fetching anniversaries:', error);
+          }
+          setAnniversaries([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
     }
+  }, [user]);
+
+  const fetchUnreadPolicies = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const response = await policiesAPI.getUnread();
+      const policies = response.data || [];
+      
+      // Backend already filters by current user's empid, so use directly
+      setUnreadPolicies(policies);
+      
+      // Show modal if there are unread policies
+      if (policies.length > 0) {
+        setShowPolicyModal(true);
+      }
+    } catch (error) {
+      // Silently handle errors - don't show popup if API fails
+      console.error('Error fetching unread policies:', error);
+      setUnreadPolicies([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // Only fetch data if user is authenticated
+    if (user) {
+      fetchDashboardData();
+      fetchUnreadPolicies();
+    }
+  }, [user, fetchDashboardData, fetchUnreadPolicies]);
+
+  // Calculate current policy and page info
+  const currentPolicy = unreadPolicies[currentPolicyIndex];
+  const totalPages = currentPolicy?.policy?.pages || 1;
+  const isLastPage = currentPage === totalPages && totalPages > 0;
+
+  // Reset page and state when policy changes
+  useEffect(() => {
+    if (currentPolicy) {
+      setCurrentPage(1);
+      setAcknowledged(false);
+      setPolicySubmitted(false);
+    }
+  }, [currentPolicyIndex, unreadPolicies, currentPolicy]);
+
+  // Auto-scroll to acknowledge section when reaching last page
+  useEffect(() => {
+    if (isLastPage && acknowledgeSectionRef.current) {
+      setTimeout(() => {
+        acknowledgeSectionRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end',
+          inline: 'nearest'
+        });
+      }, 300);
+    }
+  }, [isLastPage]);
+
+  const handleAcknowledgePolicy = async (policyId) => {
+    if (!user || !acknowledged) return;
+    
+    setAcknowledgingPolicy(policyId);
+    try {
+      await policiesAPI.acknowledge(policyId);
+      setPolicySubmitted(true);
+      
+      // Wait for animation, then remove policy and move to next
+      setTimeout(() => {
+        const remainingPolicies = unreadPolicies.filter(p => p.id !== policyId);
+        setUnreadPolicies(remainingPolicies);
+        setPolicySubmitted(false);
+        setAcknowledged(false);
+        setCurrentPage(1);
+        setAcknowledgingPolicy(null);
+        
+        // Move to next policy or close modal
+        if (remainingPolicies.length > 0) {
+          // Stay on index 0 (which will be the next policy after filtering)
+          setCurrentPolicyIndex(0);
+        } else {
+          setShowPolicyModal(false);
+        }
+      }, 2000);
+    } catch (error) {
+      console.error('Error acknowledging policy:', error);
+      toast.error('Failed to acknowledge policy');
+      setAcknowledgingPolicy(null);
+      setPolicySubmitted(false);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  const handlePageClick = (pageNum) => {
+    setCurrentPage(pageNum);
   };
 
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#0ea5e9'];
@@ -159,7 +281,7 @@ const Dashboard = () => {
       <div className="dashboard-topline">
         <div className="topline-title">
           <span className="pill">Dashboard</span>
-          <h2>Overview</h2>
+          {/* <h2>Overview</h2> */}
         </div>
         <div className="user-meta-strip">
           <div className="user-chip">
@@ -512,6 +634,155 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+
+      {/* Policy Popup Modal */}
+      <Modal
+        isOpen={showPolicyModal && unreadPolicies.length > 0 && currentPolicy}
+        onClose={() => {
+          // Show toast message when trying to close, but don't actually close
+          toast.error('Please read and submit your response to proceed');
+        }}
+        allowClose={false}
+        title=""
+        size="full"
+      >
+        {policySubmitted ? (
+          <div className="policy-success-animation">
+            <div className="success-checkmark">
+              <FiCheckCircle />
+            </div>
+            <h2 className="success-title">Submitted Successfully!</h2>
+            <p className="success-message">Policy acknowledged</p>
+          </div>
+        ) : currentPolicy && currentPolicy.policy?.file_url ? (
+          <div className="policy-viewer-container">
+            {/* Policy Header - Moved to top */}
+            <div className="policy-viewer-header">
+              <div className="policy-header-info">
+                <FiFileText className="policy-header-icon" />
+                <div className="policy-header-content">
+                  <h3 className="policy-viewer-title">{currentPolicy.policy.name}</h3>
+                  <div className="policy-viewer-meta">
+                    <span>{currentPolicy.policy.type || 'PDF'}</span>
+                    <span>•</span>
+                    <span>{totalPages} {totalPages === 1 ? 'page' : 'pages'}</span>
+                    <span>•</span>
+                    <span>{new Date(currentPolicy.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="policy-header-actions">
+                {unreadPolicies.length > 1 && (
+                  <div className="policy-counter">
+                    Policy {currentPolicyIndex + 1} of {unreadPolicies.length}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* PDF Viewer */}
+            <div className="policy-pdf-viewer">
+              <iframe
+                src={`${currentPolicy.policy.file_url}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                className="policy-iframe"
+                title={`Page ${currentPage} of ${totalPages}`}
+                style={{ border: 'none' }}
+                key={`pdf-${currentPolicy.id}-${currentPage}`}
+                scrolling="no"
+              />
+            </div>
+
+            {/* Page Navigation - Always visible */}
+            {totalPages > 0 && (
+              <div className="policy-navigation">
+                <button
+                  className="nav-arrow-btn"
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 1 || totalPages === 1}
+                  title="Previous Page"
+                >
+                  <FiChevronLeft />
+                </button>
+
+                <div className="page-indicators">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      className={`page-indicator ${currentPage === pageNum ? 'active' : ''} ${pageNum === totalPages ? 'last-page' : ''}`}
+                      onClick={() => handlePageClick(pageNum)}
+                      title={`Go to page ${pageNum}`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  className="nav-arrow-btn"
+                  onClick={handleNextPage}
+                  disabled={currentPage === totalPages || totalPages === 1}
+                  title="Next Page"
+                >
+                  <FiChevronRight />
+                </button>
+              </div>
+            )}
+
+            {/* Last Page Indicator */}
+            {isLastPage && (
+              <div className="last-page-indicator">
+                <FiCheckCircle className="indicator-icon" />
+                <span>You're on the last page. Please acknowledge below.</span>
+              </div>
+            )}
+
+            {/* Acknowledge Section - Only on Last Page */}
+            {isLastPage && currentPolicy && (
+              <div 
+                ref={acknowledgeSectionRef}
+                className="policy-acknowledge-section" 
+                style={{ display: 'flex', visibility: 'visible', opacity: 1 }}
+              >
+                <div className="acknowledge-content">
+                  <label className={`acknowledge-checkbox-label ${acknowledged ? 'checked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      className="acknowledge-checkbox-input"
+                      checked={acknowledged}
+                      onChange={(e) => setAcknowledged(e.target.checked)}
+                    />
+                    <span className="acknowledge-text">
+                      I have read and understood this policy document
+                    </span>
+                  </label>
+                  <button
+                    className="btn btn-primary btn-submit-policy"
+                    onClick={() => handleAcknowledgePolicy(currentPolicy.id)}
+                    disabled={!acknowledged || acknowledgingPolicy === currentPolicy.id}
+                    style={{ display: 'flex', visibility: 'visible', opacity: 1 }}
+                  >
+                    {acknowledgingPolicy === currentPolicy.id ? (
+                      <>
+                        <span className="spinner-small"></span>
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <FiCheckCircle />
+                        Submit
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="policy-error">
+            <p>Policy document not available</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

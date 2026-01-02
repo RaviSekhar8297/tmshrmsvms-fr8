@@ -187,12 +187,13 @@ const SelfLeaves = () => {
                 <th>Days</th>
                 <th>Status</th>
                 <th>Reason</th>
+                  <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredLeaves.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center">No leave requests found</td>
+                  <td colSpan="7" className="text-center">No leave requests found</td>
                 </tr>
               ) : (
                 filteredLeaves.map((leave) => {
@@ -208,6 +209,30 @@ const SelfLeaves = () => {
                       <td>{days} days</td>
                       <td>{getStatusBadge(leave.status)}</td>
                       <td>{leave.reason}</td>
+                      <td>
+                        {leave.status === 'pending' ? (
+                          <button
+                            className="btn-sm btn-danger"
+                            onClick={async () => {
+                              if (window.confirm('Are you sure you want to delete this leave request?')) {
+                                try {
+                                  await api.delete(`/leaves/${leave.id}`);
+                                  toast.success('Leave request deleted successfully');
+                                  fetchLeaves();
+                                } catch (error) {
+                                  toast.error(error.response?.data?.detail || 'Failed to delete leave request');
+                                }
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                            Cannot delete
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })

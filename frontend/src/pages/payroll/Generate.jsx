@@ -14,6 +14,7 @@ const Generate = () => {
   const [departments, setDepartments] = useState([]);
   const [monthCards, setMonthCards] = useState([]);
   const [loadingMonths, setLoadingMonths] = useState(false);
+  const [togglingCard, setTogglingCard] = useState(null); // Track which card is being toggled
   const [formData, setFormData] = useState({
     company_id: '',
     branch_id: '',
@@ -22,20 +23,27 @@ const Generate = () => {
     month: new Date().toISOString().slice(0, 7)
   });
 
+  // Filter branches by selected company
   const filteredBranches = formData.company_id
     ? branches.filter((b) => b.company_id === Number(formData.company_id))
     : [];
 
+  // Filter departments by selected branch
   const filteredDepartments = formData.branch_id
     ? departments.filter((d) => d.branch_id === Number(formData.branch_id))
     : [];
 
-  const filteredEmployees = employees.filter((emp) => {
-    const matchesCompany = !formData.company_id || emp.company_id === Number(formData.company_id);
-    const matchesBranch = !formData.branch_id || emp.branch_id === Number(formData.branch_id);
-    const matchesDept = !formData.department_id || emp.department_id === Number(formData.department_id);
-    return matchesCompany && matchesBranch && matchesDept;
-  });
+  // Filter employees by selected branch and optionally by department
+  const filteredEmployees = formData.branch_id
+    ? employees.filter((emp) => {
+        const matchesBranch = emp.branch_id === Number(formData.branch_id);
+        // If department is selected, also filter by department
+        if (formData.department_id) {
+          return matchesBranch && emp.department_id === Number(formData.department_id);
+        }
+        return matchesBranch;
+      })
+    : [];
 
   useEffect(() => {
     fetchEmployees();
@@ -49,12 +57,12 @@ const Generate = () => {
     const currentMonth = today.getMonth(); // 0-11
     const currentYear = today.getFullYear();
     
-    // Start from previous month
-    let month = currentMonth === 0 ? 11 : currentMonth - 1;
-    let year = currentMonth === 0 ? currentYear - 1 : currentYear;
+    // Start from current month
+    let month = currentMonth; // 0-11
+    let year = currentYear;
     
-    // Generate 12 months going back
-    for (let i = 0; i < 8; i++) {
+    // Generate 7 months (current month + 6 previous months)
+    for (let i = 0; i < 7; i++) {
       const monthNames = [
         'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'
@@ -104,6 +112,9 @@ const Generate = () => {
   };
 
   const handleToggleFreeze = async (month, year) => {
+    const cardKey = `${year}-${month}`;
+    setTogglingCard(cardKey); // Set the card as being toggled
+    
     try {
       const response = await api.post('/payslip/toggle-freeze', null, {
         params: { month, year }
@@ -118,6 +129,11 @@ const Generate = () => {
         )
       );
       
+      // Keep highlight for a moment after successful toggle
+      setTimeout(() => {
+        setTogglingCard(null);
+      }, 600);
+      
       toast.success(
         response.data.freaze_status
           ? 'Payslips frozen (visible to employees)'
@@ -125,6 +141,7 @@ const Generate = () => {
       );
     } catch (error) {
       console.error('Error toggling freeze status:', error);
+      setTogglingCard(null); // Remove highlight on error
       toast.error(error.response?.data?.detail || 'Failed to toggle freeze status');
     }
   };
@@ -161,15 +178,46 @@ const Generate = () => {
       toast.error('Please select a month');
       return;
     }
+    
+    if (!formData.company_id) {
+      toast.error('Please select a company');
+      return;
+    }
+    
     setLoading(true);
     try {
-      await api.post('/payroll/generate', {
-        employee_id: formData.employee_id === 'all' ? null : formData.employee_id,
+      // Build request based on cascading logic:
+      // 1. If specific employee selected, use that (with branch/company context)
+      // 2. Else if department selected, use department (with branch/company context)
+      // 3. Else if branch selected, use branch (with company context)
+      // 4. Else use company
+      const requestData = {
         month: formData.month,
         company_id: formData.company_id || null,
-        branch_id: formData.branch_id || null,
-        department_id: formData.department_id || null
-      });
+        branch_id: null,
+        department_id: null,
+        employee_id: null
+      };
+      
+      if (formData.employee_id && formData.employee_id !== 'all') {
+        // Specific employee selected - include branch and company for context
+        requestData.employee_id = formData.employee_id;
+        if (formData.branch_id) {
+          requestData.branch_id = formData.branch_id;
+        }
+      } else if (formData.department_id) {
+        // Department selected - include branch and company for context
+        requestData.department_id = formData.department_id;
+        if (formData.branch_id) {
+          requestData.branch_id = formData.branch_id;
+        }
+      } else if (formData.branch_id) {
+        // Branch selected - include company for context
+        requestData.branch_id = formData.branch_id;
+      }
+      // else: only company selected, which is already set above
+      
+      await api.post('/payroll/generate', requestData);
       toast.success('Payroll generated successfully');
       setFormData({
         company_id: '',
@@ -206,8 +254,25 @@ const Generate = () => {
     setFormData({
       ...formData,
       branch_id: value,
-      department_id: '',
-      employee_id: 'all'
+      department_id: '', // Clear department when branch changes
+      employee_id: 'all' // Reset employee when branch changes
+    });
+  };
+
+  const handleDepartmentChange = (value) => {
+    setFormData({
+      ...formData,
+      department_id: value,
+      employee_id: 'all' // Reset employee when department changes to allow selection from filtered list
+    });
+  };
+
+  const handleEmployeeChange = (value) => {
+    // Keep department when employee is selected so dropdown remains visible
+    setFormData({
+      ...formData,
+      employee_id: value
+      // Keep department_id so dropdown remains visible to show selected employee
     });
   };
 
@@ -221,10 +286,13 @@ const Generate = () => {
       <div className="month-cards-section">
         <h2 className="section-title">MONTHS</h2>
         <div className="month-cards-grid">
-          {monthCards.map((card) => (
+          {monthCards.map((card) => {
+            const cardKey = `${card.year}-${card.month}`;
+            const isToggling = togglingCard === cardKey;
+            return (
             <div
-              key={`${card.year}-${card.month}`}
-              className={`month-card ${card.freaze_status ? 'frozen' : 'unfrozen'}`}
+              key={cardKey}
+              className={`month-card ${card.freaze_status ? 'frozen' : 'unfrozen'} ${isToggling ? 'toggling' : ''}`}
               onClick={() => handleToggleFreeze(card.month, card.year)}
             >
               <div className="month-card-header">
@@ -242,77 +310,87 @@ const Generate = () => {
                 <div className="month-year">{card.year}</div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       <div className="form-container" style={{ maxWidth: '100%' }}>
         <form onSubmit={handleSubmit} className="payroll-form generate-grid">
+          {/* Company Dropdown - Always visible */}
           <div className="form-group">
-            <label>Company</label>
+            <label>Company *</label>
             <select
               name="company_id"
               value={formData.company_id}
               onChange={(e) => handleCompanyChange(e.target.value)}
               className="form-input"
+              required
             >
-              <option value="">All companies</option>
+              <option value="">Select company</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
 
-          <div className="form-group">
-            <label>Branch</label>
-            <select
-              name="branch_id"
-              value={formData.branch_id}
-              onChange={(e) => handleBranchChange(e.target.value)}
-              className="form-input"
-              disabled={!formData.company_id}
-            >
-              <option value="">{formData.company_id ? 'All branches' : 'Select company first'}</option>
-              {filteredBranches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Branch Dropdown - Visible only when company is selected */}
+          {formData.company_id && (
+            <div className="form-group">
+              <label>Branch</label>
+              <select
+                name="branch_id"
+                value={formData.branch_id}
+                onChange={(e) => handleBranchChange(e.target.value)}
+                className="form-input"
+              >
+                <option value="">All branches in company</option>
+                {filteredBranches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          <div className="form-group">
-            <label>Department</label>
-            <select
-              name="department_id"
-              value={formData.department_id}
-              onChange={handleChange}
-              className="form-input"
-              disabled={!formData.branch_id}
-            >
-              <option value="">{formData.branch_id ? 'All departments' : 'Select branch first'}</option>
-              {filteredDepartments.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </div>
+          {/* Department Dropdown - Visible only when branch is selected */}
+          {formData.branch_id && (
+            <div className="form-group">
+              <label>Department</label>
+              <select
+                name="department_id"
+                value={formData.department_id}
+                onChange={(e) => handleDepartmentChange(e.target.value)}
+                className="form-input"
+              >
+                <option value="">All departments in branch</option>
+                {filteredDepartments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          <div className="form-group">
-            <label>Employees</label>
-            <select
-              name="employee_id"
-              value={formData.employee_id}
-              onChange={handleChange}
-              required
-              className="form-input"
-            >
-              <option value="all">All</option>
-              {filteredEmployees.map((emp) => (
-                <option key={emp.id} value={emp.empid}>
-                  {emp.name} ({emp.empid})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Employee Dropdown - Visible only when department is selected */}
+          {formData.department_id && (
+            <div className="form-group">
+              <label>Employee</label>
+              <select
+                name="employee_id"
+                value={formData.employee_id}
+                onChange={(e) => handleEmployeeChange(e.target.value)}
+                className="form-input"
+              >
+                <option value="all">All employees in department</option>
+                {filteredEmployees.map((emp) => (
+                  <option key={emp.id} value={emp.empid}>
+                    {emp.name} ({emp.empid})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
+          {/* Month Input */}
           <div className="form-group">
             <label>Month *</label>
             <input
@@ -322,12 +400,35 @@ const Generate = () => {
               onChange={handleChange}
               required
               className="form-input"
+              style={{
+                padding: '12px 16px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                background: 'var(--bg-card)',
+                color: 'var(--text-primary)',
+                fontSize: '1rem',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                width: '100%'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = 'var(--primary)';
+                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+                e.target.style.background = 'var(--bg-hover)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = 'var(--border-color)';
+                e.target.style.boxShadow = 'none';
+                e.target.style.background = 'var(--bg-card)';
+              }}
             />
           </div>
 
+          {/* Submit Button */}
           <div className="form-group form-group--submit">
             <button type="submit" className="btn-primary btn-submit" disabled={loading}>
-              {loading ? 'Generating...' : 'Submit'}
+              {loading ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </form>

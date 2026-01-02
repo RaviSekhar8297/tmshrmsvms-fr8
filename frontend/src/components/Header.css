@@ -246,6 +246,10 @@
     left: 0;
     padding: 0 16px;
     height: 70px;
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 100;
   }
   
   .menu-toggle {
@@ -260,7 +264,12 @@
   }
   
   .header-search {
-    display: none;
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
   
   .header-title h1 {
@@ -279,6 +288,17 @@
   
   .header-right {
     gap: 8px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  /* Ensure theme toggle, notification, and avatar are always visible */
+  .theme-toggle-btn,
+  .notification-btn,
+  .header-user {
+    display: flex !important;
+    visibility: visible !important;
   }
   
   .notification-btn,
@@ -286,11 +306,13 @@
     width: 40px;
     height: 40px;
     font-size: 1.1rem;
+    flex-shrink: 0;
   }
   
   .header-user .avatar {
     width: 40px;
     height: 40px;
+    flex-shrink: 0;
   }
 }
 

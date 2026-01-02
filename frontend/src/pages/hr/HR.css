@@ -130,7 +130,7 @@
 }
 
 .table-container {
-  background: var(--bg-card);
+  background: transparent;
   border-radius: 12px;
   border: 1px solid var(--border-color);
   overflow: hidden;
@@ -139,6 +139,7 @@
 .data-table {
   width: 100%;
   border-collapse: collapse;
+  background: transparent;
 }
 
 .data-table thead {
@@ -152,6 +153,7 @@
   color: var(--text-primary);
   font-size: 0.9rem;
   border-bottom: 2px solid var(--border-color);
+  background: var(--bg-hover);
 }
 
 .data-table td {
@@ -159,6 +161,11 @@
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);
   font-size: 0.9rem;
+  background: transparent;
+}
+
+.data-table tbody tr {
+  background: transparent;
 }
 
 .data-table tbody tr:hover {

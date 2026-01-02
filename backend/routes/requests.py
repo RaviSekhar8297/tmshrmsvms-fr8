@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from sqlalchemy import func
+from datetime import datetime, timedelta
 from database import get_db
-from models import Request, User
+from models import Request, User, PunchLog, LeaveBalanceList
 from routes.auth import get_current_user
 from typing import Optional
 from pydantic import BaseModel
+from decimal import Decimal
 
 router = APIRouter()
 
@@ -41,6 +43,22 @@ def create_request(
         except:
             pass
     
+    # Check for duplicate requests (same date, same type, not rejected)
+    if intime:
+        intime_date = intime.date()
+        existing_request = db.query(Request).filter(
+            Request.empid == current_user.empid,
+            Request.type == request_data.type,
+            Request.status.in_(['pending', 'approved']),
+            func.date(Request.intime) == intime_date
+        ).first()
+        
+        if existing_request:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"You have already applied for {request_data.type} on {intime_date.strftime('%Y-%m-%d')} with status: {existing_request.status}"
+            )
+    
     new_request = Request(
         empid=current_user.empid,
         name=current_user.name,
@@ -72,8 +90,14 @@ def get_self_requests(
         Request.empid == current_user.empid
     ).order_by(Request.applied_date.desc()).all()
     
-    return [
-        {
+    result = []
+    for req in requests:
+        approved_by_name = None
+        if req.approved_by:
+            approver = db.query(User).filter(User.empid == req.approved_by).first()
+            approved_by_name = approver.name if approver else req.approved_by
+        
+        result.append({
             "id": req.id,
             "empid": req.empid,
             "name": req.name,
@@ -84,10 +108,10 @@ def get_self_requests(
             "intime": req.intime.isoformat() if req.intime else None,
             "outtime": req.outtime.isoformat() if req.outtime else None,
             "status": req.status,
-            "approved_by": req.approved_by,
-        }
-        for req in requests
-    ]
+            "approved_by": approved_by_name,
+        })
+    
+    return result
 
 @router.get("/requests")
 def get_all_requests(
@@ -110,8 +134,14 @@ def get_all_requests(
     
     requests = query.order_by(Request.applied_date.desc()).all()
     
-    return [
-        {
+    result = []
+    for req in requests:
+        approved_by_name = None
+        if req.approved_by:
+            approver = db.query(User).filter(User.empid == req.approved_by).first()
+            approved_by_name = approver.name if approver else req.approved_by
+        
+        result.append({
             "id": req.id,
             "empid": req.empid,
             "name": req.name,
@@ -122,10 +152,10 @@ def get_all_requests(
             "intime": req.intime.isoformat() if req.intime else None,
             "outtime": req.outtime.isoformat() if req.outtime else None,
             "status": req.status,
-            "approved_by": req.approved_by,
-        }
-        for req in requests
-    ]
+            "approved_by": approved_by_name,
+        })
+    
+    return result
 
 @router.put("/requests/{request_id}")
 def update_request_status(
@@ -147,6 +177,90 @@ def update_request_status(
     
     request.status = status_data.status
     request.approved_by = current_user.empid
+    
+    # If approved, insert punch logs and handle comp-off for overtime-comp-off
+    if status_data.status == "approved":
+        # Insert IN punch log for In Time (if exists)
+        if request.intime:
+            intime_date = request.intime.date()
+            punch_log_in = PunchLog(
+                employee_id=request.empid,
+                employee_name=request.name,
+                date=intime_date,
+                punch_type='in',
+                punch_time=request.intime,
+                status='present'
+            )
+            db.add(punch_log_in)
+        
+        # Insert OUT punch log for Out Time (if exists)
+        if request.outtime:
+            outtime_date = request.outtime.date()
+            punch_log_out = PunchLog(
+                employee_id=request.empid,
+                employee_name=request.name,
+                date=outtime_date,
+                punch_type='out',
+                punch_time=request.outtime,
+                status='present'
+            )
+            db.add(punch_log_out)
+        
+        # Handle comp-off calculation and leave balance update for overtime-comp-off
+        if request.type == 'overtime-comp-off' and request.intime and request.outtime:
+            # Calculate hours between outtime and intime
+            time_diff = request.outtime - request.intime
+            total_seconds = time_diff.total_seconds()
+            hours = total_seconds / 3600.0
+            
+            # Determine comp-off value
+            if hours >= 8.0:
+                comp_off_value = Decimal('1.0')
+            elif hours >= 4.0:
+                comp_off_value = Decimal('0.5')
+            else:
+                comp_off_value = Decimal('0.0')
+            
+            # Update leave_balance_list if comp_off_value > 0
+            if comp_off_value > 0:
+                try:
+                    # Get current year
+                    current_year = datetime.utcnow().year
+                    
+                    # Try to find existing leave balance record
+                    leave_balance = db.query(LeaveBalanceList).filter(
+                        LeaveBalanceList.empid == int(request.empid),
+                        LeaveBalanceList.year == current_year
+                    ).first()
+                    
+                    if leave_balance:
+                        # Update existing record
+                        current_total = Decimal(str(leave_balance.total_comp_off_leaves)) if leave_balance.total_comp_off_leaves else Decimal('0')
+                        current_balance = Decimal(str(leave_balance.balance_comp_off_leaves)) if leave_balance.balance_comp_off_leaves else Decimal('0')
+                        
+                        leave_balance.total_comp_off_leaves = current_total + comp_off_value
+                        leave_balance.balance_comp_off_leaves = current_balance + comp_off_value
+                        leave_balance.updated_by = current_user.empid
+                        leave_balance.updated_date = datetime.utcnow()
+                    else:
+                        # Create new record if empid exists (check if user exists)
+                        user = db.query(User).filter(User.empid == request.empid).first()
+                        if user:
+                            new_leave_balance = LeaveBalanceList(
+                                empid=int(request.empid),
+                                name=request.name,
+                                year=current_year,
+                                total_comp_off_leaves=comp_off_value,
+                                used_comp_off_leaves=Decimal('0'),
+                                balance_comp_off_leaves=comp_off_value,
+                                updated_by=current_user.empid,
+                                updated_date=datetime.utcnow()
+                            )
+                            db.add(new_leave_balance)
+                except Exception as e:
+                    # Log error but don't fail the request approval
+                    print(f"Error updating comp-off leave balance: {e}")
+                    pass
     
     db.commit()
     db.refresh(request)

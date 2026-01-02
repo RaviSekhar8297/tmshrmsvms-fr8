@@ -7,6 +7,8 @@ from routes.auth import get_current_user
 from utils import is_admin_or_hr
 from typing import Optional, List
 from pydantic import BaseModel
+import requests
+import base64
 
 router = APIRouter()
 
@@ -53,10 +55,33 @@ def get_companies(
             "name": c.name,
             "email": c.email,
             "phone": c.phone,
-            "website": c.website
+            "website": c.website,
+            "logo_base64": c.logo_base64
         }
         for c in companies
     ]
+
+@router.get("/company/logo")
+def get_company_logo(
+    db: Session = Depends(get_db)
+):
+    """Get company logo (base64)"""
+    company = db.query(Company).first()
+    if company and company.logo_base64:
+        return {"logo_base64": company.logo_base64}
+    
+    # Try to fetch default logo and convert to base64 to avoid CORS
+    try:
+        logo_url = "https://www.brihaspathi.com/highbtlogo%20tm%20(1).png"
+        response = requests.get(logo_url, timeout=10)
+        if response.status_code == 200:
+            logo_base64 = base64.b64encode(response.content).decode('utf-8')
+            return {"logo_base64": f"data:image/png;base64,{logo_base64}"}
+    except Exception as e:
+        print(f"Error fetching logo: {e}")
+    
+    # If all fails, return empty
+    return {"logo_base64": None}
 
 @router.post("/company")
 def create_company(

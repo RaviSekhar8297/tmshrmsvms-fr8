@@ -204,9 +204,18 @@ def get_all_visitors(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all visitors"""
+    """Get all visitors - Employee role sees only visitors who came to meet them"""
     try:
         query = db.query(Visitor)
+        
+        # For Employee role, filter visitors who came to meet them
+        if current_user.role == "Employee":
+            query = query.filter(
+                or_(
+                    Visitor.whometomeet == current_user.name,
+                    Visitor.whometomeet == str(current_user.empid)
+                )
+            )
         
         if status:
             query = query.filter(Visitor.status == status)

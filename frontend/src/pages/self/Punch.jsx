@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiClock, FiCamera, FiX } from 'react-icons/fi';
+import { FiClock, FiCamera, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import '../employee/Employee.css';
 import './Punch.css';
 
@@ -20,16 +20,35 @@ const Punch = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [leaves, setLeaves] = useState([]);
   const [weekOffDates, setWeekOffDates] = useState([]);
+  const [location, setLocation] = useState(null);
+  const [locationName, setLocationName] = useState(null);
+  const [coordinates, setCoordinates] = useState(null);
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState(null);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const geocodingAttemptedRef = useRef(false);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [isDetectingFace, setIsDetectingFace] = useState(false);
+  const detectionIntervalRef = useRef(null);
+  const [showPunchLogsModal, setShowPunchLogsModal] = useState(false);
+  const [punchLogsData, setPunchLogsData] = useState([]);
+  const [loadingPunchLogs, setLoadingPunchLogs] = useState(false);
+  const [selectedDateForModal, setSelectedDateForModal] = useState(null);
   
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const timerIntervalRef = useRef(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     fetchTodayPunches();
     fetchPunchHistory();
     fetchLeaves();
     fetchWeekOffDates();
+    const initLocation = async () => {
+      await fetchGoogleMapsApiKey();
+      getCurrentLocation();
+    };
+    initLocation();
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -39,6 +58,50 @@ const Punch = () => {
       }
     };
   }, []);
+
+  // Re-try geocoding when coordinates change
+  useEffect(() => {
+    // Reset geocoding attempt flag when coordinates change
+    geocodingAttemptedRef.current = false;
+    
+    const performGeocoding = async () => {
+      // Only geocode once per coordinate change
+      if (!coordinates || locationName || isGeocoding || geocodingAttemptedRef.current) {
+        return;
+      }
+      
+      geocodingAttemptedRef.current = true;
+      
+      let apiKey = googleMapsApiKey;
+      
+      // Try to fetch from backend if not available
+      if (!apiKey) {
+        apiKey = await fetchGoogleMapsApiKey();
+      }
+      
+      // Use fallback API key if backend key is not available
+      if (!apiKey) {
+        apiKey = 'AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg';
+        setGoogleMapsApiKey(apiKey);
+      }
+      
+      if (apiKey) {
+        const [lat, lng] = coordinates.split(',').map(c => parseFloat(c.trim()));
+        if (!isNaN(lat) && !isNaN(lng)) {
+          await reverseGeocode(lat, lng, apiKey);
+        }
+      }
+    };
+    
+    // Small delay to ensure state is settled
+    const timeoutId = setTimeout(() => {
+      performGeocoding();
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
+    // Only run when coordinates change - don't include other dependencies to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coordinates]);
 
   useEffect(() => {
     if (runningStart) {
@@ -57,8 +120,7 @@ const Punch = () => {
 
   useEffect(() => {
     fetchPunchHistory();
-    fetchLeaves();
-    fetchWeekOffDates();
+    // fetchLeaves and fetchWeekOffDates are now handled in fetchPunchHistory
   }, [selectedMonth, selectedYear]);
 
   const fetchLeaves = async () => {
@@ -82,15 +144,143 @@ const Punch = () => {
     }
   };
 
+  const fetchGoogleMapsApiKey = async () => {
+    try {
+      const response = await api.get('/config/google-maps-key');
+      const apiKey = response.data?.api_key;
+      if (apiKey && apiKey.trim() !== '') {
+        setGoogleMapsApiKey(apiKey);
+        return apiKey;
+      } else {
+        // Don't log warning repeatedly - just return null and use fallback
+        return null;
+      }
+    } catch (error) {
+      // Don't log error repeatedly - just return null and use fallback
+      return null;
+    }
+  };
+
+  const reverseGeocode = async (latitude, longitude, apiKey) => {
+    if (!apiKey) {
+      // Try to fetch API key again, or use fallback
+      const fetchedKey = await fetchGoogleMapsApiKey();
+      if (fetchedKey) {
+        apiKey = fetchedKey;
+      } else {
+        // Use fallback API key
+        apiKey = 'AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg';
+      }
+    }
+    
+    setIsGeocoding(true);
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        const address = data.results[0].formatted_address;
+        setLocationName(address);
+        setLocation(address);
+        setIsGeocoding(false);
+        return address;
+      } else {
+        // If geocoding failed, just use coordinates
+        const coordString = `${latitude}, ${longitude}`;
+        setLocationName(null);
+        setLocation(coordString);
+        setIsGeocoding(false);
+        return coordString;
+      }
+    } catch (error) {
+      // If error occurs, just use coordinates
+      const coordString = `${latitude}, ${longitude}`;
+      setLocationName(null);
+      setLocation(coordString);
+      setIsGeocoding(false);
+      return coordString;
+    }
+  };
+
+  const getCurrentLocation = async () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          // Set coordinates first
+          const coordString = `${latitude}, ${longitude}`;
+          setCoordinates(coordString);
+          
+          // Always try to get API key and geocode
+          let apiKey = googleMapsApiKey;
+          if (!apiKey) {
+            apiKey = await fetchGoogleMapsApiKey();
+          }
+          
+          // Use fallback API key if backend key is not available
+          if (!apiKey) {
+            apiKey = 'AIzaSyCN9htaexjSDWMVybqWtlSl1ygNpZWkobg';
+            setGoogleMapsApiKey(apiKey);
+          }
+          
+          // Always try to geocode
+          await reverseGeocode(latitude, longitude, apiKey);
+        },
+        (error) => {
+          console.error('Error getting geolocation:', error);
+          setCoordinates(null);
+          setLocationName(null);
+          setLocation('Location not available');
+          setIsGeocoding(false);
+        }
+      );
+    } else {
+      setCoordinates(null);
+      setLocationName(null);
+      setLocation('Geolocation not supported');
+      setIsGeocoding(false);
+    }
+  };
+
   const fetchTodayPunches = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const response = await api.get(`/attendance/today-punches?date=${today}`);
-      const punches = response.data || [];
-      setTodayPunches(punches);
+      // Fetch punch logs directly (ordered by punch_time only, not punch_type)
+      const response = await api.get(`/attendance/punch-logs-by-date`, {
+        params: {
+          employee_id: user?.empid,
+          date: today
+        }
+      });
+      const punchLogs = response.data || [];
+      
+      // Group by punch_time only (first is in, last is out)
+      const groupedPunches = [];
+      if (punchLogs.length > 0) {
+        // Sort by punch_time
+        const sortedLogs = [...punchLogs].sort((a, b) => 
+          new Date(a.punch_time) - new Date(b.punch_time)
+        );
+        
+        // First record is intime, last record is outtime
+        const firstLog = sortedLogs[0];
+        const lastLog = sortedLogs.length > 1 ? sortedLogs[sortedLogs.length - 1] : firstLog;
+        
+        groupedPunches.push({
+          id: firstLog.id,
+          check_in: firstLog.punch_time,
+          check_in_image: firstLog.image,
+          check_out: lastLog.punch_time !== firstLog.punch_time ? lastLog.punch_time : null,
+          check_out_image: lastLog.punch_time !== firstLog.punch_time ? lastLog.image : null,
+          status: firstLog.status || 'present'
+        });
+      }
+      
+      setTodayPunches(groupedPunches);
       let total = 0;
       let openStart = null;
-      punches.forEach(p => {
+      groupedPunches.forEach(p => {
         if (p.check_in && p.check_out) {
           total += Math.max(0, (new Date(p.check_out) - new Date(p.check_in)) / 1000);
         } else if (p.check_in && !p.check_out) {
@@ -101,7 +291,7 @@ const Punch = () => {
       if (openStart) {
         setRunningStart(openStart);
         const now = new Date();
-        setElapsedSeconds(Math.max(0, Math.floor(total + (now - openStart) / 1000)));
+        setElapsedSeconds(Math.max(0, Math.floor(total + (now - openStart) / 1000)));  
       } else {
         setRunningStart(null);
         setElapsedSeconds(Math.max(0, Math.floor(total)));
@@ -117,7 +307,27 @@ const Punch = () => {
   const fetchPunchHistory = async () => {
     try {
       const response = await api.get(`/attendance/punch-calendar?month=${selectedMonth + 1}&year=${selectedYear}`);
-      setPunchHistory(response.data || []);
+      const data = response.data || [];
+      setPunchHistory(data);
+      
+      // Extract week off dates, holidays, and leaves from calendar data
+      const woDates = [];
+      const holidayDates = {};
+      const leaveDates = {};
+      
+      data.forEach(day => {
+        if (day.week_off) {
+          woDates.push(day.date);
+        }
+        if (day.holiday) {
+          holidayDates[day.date] = day.holiday;
+        }
+        if (day.leave_type) {
+          leaveDates[day.date] = day.leave_type;
+        }
+      });
+      
+      setWeekOffDates(woDates);
     } catch (error) {
       console.error('Error fetching punch history:', error);
       setPunchHistory([]);
@@ -127,11 +337,16 @@ const Punch = () => {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' } 
+        video: { facingMode: 'user', width: 640, height: 480 } 
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
+        
+        // Start face detection once video is playing
+        videoRef.current.onloadedmetadata = () => {
+          startFaceDetection();
+        };
       }
     } catch (error) {
       toast.error('Failed to access camera');
@@ -139,7 +354,89 @@ const Punch = () => {
     }
   };
 
+  const startFaceDetection = async () => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+    }
+    
+    setIsDetectingFace(true);
+    setFaceDetected(false);
+    
+    // Start detection loop
+    detectionIntervalRef.current = setInterval(async () => {
+      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+        if (window.FaceDetector) {
+          // Use native FaceDetector API if available (Chrome/Edge)
+          try {
+            const faceDetector = new window.FaceDetector({ fastMode: true });
+            const faces = await faceDetector.detect(videoRef.current);
+            setFaceDetected(faces.length > 0);
+          } catch (error) {
+            detectFaceBasic();
+          }
+        } else {
+          // Fallback to basic detection
+          detectFaceBasic();
+        }
+      }
+    }, 300);
+  };
+
+  const detectFaceBasic = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // Improved face detection using skin tone and feature analysis
+    let faceScore = 0;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const centerRadius = Math.min(canvas.width, canvas.height) * 0.25;
+    
+    // Check center area for face-like features
+    const sampleRate = 5; // Sample every 5 pixels for better performance
+    for (let y = centerY - centerRadius; y < centerY + centerRadius; y += sampleRate) {
+      for (let x = centerX - centerRadius; x < centerX + centerRadius; x += sampleRate) {
+        if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+          const idx = (Math.floor(y) * canvas.width + Math.floor(x)) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          
+          // Improved skin tone detection
+          if (r > 95 && g > 40 && b > 20 && 
+              Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
+              Math.abs(r - g) > 15 && r > g && r > b &&
+              r < 250 && g < 250 && b < 250) {
+            faceScore++;
+          }
+        }
+      }
+    }
+    
+    // Threshold for face detection
+    const sampleCount = ((centerRadius * 2 / sampleRate) * (centerRadius * 2 / sampleRate));
+    const threshold = sampleCount * 0.15; // 15% of samples should match skin tone
+    const detected = faceScore > threshold;
+    
+    setFaceDetected(detected);
+  };
+
   const stopCamera = () => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -147,14 +444,21 @@ const Punch = () => {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setFaceDetected(false);
+    setIsDetectingFace(false);
   };
 
   const captureImage = () => {
+    if (!faceDetected) {
+      toast.error('Please position your face in the camera. Face not detected.');
+      return;
+    }
+    
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { willReadFrequently: false });
       ctx.drawImage(videoRef.current, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedImage(imageData);
@@ -182,8 +486,51 @@ const Punch = () => {
 
     setLoading(true);
     try {
+      // Get location again before submitting if not available
+      let locationToSend = locationName || location;
+      if (!locationToSend || locationToSend === 'Getting location...' || locationToSend === 'Location not available') {
+        await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              const { latitude, longitude } = position.coords;
+              try {
+                if (googleMapsApiKey) {
+                  locationToSend = await reverseGeocode(latitude, longitude, googleMapsApiKey);
+                } else {
+                  // Try to fetch API key if not available
+                  const apiKey = await fetchGoogleMapsApiKey();
+                  if (apiKey) {
+                    locationToSend = await reverseGeocode(latitude, longitude, apiKey);
+                  } else {
+                    locationToSend = `${latitude}, ${longitude}`;
+                    setLocation(locationToSend);
+                  }
+                }
+                resolve();
+              } catch (error) {
+                locationToSend = `${latitude}, ${longitude}`;
+                setLocation(locationToSend);
+                resolve();
+              }
+            },
+            () => {
+              locationToSend = 'Location not available';
+              resolve();
+            }
+          );
+        });
+      }
+      
+      // Extract base64 string from data URL if needed
+      let imageToSend = capturedImage;
+      if (capturedImage && capturedImage.startsWith('data:image')) {
+        // Extract base64 part from data URL (format: data:image/jpeg;base64,<base64string>)
+        imageToSend = capturedImage.split(',')[1] || capturedImage;
+      }
+      
       const response = await api.post(`/attendance/punch-${punchType}`, {
-        image: capturedImage
+        image: imageToSend || null,
+        location: locationToSend || coordinates || 'Location not available'
       });
       
       toast.success(`Punched ${punchType === 'in' ? 'In' : 'Out'} successfully`);
@@ -217,22 +564,96 @@ const Punch = () => {
     });
   };
 
+  const formatTimeOnly = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  const formatPunchTime = (timeStr) => {
+    if (!timeStr) return '-';
+    try {
+      const date = new Date(timeStr);
+      return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return timeStr;
+    }
+  };
+
+  const handleDateClick = async (dateStr) => {
+    try {
+      setSelectedDateForModal(dateStr);
+      setLoadingPunchLogs(true);
+      setShowPunchLogsModal(true);
+      
+      const response = await api.get('/attendance/punch-logs-by-date', {
+        params: {
+          employee_id: user?.empid,
+          date: dateStr
+        }
+      });
+      
+      setPunchLogsData(response.data || []);
+    } catch (error) {
+      console.error('Error fetching punch logs:', error);
+      toast.error('Failed to fetch punch logs');
+      setShowPunchLogsModal(false);
+    } finally {
+      setLoadingPunchLogs(false);
+    }
+  };
+
+  const isAnniversaryDate = (dateStr) => {
+    if (!user?.doj) return false;
+    const doj = new Date(user.doj);
+    const checkDate = new Date(dateStr);
+    return doj.getMonth() === checkDate.getMonth() && doj.getDate() === checkDate.getDate();
+  };
+
+  const isBirthdayDate = (dateStr) => {
+    if (!user?.dob) return false;
+    const dob = new Date(user.dob);
+    const checkDate = new Date(dateStr);
+    return dob.getMonth() === checkDate.getMonth() && dob.getDate() === checkDate.getDate();
+  };
+
   const getCalendarStatus = (dayData, dateStr) => {
+    // Priority: Week-Off > Leave > Holiday > Attendance
+    
     // Check if it's a week off (WO takes priority)
-    if (weekOffDates.includes(dateStr)) {
-      return { status: 'WO', color: '#8b5cf6', cls: 'cal-weekoff' };
+    if (dayData?.week_off || weekOffDates.includes(dateStr)) {
+      return { 
+        status: 'WO', 
+        color: '#8b5cf6', 
+        cls: 'cal-weekoff',
+        week_off: true,
+        label: dayData?.week_off || 'Week-Off'
+      };
     }
     
     // Check if it's a leave
-    const leave = leaves.find(l => {
-      const fromDate = new Date(l.from_date);
-      const toDate = new Date(l.to_date);
-      const checkDate = new Date(dateStr);
-      return checkDate >= fromDate && checkDate <= toDate && l.status === 'approved';
-    });
+    if (dayData?.leave_type) {
+      const leaveType = dayData.leave_type;
+      return { 
+        status: leaveType?.substring(0, 3).toUpperCase() || 'L', 
+        color: '#3b82f6', 
+        cls: 'cal-leave', 
+        leaveType: leaveType 
+      };
+    }
     
-    if (leave) {
-      return { status: leave.leave_type?.substring(0, 3).toUpperCase() || 'L', color: '#3b82f6', cls: 'cal-leave', leaveType: leave.leave_type };
+    // Check if it's a holiday
+    if (dayData?.holiday) {
+      return { 
+        status: 'H', 
+        color: '#f59e0b', 
+        cls: 'cal-holiday',
+        holidayName: dayData.holiday
+      };
     }
     
     // Calculate status based on hours (Max - Min time)
@@ -259,6 +680,7 @@ const Punch = () => {
     return new Date(year, month, 1).getDay();
   };
 
+
   const renderCalendar = () => {
     const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
     const firstDay = getFirstDayOfMonth(selectedMonth, selectedYear);
@@ -274,25 +696,203 @@ const Punch = () => {
       const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayData = punchHistory.find(h => h.date === dateStr);
       const status = getCalendarStatus(dayData, dateStr);
+      const isAnniversary = isAnniversaryDate(dateStr);
+      const isBirthday = isBirthdayDate(dateStr);
+      
+      // Get intime (first) and outtime (last) from punch logs
+      let intime = null;
+      let outtime = null;
+      let duration = null;
+      
+      if (dayData && dayData.min_time && dayData.max_time) {
+        intime = dayData.min_time;
+        outtime = dayData.max_time;
+        // Calculate duration in HH:MM format
+        if (dayData.hours !== undefined && dayData.hours !== null) {
+          const hours = parseFloat(dayData.hours);
+          const h = Math.floor(hours);
+          const m = Math.floor((hours - h) * 60);
+          duration = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+      } else if (status.cls === 'cal-weekoff' || status.cls === 'cal-leave' || status.cls === 'cal-holiday') {
+        intime = '00:00';
+        outtime = '00:00';
+        duration = '00:00';
+      }
       
       days.push(
-        <div key={day} className={`calendar-day ${status.cls}`}>
-          <div className="calendar-day-number">{day}</div>
-          <div className="calendar-day-info">
-            <div className="calendar-status" style={{ color: status.color }}>
+        <div 
+          key={day} 
+          className={`calendar-day ${status.cls}`} 
+          onClick={() => handleDateClick(dateStr)}
+          style={{
+            background: status.cls === 'cal-present' ? 'rgba(16, 185, 129, 0.1)' :
+                       status.cls === 'cal-half' ? 'rgba(245, 158, 11, 0.1)' :
+                       status.cls === 'cal-abs' ? 'rgba(239, 68, 68, 0.1)' :
+                       status.cls === 'cal-weekoff' ? 'rgba(139, 92, 246, 0.1)' :
+                       status.cls === 'cal-leave' ? 'rgba(59, 130, 246, 0.1)' :
+                       status.cls === 'cal-holiday' ? 'rgba(245, 158, 11, 0.1)' :
+                       'var(--bg-hover)',
+            borderColor: isAnniversary ? '#ff6b6b' : isBirthday ? '#4ecdc4' : status.color,
+            borderWidth: isAnniversary || isBirthday ? '3px' : '2px',
+            cursor: 'pointer',
+            position: 'relative',
+            animation: (isAnniversary || isBirthday) ? 'celebrate 2s infinite' : 'none',
+            boxShadow: (isAnniversary || isBirthday) ? (isAnniversary ? '0 0 20px rgba(255, 107, 107, 0.9)' : '0 0 20px rgba(78, 205, 196, 0.9)') : 'none',
+            transform: (isAnniversary || isBirthday) ? 'scale(1)' : 'none',
+            overflow: 'visible'
+          }}>
+          {(isAnniversary || isBirthday) && (
+            <>
+              {/* Animated GIF Background */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: 1,
+                pointerEvents: 'none',
+                opacity: 0.6,
+                borderRadius: '12px',
+                overflow: 'hidden'
+              }}>
+                <img 
+                  src={isAnniversary ? 'https://i.pinimg.com/originals/89/f2/67/89f267bef0f5538b1fbe206b065a6724.gif' : 'https://lovenamepix.com/images/full/celebrate-digitally-with-classy-happy-birthday-gifs-to-share-anywhere-love-name-pix-2ddf.gif'}
+                  alt={isAnniversary ? 'Anniversary' : 'Birthday'}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block'
+                  }}
+                  onError={(e) => {
+                    console.error('GIF failed to load:', e.target.src);
+                    e.target.style.display = 'none';
+                  }}
+                  onLoad={() => {
+                    console.log('GIF loaded successfully');
+                  }}
+                />
+              </div>
+              
+              {/* Floating Emoji */}
+              <div style={{
+                position: 'absolute',
+                top: '-12px',
+                right: '-12px',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                zIndex: 15,
+                animation: 'float 2s ease-in-out infinite',
+                filter: 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.8))'
+              }}>
+                {isAnniversary ? '🎉' : '🎂'}
+              </div>
+              
+              {/* Sparkle Effects */}
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    position: 'absolute',
+                    top: `${20 + i * 15}%`,
+                    left: `${15 + i * 20}%`,
+                    width: '8px',
+                    height: '8px',
+                    background: isAnniversary ? '#ff6b6b' : '#4ecdc4',
+                    borderRadius: '50%',
+                    zIndex: 12,
+                    animation: `sparkle 1.5s ease-in-out infinite`,
+                    animationDelay: `${i * 0.2}s`,
+                    boxShadow: `0 0 10px ${isAnniversary ? '#ff6b6b' : '#4ecdc4'}`
+                  }}
+                />
+              ))}
+            </>
+          )}
+          <div className="calendar-day-number" style={{ 
+            fontSize: '1.2rem', 
+            fontWeight: 700, 
+            color: 'var(--text-primary)',
+            marginBottom: '4px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            width: '100%',
+            position: 'relative',
+            zIndex: 5
+          }}>
+            <span>{day}</span>
+            <span style={{ 
+              color: status.color, 
+              fontWeight: 700,
+              fontSize: '1.1rem'
+            }}>
               {status.status}
-            </div>
+            </span>
+          </div>
+          <div className="calendar-day-info" style={{ width: '100%', gap: '2px', position: 'relative', zIndex: 5 }}>
+            {intime && outtime ? (
+              <div style={{ 
+                fontSize: '0.65rem', 
+                color: 'var(--text-secondary)', 
+                fontWeight: 500,
+                lineHeight: '1.3',
+                textAlign: 'center',
+                width: '100%'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', width: '100%' }}>
+                  <span style={{ color: '#10b981', fontWeight: 600, fontSize: '0.7rem' }}>{intime}</span>
+                  <span style={{ color: '#3b82f6', fontWeight: 600, fontSize: '0.7rem' }}>{outtime}</span>
+                </div>
+                {duration && (
+                  <div style={{ 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 600,
+                    marginTop: '2px',
+                    fontSize: '0.85rem'
+                  }}>
+                    {duration}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ 
+                fontSize: '0.65rem', 
+                color: 'var(--text-secondary)', 
+                fontWeight: 500,
+                textAlign: 'center'
+              }}>
+                00:00
+              </div>
+            )}
+            {status.week_off && (
+              <div style={{ fontSize: '0.65rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                {status.label || 'Week-Off'}
+              </div>
+            )}
+            {status.holidayName && (
+              <div style={{ fontSize: '0.65rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                {status.holidayName}
+              </div>
+            )}
             {status.leaveType && (
-              <div className="calendar-leave-type" style={{ fontSize: '0.65rem', color: status.color, marginTop: '2px' }}>
+              <div style={{ fontSize: '0.65rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
                 {status.leaveType}
               </div>
             )}
-            {dayData && dayData.hours !== undefined && dayData.hours !== null && status.cls !== 'cal-weekoff' && status.cls !== 'cal-leave' && (
-              <>
-                <div className="calendar-hours-bottom">
-                  {parseFloat(dayData.hours).toFixed(1)}H
-                </div>
-              </>
+            {isAnniversary && (
+              <div style={{ fontSize: '0.65rem', color: '#ff6b6b', fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                Anniversary
+              </div>
+            )}
+            {isBirthday && (
+              <div style={{ fontSize: '0.65rem', color: '#4ecdc4', fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                Birthday
+              </div>
             )}
           </div>
         </div>
@@ -310,7 +910,7 @@ const Punch = () => {
     <div className="page-container">
       <div className="page-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <h1>Punch In/Out</h1>
+          <h1>MARK ATTENDANCE</h1>
           {user && user.role === 'Employee' && (
             <div style={{ 
               display: 'flex', 
@@ -329,7 +929,150 @@ const Punch = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+      {/* Location Card - Display at Top */}
+      <div className="location-card" style={{ 
+        width: '100%', 
+        marginBottom: '24px',
+        padding: '20px',
+        borderRadius: '12px',
+        border: '1px solid var(--border-color)',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '12px', 
+          marginBottom: '16px' 
+        }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: '20px' }}>📍</span>
+          </div>
+          <h3 style={{ 
+            margin: 0,
+            fontSize: '1.1rem', 
+            fontWeight: 700, 
+            color: 'var(--text-primary)',
+            letterSpacing: '0.3px'
+          }}>
+            Current Location
+          </h3>
+        </div>
+        {coordinates ? (
+          <>
+            {locationName ? (
+              <div style={{ 
+                padding: '16px 20px',
+                borderRadius: '10px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-hover)',
+                wordBreak: 'break-word',
+                lineHeight: '1.6',
+                transition: 'all 0.2s ease',
+              }}>
+                <div style={{ 
+                  fontSize: '0.875rem', 
+                  color: 'var(--text-secondary)', 
+                  fontWeight: 500,
+                  marginBottom: '6px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontSize: '0.75rem'
+                }}>
+                  Address
+                </div>
+                <div style={{ 
+                  fontSize: '1rem', 
+                  color: 'var(--text-primary)', 
+                  fontWeight: 600,
+                }}>
+                  {locationName}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ 
+                  padding: '16px 20px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-hover)',
+                  marginBottom: '12px',
+                }}>
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    color: 'var(--text-secondary)', 
+                    fontWeight: 500,
+                    marginBottom: '6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    fontSize: '0.75rem'
+                  }}>
+                    Coordinates
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.95rem', 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 600, 
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {coordinates}
+                  </div>
+                </div>
+                <div style={{ 
+                  fontSize: '0.875rem', 
+                  color: 'var(--text-secondary)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(59, 130, 246, 0.05)',
+                  border: '1px solid rgba(59, 130, 246, 0.1)'
+                }}>
+                  {isGeocoding ? (
+                    <>
+                      <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', borderTopColor: '#3b82f6' }}></span>
+                      <span>Converting coordinates to address...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '16px' }}>⏳</span>
+                      <span>Converting coordinates to address...</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ 
+            padding: '20px',
+            borderRadius: '10px',
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-hover)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            justifyContent: 'center'
+          }}>
+            <span className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px', borderTopColor: '#3b82f6' }}></span>
+            <span style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+              Getting location...
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="punch-cards-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
         {/* Punch Card */}
         <div className="form-container punch-attendance-card">
           <div className="attendance-header">
@@ -344,6 +1087,11 @@ const Punch = () => {
               <div className="attendance-entry-time">
                 Entry Time: {firstPunchTime ? formatDateTime(firstPunchTime) : 'Not yet'}
               </div>
+              {locationName && (
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  📍 {locationName}
+                </div>
+              )}
             </div>
           </div>
 
@@ -423,7 +1171,7 @@ const Punch = () => {
                   gridTemplateColumns: '1fr auto',
                   gap: '12px',
                   padding: '16px',
-                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(249, 250, 251, 0.8) 100%)',
+                  background: 'transparent',
                   borderRadius: '12px',
                   border: '2px solid rgba(99, 102, 241, 0.15)',
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
@@ -441,41 +1189,96 @@ const Punch = () => {
                 }}
                 >
                   <div>
-                <div style={{ fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                <div style={{ fontWeight: '700', color: 'var(--text-primary)', marginBottom: '12px' }}>
                   Punch {index + 1}
                 </div>
-                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                  <strong>Punch In</strong>
-                </div>
-                <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: punch.check_out ? '6px' : '0' }}>
-                  {formatDateTime(punch.check_in)}
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: punch.check_out ? '8px' : '0'
+                }}>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    Punch In :
+                  </div>
+                  <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                    {formatTimeOnly(punch.check_in)}
+                  </div>
                 </div>
                 {punch.check_out && (
-                  <>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      <strong>Punch Out</strong>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                      Punch Out :
                     </div>
-                    <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                      {formatDateTime(punch.check_out)}
+                    <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                      {formatTimeOnly(punch.check_out)}
                     </div>
-                  </>
+                  </div>
                 )}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                    {punch.check_in_image && (
+                    {punch.check_in_image ? (
                       <img
-                        src={punch.check_in_image}
+                        src={punch.check_in_image.startsWith('data:') ? punch.check_in_image : `data:image/jpeg;base64,${punch.check_in_image}`}
                         alt="In"
                         style={{ width: '56px', height: '56px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          if (e.target.nextSibling) {
+                            e.target.nextSibling.style.display = 'flex';
+                          }
+                        }}
                       />
+                    ) : (
+                      <div style={{ 
+                        width: '56px', 
+                        height: '56px', 
+                        borderRadius: '6px', 
+                        background: 'var(--bg-hover)', 
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.7rem',
+                        textAlign: 'center'
+                      }}>
+                        Empty
+                      </div>
                     )}
-                    {punch.check_out_image && (
+                    {punch.check_out && (punch.check_out_image ? (
                       <img
-                        src={punch.check_out_image}
+                        src={punch.check_out_image.startsWith('data:') ? punch.check_out_image : `data:image/jpeg;base64,${punch.check_out_image}`}
                         alt="Out"
                         style={{ width: '56px', height: '56px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          if (e.target.nextSibling) {
+                            e.target.nextSibling.style.display = 'flex';
+                          }
+                        }}
                       />
-                    )}
+                    ) : (
+                      <div style={{ 
+                        width: '56px', 
+                        height: '56px', 
+                        borderRadius: '6px', 
+                        background: 'var(--bg-hover)', 
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.7rem',
+                        textAlign: 'center'
+                      }}>
+                        Empty
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))
@@ -485,16 +1288,16 @@ const Punch = () => {
       </div>
 
       {/* Calendar View */}
-      <div className="form-container full-width-card punch-calendar-full" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.95) 100%)', border: '2px solid rgba(99, 102, 241, 0.15)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '16px', borderBottom: '2px solid var(--border-color)' }}>
-          <h3 style={{ fontSize: '1.5rem', fontWeight: 700, background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Punch History Calendar</h3>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+      <div className="form-container full-width-card punch-calendar-full" style={{ background: 'transparent', border: '2px solid rgba(99, 102, 241, 0.15)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)' }}>
+        <div className="punch-calendar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '16px', borderBottom: '2px solid var(--border-color)' }}>
+          <h3 className="punch-calendar-title" style={{ fontSize: '1.5rem', fontWeight: 700, background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Punch History Calendar</h3>
+          <div className="punch-calendar-selectors" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <select
               value={selectedMonth}
               onChange={(e) => {
                 setSelectedMonth(parseInt(e.target.value));
               }}
-              className="form-select"
+              className="form-select punch-month-select"
               style={{ width: '150px' }}
             >
               {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, index) => (
@@ -506,7 +1309,7 @@ const Punch = () => {
               onChange={(e) => {
                 setSelectedYear(parseInt(e.target.value));
               }}
-              className="form-select"
+              className="form-select punch-year-select"
               style={{ width: '100px' }}
             >
               {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
@@ -515,7 +1318,7 @@ const Punch = () => {
             </select>
           </div>
         </div>
-        <div className="calendar-container">
+        <div className="calendar-container" style={{ background: 'transparent' }}>
           <div className="calendar-header">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
               <div key={day} className="calendar-header-day">{day}</div>
@@ -525,7 +1328,7 @@ const Punch = () => {
             {renderCalendar()}
           </div>
         </div>
-        <div style={{ marginTop: '16px', display: 'flex', gap: '16px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+        <div className="punch-calendar-legend" style={{ marginTop: '16px', display: 'flex', gap: '16px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '2px' }}></div>
             <span>Present (≥9H)</span>
@@ -546,6 +1349,10 @@ const Punch = () => {
             <div style={{ width: '12px', height: '12px', background: '#3b82f6', borderRadius: '2px' }}></div>
             <span>Leave</span>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '12px', height: '12px', background: '#f59e0b', borderRadius: '2px' }}></div>
+            <span>Holiday</span>
+          </div>
         </div>
       </div>
 
@@ -562,14 +1369,66 @@ const Punch = () => {
             <div className="modal-body">
               {!capturedImage ? (
                 <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    style={{ width: '100%', maxWidth: '500px', borderRadius: '8px' }}
-                  />
+                  <div style={{ position: 'relative', width: '100%', maxWidth: '500px', margin: '0 auto' }}>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      style={{ 
+                        width: '100%', 
+                        borderRadius: '8px',
+                        border: faceDetected ? '3px solid #10b981' : '3px solid #ef4444',
+                        transition: 'border-color 0.3s ease'
+                      }}
+                    />
+                    <canvas
+                      ref={canvasRef}
+                      style={{ display: 'none' }}
+                    />
+                    {isDetectingFace && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        padding: '8px 16px',
+                        background: faceDetected 
+                          ? 'rgba(16, 185, 129, 0.9)' 
+                          : 'rgba(239, 68, 68, 0.9)',
+                        color: 'white',
+                        borderRadius: '20px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        {faceDetected ? (
+                          <>✓ Face Detected</>
+                        ) : (
+                          <>⚠ No Face Detected</>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ 
+                    marginTop: '12px', 
+                    textAlign: 'center', 
+                    color: faceDetected ? '#10b981' : '#ef4444',
+                    fontSize: '0.9rem',
+                    fontWeight: 500
+                  }}>
+                    {faceDetected 
+                      ? 'Face detected! You can capture now.' 
+                      : 'Please position your face in the camera frame.'}
+                  </p>
                   <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '16px' }}>
-                    <button className="btn-primary" onClick={captureImage}>
+                    <button 
+                      className="btn-primary" 
+                      onClick={captureImage}
+                      disabled={!faceDetected}
+                      style={{ opacity: faceDetected ? 1 : 0.6 }}
+                    >
                       <FiCamera /> Capture
                     </button>
                     <button className="btn-secondary" onClick={handleCancelCamera}>
@@ -618,8 +1477,178 @@ const Punch = () => {
           </div>
         </div>
       )}
+
+      {/* Punch Logs Modal */}
+      {showPunchLogsModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={() => setShowPunchLogsModal(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Punch Logs Details
+              </h2>
+              <button
+                onClick={() => setShowPunchLogsModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.5rem',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 8px'
+                }}
+              >
+                <FiX />
+              </button>
+            </div>
+            
+            {selectedDateForModal && (
+              <div style={{ marginBottom: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                <div><strong>Date:</strong> {new Date(selectedDateForModal).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+              </div>
+            )}
+
+            {loadingPunchLogs ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <div className="spinner"></div>
+                <p style={{ marginTop: '16px', color: 'var(--text-secondary)' }}>Loading punch logs...</p>
+              </div>
+            ) : punchLogsData.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                <p>No punch logs found for this date</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {(() => {
+                  // Sort punch logs by punch_time only (ignore punch_type)
+                  const sortedLogs = [...punchLogsData].sort((a, b) => {
+                    const timeA = new Date(a.punch_time).getTime();
+                    const timeB = new Date(b.punch_time).getTime();
+                    return timeA - timeB;
+                  });
+                  
+                  return sortedLogs.map((log, idx) => {
+                    const hasImage = log.image && log.image.trim() !== '';
+                    const hasLocation = log.location && log.location.trim() !== '';
+                    const isFirst = idx === 0;
+                    const isLast = idx === sortedLogs.length - 1;
+                    const punchLabel = isFirst ? 'Intime' : isLast ? 'Outtime' : '';
+                    
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          padding: '16px',
+                          background: 'var(--bg-hover)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                          {hasImage ? (
+                            <img
+                              src={log.image.startsWith('data:') ? log.image : `data:image/jpeg;base64,${log.image}`}
+                              alt="Punch"
+                              style={{
+                                width: '100px',
+                                height: '100px',
+                                objectFit: 'cover',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-color)'
+                              }}
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                if (e.target.nextSibling) {
+                                  e.target.nextSibling.style.display = 'flex';
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '100px',
+                                height: '100px',
+                                borderRadius: '8px',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-color)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.8rem',
+                                textAlign: 'center',
+                                padding: '8px'
+                              }}
+                            >
+                              Empty
+                            </div>
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ marginBottom: '8px' }}>
+                              <strong style={{ color: 'var(--text-primary)' }}>Time:</strong>{' '}
+                              <span style={{ color: 'var(--text-secondary)' }}>
+                                {formatPunchTime(log.punch_time)}
+                              </span>
+                            </div>
+                            {(isFirst || isLast) && (
+                              <div style={{ marginBottom: '8px' }}>
+                                <strong style={{ color: 'var(--text-primary)' }}>Type:</strong>{' '}
+                                <span style={{ 
+                                  color: isFirst ? '#4CAF50' : '#2196F3',
+                                  textTransform: 'uppercase',
+                                  fontWeight: 600
+                                }}>
+                                  {punchLabel}
+                                </span>
+                              </div>
+                            )}
+                            <div>
+                              <strong style={{ color: 'var(--text-primary)' }}>Location:</strong>{' '}
+                              <span style={{ color: 'var(--text-secondary)' }}>
+                                {hasLocation ? log.location : 'Device Punch'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Punch;
+
+

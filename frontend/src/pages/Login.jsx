@@ -42,12 +42,8 @@ const Login = () => {
         return;
       }
       toast.success('Login successful!');
-      // Redirect managers to Projects page, others to Dashboard
-      if (userData.role === 'Manager') {
-        navigate('/projects', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
-      }
+      // Redirect all users to Dashboard
+      navigate('/dashboard', { replace: true });
     } catch (error) {
       const errorMessage = error.response?.data?.detail || error.message || 'Login failed. Please check your credentials.';
       toast.error(errorMessage);

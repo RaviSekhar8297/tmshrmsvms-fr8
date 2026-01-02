@@ -22,7 +22,7 @@ const Users = () => {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'grid'
   const [currentPage, setCurrentPage] = useState(1);
-  const recordsPerPage = 16;
+  const recordsPerPage = 28;
   const { isAdmin, isHR, user } = useAuth();
   const canManageUsers = isAdmin || isHR;
   const [companies, setCompanies] = useState([]);

@@ -31,7 +31,7 @@ const WorkReport = () => {
     <div className="page-container">
       <div className="page-header stacked">
         <div>
-          <h1>Work Report</h1>
+          <h1>WORK REPORT</h1>
           <p className="page-subtitle">Search your daily submissions and filter by month.</p>
         </div>
         <div className="header-actions filters-row toolbar">
@@ -101,8 +101,8 @@ const WorkReport = () => {
                       <td colSpan="5" className="text-center">No work reports found</td>
                     </tr>
                   ) : (
-                    filteredReports.map((report) => (
-                      <tr key={report.id}>
+                    filteredReports.map((report, index) => (
+                      <tr key={report.id || `report-${index}`}>
                         <td>{new Date(report.date).toLocaleDateString()}</td>
                         <td>{report.tasks_completed || 0}</td>
                         <td>{report.hours_worked || 0}</td>

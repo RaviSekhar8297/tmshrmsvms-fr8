@@ -25,6 +25,7 @@ const PayrollStructure = () => {
     setLoading(true);
     try {
       const response = await api.get('/payroll/salary-structure');
+      // Backend already filters by role, so we just use the response directly
       setSalaryStructures(response.data);
     } catch (error) {
       console.error('Error fetching salary structures:', error);
@@ -34,25 +35,36 @@ const PayrollStructure = () => {
     }
   };
 
-  // Filter data based on search term
+  // Filter data based on search term only (backend handles role-based filtering)
   const filteredData = useMemo(() => {
-    if (!searchTerm) return salaryStructures;
+    let data = salaryStructures;
     
-    const search = searchTerm.toLowerCase();
-    return salaryStructures.filter(item => 
-      (item.employee_name && item.employee_name.toLowerCase().includes(search)) ||
-      (item.empid && item.empid.toLowerCase().includes(search)) ||
-      (item.name && item.name.toLowerCase().includes(search)) ||
-      (item.employee_email && item.employee_email.toLowerCase().includes(search))
-    );
+    // Apply search filter
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      data = data.filter(item => 
+        (item.employee_name && item.employee_name.toLowerCase().includes(search)) ||
+        (item.empid && item.empid.toString().toLowerCase().includes(search)) ||
+        (item.name && item.name.toLowerCase().includes(search)) ||
+        (item.employee_email && item.employee_email.toLowerCase().includes(search))
+      );
+    }
+    
+    return data;
   }, [salaryStructures, searchTerm]);
 
-  // Pagination - 20 records per page
+  // Pagination - 20 records per page (matching Users page)
   const recordsPerPage = 20;
   const totalPages = Math.ceil(filteredData.length / recordsPerPage) || 1;
-  const startIndex = (currentPage - 1) * recordsPerPage;
-  const endIndex = startIndex + recordsPerPage;
-  const paginatedData = filteredData.slice(startIndex, endIndex);
+  const indexOfLastRecord = currentPage * recordsPerPage;
+  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+  const paginatedData = filteredData.slice(indexOfFirstRecord, indexOfLastRecord);
+  
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   // Reset to page 1 when search term changes
   useEffect(() => {
@@ -183,21 +195,26 @@ const PayrollStructure = () => {
         <div>
           <h1>Salary Structure</h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            View and manage employee salary structures ({filteredData.length} records)
+            {user?.role === 'Employee' || user?.role === 'Manager' 
+              ? `View your salary structure${filteredData.length > 0 ? ` (${filteredData.length} record${filteredData.length > 1 ? 's' : ''})` : ''}`
+              : `View and manage employee salary structures (${filteredData.length} records)`
+            }
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
-            <FiUpload style={{ marginRight: '8px' }} />
-            Upload Excel
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleUploadExcel}
-              disabled={uploading}
-              style={{ display: 'none' }}
-            />
-          </label>
+          {(user?.role === 'Admin' || user?.role === 'HR') && (
+            <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
+              <FiUpload style={{ marginRight: '8px' }} />
+              Upload Excel
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleUploadExcel}
+                disabled={uploading}
+                style={{ display: 'none' }}
+              />
+            </label>
+          )}
           <button className="btn-primary" onClick={handleDownloadExcel}>
             <FiDownload style={{ marginRight: '8px' }} />
             Download Excel
@@ -386,44 +403,33 @@ const PayrollStructure = () => {
             </table>
           </div>
 
-          {/* Pagination */}
+          {/* Pagination - Matching Users page style */}
           {totalPages > 1 && (
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              marginTop: '20px',
-              padding: '16px',
-              background: 'var(--bg-card)',
-              borderRadius: '8px',
-              border: '1px solid var(--border-color)'
-            }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredData.length)} of {filteredData.length} records
+            <div className="pagination">
+              <div className="pagination-info">
+                Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, filteredData.length)} of {filteredData.length} records
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  className="btn-secondary"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              <div className="pagination-controls">
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1}
-                  style={{ padding: '8px 12px' }}
                 >
                   <FiChevronLeft />
                 </button>
-                <span style={{ 
-                  padding: '8px 16px', 
-                  background: 'var(--bg-hover)', 
-                  borderRadius: '6px',
-                  fontSize: '0.9rem',
-                  fontWeight: 600
-                }}>
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  className="btn-secondary"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                    onClick={() => goToPage(page)}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  style={{ padding: '8px 12px' }}
                 >
                   <FiChevronRight />
                 </button>
@@ -585,44 +591,33 @@ const PayrollStructure = () => {
             ))}
           </div>
 
-          {/* Pagination for Grid View */}
+          {/* Pagination for Grid View - Matching Users page style */}
           {totalPages > 1 && (
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              marginTop: '20px',
-              padding: '16px',
-              background: 'var(--bg-card)',
-              borderRadius: '8px',
-              border: '1px solid var(--border-color)'
-            }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredData.length)} of {filteredData.length} records
+            <div className="pagination">
+              <div className="pagination-info">
+                Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, filteredData.length)} of {filteredData.length} records
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <button
-                  className="btn-secondary"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              <div className="pagination-controls">
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1}
-                  style={{ padding: '8px 12px' }}
                 >
                   <FiChevronLeft />
                 </button>
-                <span style={{ 
-                  padding: '8px 16px', 
-                  background: 'var(--bg-hover)', 
-                  borderRadius: '6px',
-                  fontSize: '0.9rem',
-                  fontWeight: 600
-                }}>
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  className="btn-secondary"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                    onClick={() => goToPage(page)}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  style={{ padding: '8px 12px' }}
                 >
                   <FiChevronRight />
                 </button>

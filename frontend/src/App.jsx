@@ -15,6 +15,7 @@ import Users from './pages/Users';
 import Profile from './pages/Profile';
 import Issues from './pages/Issues';
 import Ratings from './pages/Ratings';
+import Policies from './pages/Policies';
 import GoogleCallback from './pages/GoogleCallback';
 // Employee Module
 import ApplyLeave from './pages/employee/ApplyLeave';
@@ -24,8 +25,10 @@ import Requests from './pages/employee/Requests';
 import Holidays from './pages/employee/Holidays';
 import WorkReport from './pages/employee/WorkReport';
 import ContactDetails from './pages/employee/ContactDetails';
+import ApplyLoan from './pages/employee/ApplyLoan';
 // Self Module
 import Punch from './pages/self/Punch';
+import Hierarchy from './pages/self/Hierarchy';
 // Employees Module
 import WeekOffs from './pages/employees/WeekOffs';
 // VMS Module
@@ -38,11 +41,17 @@ import Generate from './pages/payroll/Generate';
 import Payslip from './pages/payroll/Payslip';
 import Salary from './pages/payroll/Salary';
 // Attendance Module
+import AttendanceCycle from './pages/attendance/Cycle';
 import AttendanceCount from './pages/attendance/Count';
 import AttendanceHistory from './pages/attendance/History';
 import ModifyAttendance from './pages/attendance/Modify';
 // Company Module
 import Company from './pages/company/Company';
+// HR Module
+import BalanceLeaves from './pages/hr/BalanceLeaves';
+import EmpLeaves from './pages/hr/EmpLeaves';
+import Data from './pages/employee/Data';
+import Letters from './pages/employees/Letters';
 
 const PrivateRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
@@ -80,7 +89,7 @@ const DefaultRedirect = () => {
   }
   
   if (user?.role === 'Manager') {
-    return <Navigate to="/projects" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   
   return <Navigate to="/dashboard" replace />;
@@ -138,6 +147,7 @@ const AppRoutes = () => {
         } />
         <Route path="issues" element={<Issues />} />
         <Route path="ratings" element={<Ratings />} />
+        <Route path="policies" element={<Policies />} />
         
         {/* Employee Module Routes */}
         <Route path="employee/apply-leave" element={<ApplyLeave />} />
@@ -147,30 +157,52 @@ const AppRoutes = () => {
         <Route path="employee/holidays" element={<Holidays />} />
         <Route path="employee/work-report" element={<WorkReport />} />
         <Route path="employee/contact-details" element={<ContactDetails />} />
+        <Route path="employee/apply-loan" element={<ApplyLoan />} />
         
         {/* Self Module Routes (Manager/HR/Admin) */}
         <Route path="self/punch" element={<Punch />} />
+        <Route path="self/hierarchy" element={<Hierarchy />} />
         <Route path="self/apply-leave" element={<ApplyLeave />} />
         <Route path="self/leaves-list" element={<LeavesList />} />
         <Route path="self/permission" element={<Permission />} />
         <Route path="self/requests" element={<Requests />} />
+        <Route path="self/week-offs" element={<WeekOffs />} />
         <Route path="self/holidays" element={<Holidays />} />
         <Route path="self/work-report" element={<WorkReport />} />
         <Route path="self/contact-details" element={<ContactDetails />} />
         
         {/* Employees Module Routes (Manager/HR/Admin - managing employees) */}
         <Route path="employees/apply-leave" element={<ApplyLeave />} />
-        <Route path="employees/leaves-list" element={<LeavesList />} />
+        <Route path="employees/leaves-list" element={
+          <PrivateRoute allowedRoles={['Manager', 'HR']}>
+            <EmpLeaves />
+          </PrivateRoute>
+        } />
         <Route path="employees/permission" element={<Permission />} />
         <Route path="employees/requests" element={<Requests />} />
         <Route path="employees/week-offs" element={<WeekOffs />} />
         <Route path="employees/holidays" element={<Holidays />} />
         <Route path="employees/work-report" element={<WorkReport />} />
         <Route path="employees/contact-details" element={<ContactDetails />} />
+        <Route path="employees/balance-leaves" element={
+          <PrivateRoute allowedRoles={['HR']}>
+            <BalanceLeaves />
+          </PrivateRoute>
+        } />
+        <Route path="employees/data" element={
+          <PrivateRoute allowedRoles={['HR', 'Manager']}>
+            <Data />
+          </PrivateRoute>
+        } />
+        <Route path="employees/letters" element={
+          <PrivateRoute allowedRoles={['HR']}>
+            <Letters />
+          </PrivateRoute>
+        } />
         
         {/* VMS Module Routes */}
         <Route path="vms/add" element={<AddItem />} />
-        <Route path="vms/list" element={<ItemList />} />
+        <Route path="vms/list" element={<AddItem />} />
         <Route path="vms/items" element={<Items />} />
         
         {/* Payroll Module Routes */}
@@ -180,6 +212,7 @@ const AppRoutes = () => {
         <Route path="payroll/salary" element={<Salary />} />
         
         {/* Attendance Module Routes */}
+        <Route path="attendance/cycle" element={<AttendanceCycle />} />
         <Route path="attendance/count" element={<AttendanceCount />} />
         <Route path="attendance/history" element={<AttendanceHistory />} />
         <Route path="attendance/modify" element={<ModifyAttendance />} />

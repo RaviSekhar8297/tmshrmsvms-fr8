@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceAPI, usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiEdit2, FiX, FiPlus } from 'react-icons/fi';
+import { FiEdit2, FiX, FiPlus, FiFilter } from 'react-icons/fi';
+import api from '../../services/api';
 import './HR.css';
 
 const ModifyAttendance = () => {
@@ -16,6 +17,8 @@ const ModifyAttendance = () => {
   const [editingRecord, setEditingRecord] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [filteredRecords, setFilteredRecords] = useState([]);
   const [markFormData, setMarkFormData] = useState({
     employee_id: '',
     employee_name: '',
@@ -35,8 +38,24 @@ const ModifyAttendance = () => {
 
   useEffect(() => {
     fetchEmployees();
-    fetchPreviousRecords();
+    if (selectedDate) {
+      fetchAttendanceByDate();
+    } else {
+      fetchPreviousRecords();
+    }
   }, []);
+
+  useEffect(() => {
+    if (selectedDate) {
+      fetchAttendanceByDate();
+    } else {
+      fetchPreviousRecords();
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    filterRecords();
+  }, [searchQuery, attendanceRecords]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -69,11 +88,75 @@ const ModifyAttendance = () => {
         endDate.toISOString().split('T')[0]
       );
       setAttendanceRecords(response.data || []);
+      setFilteredRecords(response.data || []);
     } catch (error) {
       console.error('Error fetching previous records:', error);
       setAttendanceRecords([]);
+      setFilteredRecords([]);
     } finally {
       setRecordsLoading(false);
+    }
+  };
+
+  const fetchAttendanceByDate = async () => {
+    if (!selectedDate) return;
+    setRecordsLoading(true);
+    try {
+      const response = await api.get(`/attendance/history?date=${selectedDate}`);
+      setAttendanceRecords(response.data || []);
+      setFilteredRecords(response.data || []);
+    } catch (error) {
+      console.error('Error fetching attendance by date:', error);
+      setAttendanceRecords([]);
+      setFilteredRecords([]);
+    } finally {
+      setRecordsLoading(false);
+    }
+  };
+
+  const filterRecords = () => {
+    if (!searchQuery.trim()) {
+      setFilteredRecords(attendanceRecords);
+      return;
+    }
+    
+    const query = searchQuery.toLowerCase();
+    const filtered = attendanceRecords.filter(record => 
+      record.employee_name?.toLowerCase().includes(query) ||
+      record.employee_id?.toLowerCase().includes(query)
+    );
+    setFilteredRecords(filtered);
+  };
+
+  const handleFilter = () => {
+    if (selectedDate) {
+      fetchAttendanceByDate();
+    } else {
+      fetchPreviousRecords();
+    }
+  };
+
+  const handleSave = async (record) => {
+    setLoading(true);
+    try {
+      await attendanceAPI.modify({
+        employee_id: record.employee_id,
+        date: record.date || selectedDate,
+        check_in: record.in_time ? `${record.date || selectedDate}T${record.in_time}:00` : null,
+        check_out: record.out_time ? `${record.date || selectedDate}T${record.out_time}:00` : null,
+        status: 'present',
+        remarks: ''
+      });
+      toast.success('Attendance saved successfully');
+      if (selectedDate) {
+        fetchAttendanceByDate();
+      } else {
+        fetchPreviousRecords();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to save attendance');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -228,13 +311,90 @@ const ModifyAttendance = () => {
     setShowEmployeeDropdown(false);
   };
 
+
   return (
     <div className="page-container">
       <div className="page-header">
         <h1>Modify Attendance</h1>
-        <button className="btn-primary" onClick={() => setShowMarkModal(true)}>
-          <FiPlus /> Mark Attendance
-        </button>
+      </div>
+
+      {/* Search and Filter Section */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '12px', 
+        marginBottom: '20px', 
+        flexWrap: 'wrap',
+        alignItems: 'center'
+      }}>
+        <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
+          <input
+            type="text"
+            placeholder="Search by name or employee ID..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              fontSize: '0.9rem',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)'
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            style={{
+              padding: '10px 12px',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              fontSize: '0.9rem',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)'
+            }}
+          />
+          <button
+            onClick={handleFilter}
+            style={{
+              padding: '10px 20px',
+              background: 'var(--primary)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '0.9rem',
+              fontWeight: 600
+            }}
+          >
+            <FiFilter /> Filter
+          </button>
+          {selectedDate && (
+            <button
+              onClick={() => {
+                setSelectedDate('');
+                fetchPreviousRecords();
+              }}
+              style={{
+                padding: '10px 20px',
+                background: 'var(--bg-hover)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {recordsLoading ? (
@@ -247,48 +407,41 @@ const ModifyAttendance = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>S.No</th>
                 <th>Employee ID</th>
+                <th>Employee Name</th>
                 <th>Date</th>
-                <th>In</th>
-                <th>Out</th>
-                <th>Duration</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>In Time</th>
+                <th>Out Time</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {attendanceRecords.length === 0 ? (
+              {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">No attendance records found</td>
+                  <td colSpan="7" className="text-center">No attendance records found</td>
                 </tr>
               ) : (
-                attendanceRecords.map((record) => {
-                  const inTime = record.check_in ? new Date(record.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '00:00';
-                  const outTime = record.check_out ? new Date(record.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '00:00';
-                  const duration = formatDuration(record.hours || 0);
-                  
-                  return (
-                    <tr key={record.id}>
-                      <td>{record.employee_name}</td>
-                      <td>{record.employee_id}</td>
-                      <td>{record.date ? new Date(record.date).toLocaleDateString('en-IN') : '-'}</td>
-                      <td>{inTime}</td>
-                      <td>{outTime}</td>
-                      <td>{duration}</td>
-                      <td>{getStatusBadge(record.status, record.hours)}</td>
-                      <td>
-                        <button
-                          className="btn-success"
-                          onClick={() => handleEdit(record)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <FiEdit2 /> Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
+                filteredRecords.map((record, index) => (
+                  <tr key={record.id || index}>
+                    <td>{index + 1}</td>
+                    <td>{record.employee_id}</td>
+                    <td>{record.employee_name}</td>
+                    <td>{record.date ? new Date(record.date).toLocaleDateString('en-IN') : selectedDate}</td>
+                    <td>{record.in_time || '00:00'}</td>
+                    <td>{record.out_time || '00:00'}</td>
+                    <td>
+                      <button
+                        className="btn-primary"
+                        onClick={() => handleSave(record)}
+                        disabled={loading}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        Save
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

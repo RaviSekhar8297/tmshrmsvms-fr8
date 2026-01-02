@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiBriefcase, FiMapPin, FiLayers, FiSearch } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiBriefcase, FiMapPin, FiLayers, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import './Company.css';
 
 const Company = () => {
@@ -10,6 +10,8 @@ const Company = () => {
   const [activeTab, setActiveTab] = useState('company'); // 'company', 'branch', 'department'
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const recordsPerPage = 10;
   
   // Data states
   const [companies, setCompanies] = useState([]);
@@ -216,13 +218,37 @@ const Company = () => {
     item.branch_name?.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Pagination calculations
+  const getTotalPages = (data) => Math.ceil(data.length / recordsPerPage);
+  const getPaginatedData = (data) => {
+    const startIndex = (currentPage - 1) * recordsPerPage;
+    const endIndex = startIndex + recordsPerPage;
+    return data.slice(startIndex, endIndex);
+  };
+
+  // Get current data based on active tab
+  const getCurrentData = () => {
+    if (activeTab === 'company') return filteredCompanies;
+    if (activeTab === 'branch') return filteredBranches;
+    return filteredDepartments;
+  };
+
+  const currentData = getCurrentData();
+  const totalPages = getTotalPages(currentData);
+  const paginatedData = getPaginatedData(currentData);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
   const canEdit = user?.role === 'Admin' || user?.role === 'HR';
 
   return (
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1>Company Management</h1>
+          <h1>COMPANY  MANAGEMENT</h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Manage companies, branches, and departments
           </p>
@@ -247,6 +273,7 @@ const Company = () => {
             onClick={() => {
               setActiveTab('company');
               setSearch('');
+              setCurrentPage(1);
             }}
           >
           <FiBriefcase style={{ marginRight: '8px' }} />
@@ -257,6 +284,7 @@ const Company = () => {
             onClick={() => {
               setActiveTab('branch');
               setSearch('');
+              setCurrentPage(1);
             }}
           >
             <FiMapPin style={{ marginRight: '8px' }} />
@@ -267,6 +295,7 @@ const Company = () => {
             onClick={() => {
               setActiveTab('department');
               setSearch('');
+              setCurrentPage(1);
             }}
           >
             <FiLayers style={{ marginRight: '8px' }} />
@@ -298,151 +327,307 @@ const Company = () => {
           <>
             {/* Company Table */}
             {activeTab === 'company' && (
-              <div className="table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Phone</th>
-                      <th>Website</th>
-                      {canEdit && <th>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCompanies.length === 0 ? (
+              <>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
                       <tr>
-                        <td colSpan={canEdit ? 5 : 4} className="empty-state-cell">
-                          <div className="empty-state">
-                            <p>{search ? 'No results found' : 'No companies added'}</p>
-                          </div>
-                        </td>
+                        <th>Sl. No</th>
+                        <th>Company Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Website</th>
+                        {canEdit && <th>Actions</th>}
                       </tr>
-                    ) : (
-                      filteredCompanies.map((company) => (
-                        <tr key={company.id}>
-                          <td className="text-primary">{company.name}</td>
-                          <td>{company.email || 'N/A'}</td>
-                          <td>{company.phone || 'N/A'}</td>
-                          <td>
-                            {company.website ? (
-                              <a href={company.website} target="_blank" rel="noopener noreferrer">
-                                {company.website}
-                              </a>
-                            ) : (
-                              'N/A'
-                            )}
+                    </thead>
+                    <tbody>
+                      {currentData.length === 0 ? (
+                        <tr>
+                          <td colSpan={canEdit ? 6 : 5} className="empty-state-cell">
+                            <div className="empty-state">
+                              <p>{search ? 'No results found' : 'No companies added'}</p>
+                            </div>
                           </td>
-                          {canEdit && (
-                            <td>
-                              <div className="action-buttons">
-                                <button className="btn-icon" onClick={() => handleEdit(company, 'company')} title="Edit">
-                                  <FiEdit2 />
-                                </button>
-                                <button className="btn-icon btn-danger" onClick={() => handleDelete(company.id, 'company')} title="Delete">
-                                  <FiTrash2 />
-                                </button>
-                              </div>
-                            </td>
-                          )}
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        paginatedData.map((company, index) => {
+                          const serialNumber = (currentPage - 1) * recordsPerPage + index + 1;
+                          return (
+                            <tr key={company.id}>
+                              <td>{serialNumber}</td>
+                              <td className="text-primary">{company.name}</td>
+                              <td>{company.email || 'N/A'}</td>
+                              <td>{company.phone || 'N/A'}</td>
+                              <td>
+                                {company.website ? (
+                                  <a href={company.website} target="_blank" rel="noopener noreferrer">
+                                    {company.website}
+                                  </a>
+                                ) : (
+                                  'N/A'
+                                )}
+                              </td>
+                              {canEdit && (
+                                <td>
+                                  <div className="action-buttons">
+                                    <button className="btn-icon" onClick={() => handleEdit(company, 'company')} title="Edit">
+                                      <FiEdit2 />
+                                    </button>
+                                    <button className="btn-icon btn-danger" onClick={() => handleDelete(company.id, 'company')} title="Delete">
+                                      <FiTrash2 />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Pagination */}
+                {currentData.length > 0 && totalPages > 1 && (
+                  <div className="pagination-container">
+                    <div className="pagination-info">
+                      Showing {(currentPage - 1) * recordsPerPage + 1} to {Math.min(currentPage * recordsPerPage, currentData.length)} of {currentData.length} entries
+                    </div>
+                    <div className="pagination-controls">
+                      <button
+                        className="pagination-btn"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <FiChevronLeft />
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        ) {
+                          return (
+                            <button
+                              key={page}
+                              className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                              onClick={() => setCurrentPage(page)}
+                            >
+                              {page}
+                            </button>
+                          );
+                        } else if (page === currentPage - 2 || page === currentPage + 2) {
+                          return <span key={page} className="pagination-ellipsis">...</span>;
+                        }
+                        return null;
+                      })}
+                      <button
+                        className="pagination-btn"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <FiChevronRight />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Branch Table */}
             {activeTab === 'branch' && (
-              <div className="table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Company</th>
-                      {canEdit && <th>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredBranches.length === 0 ? (
+              <>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
                       <tr>
-                        <td colSpan={canEdit ? 3 : 2} className="empty-state-cell">
-                          <div className="empty-state">
-                            <p>{search ? 'No results found' : 'No branch added'}</p>
-                          </div>
-                        </td>
+                        <th>Sl. No</th>
+                        <th>Name</th>
+                        <th>Company</th>
+                        {canEdit && <th>Actions</th>}
                       </tr>
-                    ) : (
-                      filteredBranches.map((branch) => (
-                        <tr key={branch.id}>
-                          <td className="text-primary">{branch.name}</td>
-                          <td>{branch.company_name}</td>
-                          {canEdit && (
-                            <td>
-                              <div className="action-buttons">
-                                <button className="btn-icon" onClick={() => handleEdit(branch, 'branch')} title="Edit">
-                                  <FiEdit2 />
-                                </button>
-                                <button className="btn-icon btn-danger" onClick={() => handleDelete(branch.id, 'branch')} title="Delete">
-                                  <FiTrash2 />
-                                </button>
-                              </div>
-                            </td>
-                          )}
+                    </thead>
+                    <tbody>
+                      {currentData.length === 0 ? (
+                        <tr>
+                          <td colSpan={canEdit ? 4 : 3} className="empty-state-cell">
+                            <div className="empty-state">
+                              <p>{search ? 'No results found' : 'No branch added'}</p>
+                            </div>
+                          </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        paginatedData.map((branch, index) => {
+                          const serialNumber = (currentPage - 1) * recordsPerPage + index + 1;
+                          return (
+                            <tr key={branch.id}>
+                              <td>{serialNumber}</td>
+                              <td className="text-primary">{branch.name}</td>
+                              <td>{branch.company_name}</td>
+                              {canEdit && (
+                                <td>
+                                  <div className="action-buttons">
+                                    <button className="btn-icon" onClick={() => handleEdit(branch, 'branch')} title="Edit">
+                                      <FiEdit2 />
+                                    </button>
+                                    <button className="btn-icon btn-danger" onClick={() => handleDelete(branch.id, 'branch')} title="Delete">
+                                      <FiTrash2 />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Pagination */}
+                {currentData.length > 0 && totalPages > 1 && (
+                  <div className="pagination-container">
+                    <div className="pagination-info">
+                      Showing {(currentPage - 1) * recordsPerPage + 1} to {Math.min(currentPage * recordsPerPage, currentData.length)} of {currentData.length} entries
+                    </div>
+                    <div className="pagination-controls">
+                      <button
+                        className="pagination-btn"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <FiChevronLeft />
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        ) {
+                          return (
+                            <button
+                              key={page}
+                              className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                              onClick={() => setCurrentPage(page)}
+                            >
+                              {page}
+                            </button>
+                          );
+                        } else if (page === currentPage - 2 || page === currentPage + 2) {
+                          return <span key={page} className="pagination-ellipsis">...</span>;
+                        }
+                        return null;
+                      })}
+                      <button
+                        className="pagination-btn"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <FiChevronRight />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Department Table */}
             {activeTab === 'department' && (
-              <div className="table-container">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Company</th>
-                      <th>Branch</th>
-                      {canEdit && <th>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDepartments.length === 0 ? (
+              <>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
                       <tr>
-                        <td colSpan={canEdit ? 4 : 3} className="empty-state-cell">
-                          <div className="empty-state">
-                            <p>{search ? 'No results found' : 'No department added'}</p>
-                          </div>
-                        </td>
+                        <th>Sl. No</th>
+                        <th>Name</th>
+                        <th>Company</th>
+                        <th>Branch</th>
+                        {canEdit && <th>Actions</th>}
                       </tr>
-                    ) : (
-                      filteredDepartments.map((department) => (
-                        <tr key={department.id}>
-                          <td className="text-primary">{department.name}</td>
-                          <td>{department.company_name}</td>
-                          <td>{department.branch_name}</td>
-                          {canEdit && (
-                            <td>
-                              <div className="action-buttons">
-                                <button className="btn-icon" onClick={() => handleEdit(department, 'department')} title="Edit">
-                                  <FiEdit2 />
-                                </button>
-                                <button className="btn-icon btn-danger" onClick={() => handleDelete(department.id, 'department')} title="Delete">
-                                  <FiTrash2 />
-                                </button>
-                              </div>
-                            </td>
-                          )}
+                    </thead>
+                    <tbody>
+                      {currentData.length === 0 ? (
+                        <tr>
+                          <td colSpan={canEdit ? 5 : 4} className="empty-state-cell">
+                            <div className="empty-state">
+                              <p>{search ? 'No results found' : 'No department added'}</p>
+                            </div>
+                          </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        paginatedData.map((department, index) => {
+                          const serialNumber = (currentPage - 1) * recordsPerPage + index + 1;
+                          return (
+                            <tr key={department.id}>
+                              <td>{serialNumber}</td>
+                              <td className="text-primary">{department.name}</td>
+                              <td>{department.company_name}</td>
+                              <td>{department.branch_name}</td>
+                              {canEdit && (
+                                <td>
+                                  <div className="action-buttons">
+                                    <button className="btn-icon" onClick={() => handleEdit(department, 'department')} title="Edit">
+                                      <FiEdit2 />
+                                    </button>
+                                    <button className="btn-icon btn-danger" onClick={() => handleDelete(department.id, 'department')} title="Delete">
+                                      <FiTrash2 />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Pagination */}
+                {currentData.length > 0 && totalPages > 1 && (
+                  <div className="pagination-container">
+                    <div className="pagination-info">
+                      Showing {(currentPage - 1) * recordsPerPage + 1} to {Math.min(currentPage * recordsPerPage, currentData.length)} of {currentData.length} entries
+                    </div>
+                    <div className="pagination-controls">
+                      <button
+                        className="pagination-btn"
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <FiChevronLeft />
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        ) {
+                          return (
+                            <button
+                              key={page}
+                              className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                              onClick={() => setCurrentPage(page)}
+                            >
+                              {page}
+                            </button>
+                          );
+                        } else if (page === currentPage - 2 || page === currentPage + 2) {
+                          return <span key={page} className="pagination-ellipsis">...</span>;
+                        }
+                        return null;
+                      })}
+                      <button
+                        className="pagination-btn"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <FiChevronRight />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -658,7 +843,7 @@ const BranchModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loading
             <div className="form-group">
               <label>Company *</label>
               <select
-                className="form-select"
+                
                 value={formData.company_id}
                 onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
                 required
@@ -730,7 +915,7 @@ const DepartmentModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loa
             <div className="form-group">
               <label>Company *</label>
               <select
-                className="form-select"
+                className="form-select" 
                 value={formData.company_id}
                 onChange={(e) => {
                   setFormData({ ...formData, company_id: e.target.value, branch_id: '' });

@@ -728,6 +728,18 @@
   position: relative;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  animation: cardFadeIn 0.4s ease-out;
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .month-card::before {
@@ -771,6 +783,57 @@
 .month-card.unfrozen:hover {
   opacity: 1;
   background: var(--bg-card);
+}
+
+/* Toggling state - highlight and animation */
+.month-card.toggling {
+  animation: togglePulse 0.6s ease-in-out;
+  transform: scale(1.05);
+  z-index: 10;
+  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.3) !important;
+  border-color: var(--primary) !important;
+}
+
+.month-card.toggling.frozen {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(99, 102, 241, 0.1) 100%);
+  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.4) !important;
+}
+
+.month-card.toggling.unfrozen {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(107, 114, 128, 0.08) 100%);
+  box-shadow: 0 12px 32px rgba(107, 114, 128, 0.3) !important;
+}
+
+@keyframes togglePulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 16px 40px rgba(99, 102, 241, 0.5);
+  }
+  100% {
+    transform: scale(1.05);
+    box-shadow: 0 12px 32px rgba(99, 102, 241, 0.3);
+  }
+}
+
+/* Icon animation during toggle */
+.month-card.toggling .freeze-icon {
+  animation: iconSpin 0.6s ease-in-out;
+}
+
+@keyframes iconSpin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.2);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
 }
 
 .month-card-header {

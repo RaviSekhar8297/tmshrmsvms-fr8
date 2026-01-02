@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Google Calendar Configuration
     GOOGLE_CALENDAR_ID: str = "primary"
     
+    # Google Maps API Key
+    GOOGLE_MAPS_API_KEY: str = ""
+    
     class Config:
         env_file = ".env"
         extra = "allow"

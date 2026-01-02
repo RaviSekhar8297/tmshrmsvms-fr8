@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FiUser, FiMail, FiPhone, FiEdit2, FiSave, FiLock, FiPlus, FiTrash2, FiX, FiDownload } from 'react-icons/fi';
+import { FiUser, FiMail, FiPhone, FiEdit2, FiSave, FiLock, FiPlus, FiTrash2, FiX, FiDownload, FiCheck, FiAlertCircle, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
-import { usersAPI, authAPI } from '../services/api';
+import api, { usersAPI, authAPI } from '../services/api';
 import toast from 'react-hot-toast';
 import './Profile.css';
 
@@ -23,17 +23,62 @@ const Profile = () => {
     sms_consent: user?.sms_consent || false,
     whatsapp_consent: user?.whatsapp_consent || false,
     email_consent: user?.email_consent || false,
-    image_base64: user?.image_base64 || ''
+    image_base64: user?.image_base64 || '',
+    dob: user?.dob || ''
   });
 
   const [passwordData, setPasswordData] = useState({
-    old_password: '',
     new_password: '',
     confirm_password: ''
   });
+  const [passwordStrength, setPasswordStrength] = useState(''); // 'weak', 'medium', 'strong'
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [reportToUser, setReportToUser] = useState(null);
+  const [loadingReportTo, setLoadingReportTo] = useState(false);
+
+  // Helper function to format date for input
+  const formatDateForInput = (date) => {
+    if (!date) return '';
+    if (typeof date === 'string') {
+      // If it's already a string in YYYY-MM-DD format
+      if (date.includes('T')) {
+        return date.split('T')[0];
+      }
+      // If it's a date string, try to parse it
+      const parsed = new Date(date);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+      }
+      return date;
+    }
+    // If it's a Date object
+    if (date instanceof Date) {
+      return date.toISOString().split('T')[0];
+    }
+    return '';
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate Full Name
+    if (!formData.name || formData.name.trim() === '') {
+      toast.error('Full Name is required');
+      return;
+    }
+    
+    // Validate Email
+    if (!validateEmail(formData.email)) {
+      return;
+    }
+    
+    // Validate Phone
+    if (!validatePhoneNumber(formData.phone)) {
+      return;
+    }
+    
     setLoading(true);
     
     try {
@@ -48,9 +93,109 @@ const Profile = () => {
     }
   };
 
+  // Calculate password strength
+  const calculatePasswordStrength = (password) => {
+    if (!password || password.length === 0) {
+      return '';
+    }
+    
+    let strength = 0;
+    
+    // Length check (6-12)
+    if (password.length >= 6 && password.length <= 12) {
+      strength += 1;
+    }
+    
+    // Has capital letter
+    if (/[A-Z]/.test(password)) {
+      strength += 1;
+    }
+    
+    // Has small letter
+    if (/[a-z]/.test(password)) {
+      strength += 1;
+    }
+    
+    // Has number
+    if (/[0-9]/.test(password)) {
+      strength += 1;
+    }
+    
+    // Has special character (. @ #)
+    if (/[.@#]/.test(password)) {
+      strength += 1;
+    }
+    
+    if (strength <= 2) {
+      return 'weak';
+    } else if (strength <= 4) {
+      return 'medium';
+    } else {
+      return 'strong';
+    }
+  };
+
+  // Get password strength percentage and color
+  const getPasswordStrengthInfo = (strength) => {
+    switch (strength) {
+      case 'weak':
+        return { percentage: 33, color: '#dc2626', label: 'Weak' };
+      case 'medium':
+        return { percentage: 66, color: '#d97706', label: 'Medium' };
+      case 'strong':
+        return { percentage: 100, color: '#16a34a', label: 'Strong' };
+      default:
+        return { percentage: 0, color: '#e5e7eb', label: '' };
+    }
+  };
+
+  // Validate old password only on form submit
+  // We don't validate in real-time to avoid unnecessary API calls
+
+  // Validate password
+  const validatePassword = (password) => {
+    if (!password || password.trim() === '') {
+      toast.error('Password is required');
+      return false;
+    }
+    
+    if (password.length < 6 || password.length > 12) {
+      toast.error('Password must be between 6 and 12 characters');
+      return false;
+    }
+    
+    if (!/[A-Z]/.test(password)) {
+      toast.error('Password must contain at least one capital letter');
+      return false;
+    }
+    
+    if (!/[a-z]/.test(password)) {
+      toast.error('Password must contain at least one small letter');
+      return false;
+    }
+    
+    if (!/[0-9]/.test(password)) {
+      toast.error('Password must contain at least one number');
+      return false;
+    }
+    
+    if (!/[.@#]/.test(password)) {
+      toast.error('Password must contain at least one special character (. @ #)');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     
+    // Validate new password
+    if (!validatePassword(passwordData.new_password)) {
+      return;
+    }
+    
+    // Check if passwords match
     if (passwordData.new_password !== passwordData.confirm_password) {
       toast.error('Passwords do not match');
       return;
@@ -59,14 +204,36 @@ const Profile = () => {
     setLoading(true);
     try {
       await authAPI.changePassword({
-        old_password: passwordData.old_password,
         new_password: passwordData.new_password
       });
       toast.success('Password changed successfully');
       setChangingPassword(false);
-      setPasswordData({ old_password: '', new_password: '', confirm_password: '' });
+      setPasswordData({ new_password: '', confirm_password: '' });
+      setPasswordStrength('');
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to change password');
+      // Handle error response - could be string, object, or array
+      let errorMsg = '';
+      if (error.response?.data) {
+        if (typeof error.response.data.detail === 'string') {
+          errorMsg = error.response.data.detail;
+        } else if (Array.isArray(error.response.data.detail)) {
+          // FastAPI validation errors come as array
+          errorMsg = error.response.data.detail.map(err => {
+            if (typeof err === 'string') return err;
+            if (err.msg) return err.msg;
+            if (err.loc && err.msg) return `${err.loc.join('.')}: ${err.msg}`;
+            return JSON.stringify(err);
+          }).join(', ');
+        } else if (typeof error.response.data.detail === 'object') {
+          errorMsg = JSON.stringify(error.response.data.detail);
+        } else {
+          errorMsg = String(error.response.data.detail || error.response.data.message || '');
+        }
+      } else {
+        errorMsg = error.message || 'Failed to change password';
+      }
+      
+      toast.error(errorMsg || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -93,13 +260,66 @@ const Profile = () => {
         sms_consent: user?.sms_consent || false,
         whatsapp_consent: user?.whatsapp_consent || false,
         email_consent: user?.email_consent || false,
-        image_base64: user?.image_base64 || ''
+        image_base64: user?.image_base64 || '',
+        dob: user?.dob || ''
       });
     }
   }, [user]);
 
+  // Fetch report_to user information
+  useEffect(() => {
+    const fetchReportToUser = async () => {
+      if (!user?.report_to_id) {
+        setReportToUser(null);
+        return;
+      }
+
+      setLoadingReportTo(true);
+      try {
+        // Use /users/contacts endpoint which is accessible to all authenticated users
+        const response = await api.get('/users/contacts');
+        const allUsers = response.data || [];
+        const reportTo = allUsers.find(u => u.empid === user.report_to_id);
+        setReportToUser(reportTo || null);
+      } catch (error) {
+        console.error('Error fetching report_to user:', error);
+        setReportToUser(null);
+      } finally {
+        setLoadingReportTo(false);
+      }
+    };
+
+    fetchReportToUser();
+  }, [user?.report_to_id]);
+
   // Handle detail update
   const handleDetailUpdate = async (detailType, data, action = 'add', index = null) => {
+    // Validate based on detail type
+    if (detailType === 'family_details') {
+      if (!validateName(data.name)) return;
+      if (!validateRelation(data.relation)) return;
+      if (data.phone && data.phone.trim() !== '' && !validatePhone(data.phone)) return;
+      if (data.aadhar && data.aadhar.trim() !== '' && !validateAadhar(data.aadhar)) return;
+    } else if (detailType === 'nominee_details') {
+      if (!validateName(data.name)) return;
+      if (!validateRelation(data.relation)) return;
+      if (!validatePhone(data.phone)) return;
+      if (data.aadhar && data.aadhar.trim() !== '' && !validateAadhar(data.aadhar)) return;
+    } else if (detailType === 'bank_details') {
+      if (!validateBankName(data.bank_name)) return;
+      if (!validateAccountNumber(data.account_number)) return;
+      if (!validateIFSC(data.ifsc)) return;
+      if (data.pan && !validatePAN(data.pan)) return;
+      if (data.aadhar && !validateAadhar(data.aadhar)) return;
+      if (data.pf_no && !validatePFNO(data.pf_no)) return;
+      if (data.esi_no && !validateESINO(data.esi_no)) return;
+    } else if (detailType === 'experience_details') {
+      if (!validateCompany(data.prev_company_name)) return;
+      if (data.year && !validateYear(data.year)) return;
+      if (data.designation && !validateDesignation(data.designation)) return;
+      if (data.salary_per_annum && !validateSalary(data.salary_per_annum)) return;
+    }
+    
     setLoading(true);
     try {
       let payload;
@@ -119,6 +339,24 @@ const Profile = () => {
       console.log('Updating detail:', { detailType, payload }); // Debug log
       
       const response = await usersAPI.updateDetail(user.id, detailType, payload);
+      
+      // If bank_details, also update payslip_data table
+      if (detailType === 'bank_details' && user?.empid) {
+        try {
+          await usersAPI.updatePayslipBankDetails(user.empid, {
+            bank_name: data.bank_name || null,
+            bank_acc_no: data.account_number || null,
+            ifsc_code: data.ifsc || null,
+            pan_no: data.pan || null,
+            pf_no: data.pf_no || null,
+            esi_no: data.esi_no || null
+          });
+        } catch (error) {
+          console.error('Error updating payslip bank details:', error);
+          // Don't fail the main update if payslip update fails
+        }
+      }
+      
       // Force refresh user data
       const updatedUser = await usersAPI.getById(user.id);
       updateUser(updatedUser.data);
@@ -135,10 +373,213 @@ const Profile = () => {
     }
   };
 
+  // Validation functions
+  const validateName = (name) => {
+    if (!name || name.trim() === '') {
+      toast.error('Name is required');
+      return false;
+    }
+    if (name.length > 25) {
+      toast.error('Name must be below 25 characters');
+      return false;
+    }
+    return true;
+  };
+
+  const validateRelation = (relation) => {
+    if (!relation || relation.trim() === '') {
+      toast.error('Relation is required');
+      return false;
+    }
+    if (relation.length > 25) {
+      toast.error('Relation must be below 25 characters');
+      return false;
+    }
+    return true;
+  };
+
+  const validatePhone = (phone) => {
+    if (!phone || phone.trim() === '') {
+      toast.error('Phone is required');
+      return false;
+    }
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phone)) {
+      toast.error('Phone must be exactly 10 digits');
+      return false;
+    }
+    return true;
+  };
+
+  const validateAadhar = (aadhar) => {
+    if (!aadhar || aadhar.trim() === '') {
+      return true; // Optional field
+    }
+    const aadharRegex = /^\d{12}$/;
+    if (!aadharRegex.test(aadhar)) {
+      toast.error('Aadhar must be exactly 12 digits');
+      return false;
+    }
+    return true;
+  };
+
+  const validateBankName = (bankName) => {
+    if (!bankName || bankName.trim() === '') {
+      toast.error('Bank Name is required');
+      return false;
+    }
+    if (bankName.length > 25) {
+      toast.error('Bank Name must be below 25 characters');
+      return false;
+    }
+    return true;
+  };
+
+  const validateAccountNumber = (accountNumber) => {
+    if (!accountNumber || accountNumber.trim() === '') {
+      toast.error('Account Number is required');
+      return false;
+    }
+    const accountRegex = /^\d{1,21}$/;
+    if (!accountRegex.test(accountNumber)) {
+      toast.error('Account Number must be below 21 digits');
+      return false;
+    }
+    return true;
+  };
+
+  const validateIFSC = (ifsc) => {
+    if (!ifsc || ifsc.trim() === '') {
+      toast.error('IFSC is required');
+      return false;
+    }
+    const ifscRegex = /^[A-Z0-9]{11}$/;
+    if (!ifscRegex.test(ifsc.toUpperCase())) {
+      toast.error('IFSC must be 11 alphanumeric characters');
+      return false;
+    }
+    return true;
+  };
+
+  const validatePAN = (pan) => {
+    if (!pan || pan.trim() === '') {
+      return true; // Optional field
+    }
+    const panRegex = /^[A-Z]{5}\d{4}[A-Z]{1}$/;
+    if (!panRegex.test(pan.toUpperCase())) {
+      toast.error('PAN must be 10 alphanumeric characters (5 capital letters, 4 digits, 1 character)');
+      return false;
+    }
+    return true;
+  };
+
+  const validatePFNO = (pfNo) => {
+    if (!pfNo || pfNo.trim() === '') {
+      return true; // Optional field
+    }
+    const pfRegex = /^\d{12}$/;
+    if (!pfRegex.test(pfNo)) {
+      toast.error('PF NO must be exactly 12 digits');
+      return false;
+    }
+    return true;
+  };
+
+  const validateESINO = (esiNo) => {
+    if (!esiNo || esiNo.trim() === '') {
+      return true; // Optional field
+    }
+    const esiRegex = /^\d{10}$/;
+    if (!esiRegex.test(esiNo)) {
+      toast.error('ESI NO must be exactly 10 digits');
+      return false;
+    }
+    return true;
+  };
+
+  const validateCompany = (company) => {
+    if (!company || company.trim() === '') {
+      toast.error('Company is required');
+      return false;
+    }
+    if (company.length > 50) {
+      toast.error('Company must be below 50 characters');
+      return false;
+    }
+    return true;
+  };
+
+  const validateYear = (year) => {
+    if (!year || year.trim() === '') {
+      return true; // Optional field
+    }
+    const yearRegex = /^\d{4}$/;
+    if (!yearRegex.test(year)) {
+      toast.error('Year must be exactly 4 digits');
+      return false;
+    }
+    return true;
+  };
+
+  const validateDesignation = (designation) => {
+    if (!designation || designation.trim() === '') {
+      return true; // Optional field
+    }
+    if (designation.length > 50) {
+      toast.error('Designation must be below 50 characters');
+      return false;
+    }
+    return true;
+  };
+
+  const validateSalary = (salary) => {
+    if (!salary || salary.toString().trim() === '') {
+      return true; // Optional field
+    }
+    const salaryNum = parseFloat(salary);
+    if (isNaN(salaryNum)) {
+      toast.error('Salary must be a valid number');
+      return false;
+    }
+    if (salaryNum < 50000) {
+      toast.error('Salary must be at least ₹50,000');
+      return false;
+    }
+    if (salaryNum > 250000000) {
+      toast.error('Salary must be at most ₹25 crore');
+      return false;
+    }
+    return true;
+  };
+
+  const validateEmail = (email) => {
+    if (!email || email.trim() === '') {
+      toast.error('Email is required');
+      return false;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Please enter a valid email address');
+      return false;
+    }
+    return true;
+  };
+
+  const validatePhoneNumber = (phone) => {
+    if (!phone || phone.trim() === '') {
+      toast.error('Phone is required');
+      return false;
+    }
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phone)) {
+      toast.error('Phone must be exactly 10 digits');
+      return false;
+    }
+    return true;
+  };
+
   // Handle detail delete
   const handleDetailDelete = async (detailType, index) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
-    
     setLoading(true);
     try {
       const indexValue = parseInt(index);
@@ -169,7 +610,12 @@ const Profile = () => {
     if (index !== null) {
       // Edit mode - populate form with existing data
       if (type === 'bank_details') {
-        setDetailFormData(user?.bank_details ? {...user.bank_details} : {});
+        const existingData = user?.bank_details || {};
+        setDetailFormData({
+          ...existingData,
+          pf_no: existingData.pf_no || '',
+          esi_no: existingData.esi_no || ''
+        });
       } else if (type === 'nominee_details') {
         setDetailFormData(user?.nominee_details ? {...user.nominee_details} : {});
       } else if (type === 'family_details') {
@@ -318,7 +764,10 @@ const Profile = () => {
                   type="text"
                   className="form-input"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setFormData({ ...formData, phone: value });
+                  }}
                   disabled={!editing}
                 />
               </div>
@@ -378,7 +827,24 @@ const Profile = () => {
             <div className="profile-actions">
               {editing ? (
                 <>
-                  <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      // Reset form data to original user values
+                      setFormData({
+                        name: user?.name || '',
+                        email: user?.email || '',
+                        phone: user?.phone || '',
+                        sms_consent: user?.sms_consent || false,
+                        whatsapp_consent: user?.whatsapp_consent || false,
+                        email_consent: user?.email_consent || false,
+                        image_base64: user?.image_base64 || '',
+                        dob: user?.dob || ''
+                      });
+                      setEditing(false);
+                    }}
+                  >
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={loading}>
@@ -403,37 +869,136 @@ const Profile = () => {
           {changingPassword ? (
             <form onSubmit={handlePasswordChange}>
               <div className="form-group">
-                <label className="form-label">Current Password</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  value={passwordData.old_password}
-                  onChange={(e) => setPasswordData({ ...passwordData, old_password: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
                 <label className="form-label">New Password</label>
+                <div style={{ position: 'relative' }}>
                 <input
-                  type="password"
+                    type={showNewPassword ? 'text' : 'password'}
                   className="form-input"
+                    style={{ paddingRight: '40px' }}
                   value={passwordData.new_password}
-                  onChange={(e) => setPasswordData({ ...passwordData, new_password: e.target.value })}
-                  required
-                />
+                    onChange={(e) => {
+                      const newPassword = e.target.value;
+                      setPasswordData({ ...passwordData, new_password: newPassword });
+                      setPasswordStrength(calculatePasswordStrength(newPassword));
+                    }}
+                    placeholder="6-12 characters, include A-Z, a-z, 0-9, and . @ #"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px'
+                    }}
+                  >
+                    {showNewPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                  </button>
+                </div>
+                {passwordData.new_password && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ 
+                      flex: 1,
+                      height: '24px',
+                      backgroundColor: '#e5e7eb',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{
+                        width: `${getPasswordStrengthInfo(passwordStrength).percentage}%`,
+                        height: '100%',
+                        backgroundColor: getPasswordStrengthInfo(passwordStrength).color,
+                        transition: 'all 0.3s ease',
+                        borderRadius: '4px',
+                        position: 'absolute',
+                        left: 0,
+                        top: 0
+                      }} />
+                      <span style={{
+                        position: 'absolute',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: passwordStrength ? '#ffffff' : 'var(--text-secondary)',
+                        zIndex: 1,
+                        textShadow: passwordStrength ? '0 1px 2px rgba(0,0,0,0.2)' : 'none'
+                      }}>
+                        {getPasswordStrengthInfo(passwordStrength).label || 'Enter password'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Confirm New Password</label>
+                <div style={{ position: 'relative' }}>
                 <input
-                  type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                   className="form-input"
+                    style={{ paddingRight: '40px' }}
                   value={passwordData.confirm_password}
                   onChange={(e) => setPasswordData({ ...passwordData, confirm_password: e.target.value })}
-                  required
-                />
+                    placeholder="Re-enter new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px'
+                    }}
+                  >
+                    {showConfirmPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                  </button>
+                </div>
+                {passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password && (
+                  <div style={{ marginTop: '4px', fontSize: '0.75rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <FiAlertCircle size={14} />
+                    <span>Passwords do not match</span>
+                  </div>
+                )}
+                {passwordData.confirm_password && passwordData.new_password === passwordData.confirm_password && passwordData.new_password && (
+                  <div style={{ marginTop: '4px', fontSize: '0.75rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <FiCheck size={14} />
+                    <span>Passwords match</span>
+                  </div>
+                )}
               </div>
               <div className="profile-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setChangingPassword(false)}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    setChangingPassword(false);
+                    setPasswordData({ new_password: '', confirm_password: '' });
+                    setPasswordStrength('');
+                    setShowNewPassword(false);
+                    setShowConfirmPassword(false);
+                  }}
+                >
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={loading}>
@@ -454,7 +1019,25 @@ const Profile = () => {
         {/* Account Info */}
         <div className="card account-card">
           <div className="card-header">
-            <h3 className="card-title">Account Information</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h3 className="card-title">Account Information</h3>
+              {user?.is_active && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ 
+                    display: 'inline-block',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#22c55e'
+                  }}></span>
+                  <span style={{ 
+                    color: '#22c55e',
+                    fontSize: '0.875rem',
+                    fontWeight: 600
+                  }}>Active</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="account-info-table">
             <table className="info-table">
@@ -480,17 +1063,75 @@ const Profile = () => {
                   </td>
                 </tr>
                 <tr>
-                  <td className="info-label">Account Status</td>
+                  <td className="info-label">Date Of Birth</td>
                   <td className="info-value">
-                    <span className={`badge badge-${user?.is_active ? 'success' : 'danger'}`}>
-                      {user?.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    {editing ? (
+                      <input
+                        type="date"
+                        className="form-input"
+                        style={{ width: '100%', maxWidth: '200px' }}
+                        value={formatDateForInput(formData.dob)}
+                        onChange={(e) => setFormData({ ...formData, dob: e.target.value || null })}
+                      />
+                    ) : (
+                      user?.dob ? new Date(user.dob).toLocaleDateString() : 'Pending'
+                    )}
                   </td>
                 </tr>
                 <tr>
-                  <td className="info-label">Member Since</td>
+                  <td className="info-label">Date of Join</td>
                   <td className="info-value">
-                    {user?.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
+                    {user?.doj ? new Date(user.doj).toLocaleDateString() : 'Pending'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="info-label">Salary Per Annum</td>
+                  <td className="info-value">
+                    {user?.salary_per_annum && user.salary_per_annum > 0 
+                      ? `₹${parseFloat(user.salary_per_annum).toLocaleString('en-IN')}` 
+                      : 'Pending'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="info-label">Report To</td>
+                  <td className="info-value">
+                    {loadingReportTo ? (
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Loading...</span>
+                    ) : reportToUser ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {reportToUser.image_base64 ? (
+                          <img 
+                            src={reportToUser.image_base64} 
+                            alt={reportToUser.name}
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: '1px solid var(--border-color)'
+                            }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '0.875rem',
+                            fontWeight: 600
+                          }}>
+                            {reportToUser.name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                        )}
+                        <span>{reportToUser.name || 'Unknown'}</span>
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Not Assigned</span>
+                    )}
                   </td>
                 </tr>
               </tbody>
@@ -508,7 +1149,7 @@ const Profile = () => {
           {/* Family Details */}
           <div className="detail-card">
             <div className="detail-card-header">
-              <h3 className="detail-card-title">Family Details</h3>
+              <h3 className="detail-card-title">FAMILY DETAILS</h3>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span className={`detail-status ${user?.family_details && user.family_details.length > 0 ? 'completed' : 'pending'}`}>
                   {user?.family_details && user.family_details.length > 0 ? 'Completed' : 'Pending'}
@@ -574,7 +1215,7 @@ const Profile = () => {
           {/* Nominee Details */}
           <div className="detail-card">
             <div className="detail-card-header">
-              <h3 className="detail-card-title">Nominee Details</h3>
+              <h3 className="detail-card-title">NOMINEE DETAILS</h3>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span className={`detail-status ${user?.nominee_details ? 'completed' : 'pending'}`}>
                   {user?.nominee_details ? 'Completed' : 'Pending'}
@@ -628,7 +1269,7 @@ const Profile = () => {
           {/* Bank Details */}
           <div className="detail-card">
             <div className="detail-card-header">
-              <h3 className="detail-card-title">Bank Details</h3>
+              <h3 className="detail-card-title">BANK DETAILS</h3>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span className={`detail-status ${user?.bank_details ? 'completed' : 'pending'}`}>
                   {user?.bank_details ? 'Completed' : 'Pending'}
@@ -643,11 +1284,13 @@ const Profile = () => {
                 <table className="detail-members-table">
                   <thead>
                     <tr>
-                      <th>Bank Name</th>
-                      <th>Account Number</th>
+                      <th>Bank</th>
+                      <th>Acc No</th>
                       <th>IFSC</th>
                       <th>PAN</th>
                       <th>Aadhar</th>
+                      <th>PF NO</th>
+                      <th>ESI NO</th>
                       <th className="action-cell">Actions</th>
                     </tr>
                   </thead>
@@ -658,6 +1301,8 @@ const Profile = () => {
                       <td>{user.bank_details?.ifsc || '-'}</td>
                       <td>{user.bank_details?.pan || '-'}</td>
                       <td>{user.bank_details?.aadhar || '-'}</td>
+                      <td>{user.bank_details?.pf_no || 'N/A'}</td>
+                      <td>{user.bank_details?.esi_no || 'N/A'}</td>
                       <td className="action-cell">
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                           <button 
@@ -681,7 +1326,7 @@ const Profile = () => {
           {/* Education Details */}
           <div className="detail-card">
             <div className="detail-card-header">
-              <h3 className="detail-card-title">Education Details</h3>
+              <h3 className="detail-card-title">EDUCATION DETAILS</h3>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <span className={`detail-status ${user?.education_details && user.education_details.length > 0 ? 'completed' : 'pending'}`}>
                   {user?.education_details && user.education_details.length > 0 ? 'Completed' : 'Pending'}
@@ -874,26 +1519,90 @@ const Profile = () => {
                     <div className="form-row">
                       <div className="form-group">
                         <label>Bank Name *</label>
-                        <input type="text" className="form-input" value={detailFormData.bank_name || ''} onChange={(e) => setDetailFormData({...detailFormData, bank_name: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.bank_name || ''} 
+                          onChange={(e) => setDetailFormData({...detailFormData, bank_name: e.target.value})}
+                          maxLength={25}
+                        />
                       </div>
                       <div className="form-group">
                         <label>Account Number *</label>
-                        <input type="text" className="form-input" value={detailFormData.account_number || ''} onChange={(e) => setDetailFormData({...detailFormData, account_number: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.account_number || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 21);
+                            setDetailFormData({...detailFormData, account_number: value});
+                          }}
+                        />
                       </div>
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>IFSC *</label>
-                        <input type="text" className="form-input" value={detailFormData.ifsc || ''} onChange={(e) => setDetailFormData({...detailFormData, ifsc: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.ifsc || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
+                            setDetailFormData({...detailFormData, ifsc: value});
+                          }}
+                        />
                       </div>
                       <div className="form-group">
                         <label>PAN</label>
-                        <input type="text" className="form-input" value={detailFormData.pan || ''} onChange={(e) => setDetailFormData({...detailFormData, pan: e.target.value})} />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.pan || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+                            setDetailFormData({...detailFormData, pan: value});
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Aadhar</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.aadhar || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 12);
+                            setDetailFormData({...detailFormData, aadhar: value});
+                          }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>PF NO</label>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.pf_no || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 12);
+                            setDetailFormData({...detailFormData, pf_no: value});
+                          }}
+                        />
                       </div>
                     </div>
                     <div className="form-group">
-                      <label>Aadhar</label>
-                      <input type="text" className="form-input" value={detailFormData.aadhar || ''} onChange={(e) => setDetailFormData({...detailFormData, aadhar: e.target.value})} />
+                      <label>ESI NO</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        value={detailFormData.esi_no || ''} 
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setDetailFormData({...detailFormData, esi_no: value});
+                        }}
+                      />
                     </div>
                   </>
                 )}
@@ -903,21 +1612,49 @@ const Profile = () => {
                     <div className="form-row">
                       <div className="form-group">
                         <label>Name *</label>
-                        <input type="text" className="form-input" value={detailFormData.name || ''} onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.name || ''} 
+                          onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})}
+                          maxLength={25}
+                        />
                       </div>
                       <div className="form-group">
                         <label>Relation *</label>
-                        <input type="text" className="form-input" value={detailFormData.relation || ''} onChange={(e) => setDetailFormData({...detailFormData, relation: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.relation || ''} 
+                          onChange={(e) => setDetailFormData({...detailFormData, relation: e.target.value})}
+                          maxLength={25}
+                        />
                       </div>
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Phone *</label>
-                        <input type="text" className="form-input" value={detailFormData.phone || ''} onChange={(e) => setDetailFormData({...detailFormData, phone: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.phone || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setDetailFormData({...detailFormData, phone: value});
+                          }}
+                        />
                       </div>
                       <div className="form-group">
                         <label>Aadhar</label>
-                        <input type="text" className="form-input" value={detailFormData.aadhar || ''} onChange={(e) => setDetailFormData({...detailFormData, aadhar: e.target.value})} />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.aadhar || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 12);
+                            setDetailFormData({...detailFormData, aadhar: value});
+                          }}
+                        />
                       </div>
                     </div>
                   </>
@@ -928,21 +1665,49 @@ const Profile = () => {
                     <div className="form-row">
                       <div className="form-group">
                         <label>Name *</label>
-                        <input type="text" className="form-input" value={detailFormData.name || ''} onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.name || ''} 
+                          onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})}
+                          maxLength={25}
+                        />
                       </div>
                       <div className="form-group">
                         <label>Relation *</label>
-                        <input type="text" className="form-input" value={detailFormData.relation || ''} onChange={(e) => setDetailFormData({...detailFormData, relation: e.target.value})} required />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.relation || ''} 
+                          onChange={(e) => setDetailFormData({...detailFormData, relation: e.target.value})}
+                          maxLength={25}
+                        />
                       </div>
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Phone</label>
-                        <input type="text" className="form-input" value={detailFormData.phone || ''} onChange={(e) => setDetailFormData({...detailFormData, phone: e.target.value})} />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.phone || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setDetailFormData({...detailFormData, phone: value});
+                          }}
+                        />
                       </div>
                       <div className="form-group">
                         <label>Aadhar</label>
-                        <input type="text" className="form-input" value={detailFormData.aadhar || ''} onChange={(e) => setDetailFormData({...detailFormData, aadhar: e.target.value})} />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.aadhar || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 12);
+                            setDetailFormData({...detailFormData, aadhar: value});
+                          }}
+                        />
                       </div>
                     </div>
                   </>
@@ -970,22 +1735,53 @@ const Profile = () => {
                 {showModal === 'experience_details' && (
                   <>
                     <div className="form-group">
-                      <label>Previous Company Name *</label>
-                      <input type="text" className="form-input" value={detailFormData.prev_company_name || ''} onChange={(e) => setDetailFormData({...detailFormData, prev_company_name: e.target.value})} required />
+                      <label>Company *</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        value={detailFormData.prev_company_name || ''} 
+                        onChange={(e) => setDetailFormData({...detailFormData, prev_company_name: e.target.value})}
+                        maxLength={50}
+                      />
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Year</label>
-                        <input type="text" className="form-input" value={detailFormData.year || ''} onChange={(e) => setDetailFormData({...detailFormData, year: e.target.value})} />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.year || ''} 
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                            setDetailFormData({...detailFormData, year: value});
+                          }}
+                        />
                       </div>
                       <div className="form-group">
                         <label>Designation</label>
-                        <input type="text" className="form-input" value={detailFormData.designation || ''} onChange={(e) => setDetailFormData({...detailFormData, designation: e.target.value})} />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          value={detailFormData.designation || ''} 
+                          onChange={(e) => setDetailFormData({...detailFormData, designation: e.target.value})}
+                          maxLength={50}
+                        />
                       </div>
                     </div>
                     <div className="form-group">
-                      <label>Salary Per Annum</label>
-                      <input type="number" step="0.01" className="form-input" value={detailFormData.salary_per_annum || ''} onChange={(e) => setDetailFormData({...detailFormData, salary_per_annum: e.target.value})} />
+                      <label>Salary (PA)</label>
+                      <input 
+                        type="number" 
+                        step="1" 
+                        className="form-input" 
+                        value={detailFormData.salary_per_annum || ''} 
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '');
+                          setDetailFormData({...detailFormData, salary_per_annum: value});
+                        }}
+                        min="50000"
+                        max="250000000"
+                      />
                     </div>
                   </>
                 )}
@@ -994,7 +1790,12 @@ const Profile = () => {
                   <>
                     <div className="form-group">
                       <label>Document Name *</label>
-                      <input type="text" className="form-input" value={detailFormData.name || ''} onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})} required />
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        value={detailFormData.name || ''} 
+                        onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})}
+                      />
                     </div>
                     <div className="form-group">
                       <label>Document Image</label>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Date, Numeric, ForeignKey, CheckConstraint, Index, Sequence
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Date, Time, Numeric, ForeignKey, CheckConstraint, Index, Sequence
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, date
@@ -24,6 +24,7 @@ class User(Base):
     google_calendar_credentials = Column(JSONB, nullable=True)  # Store Google OAuth credentials
     dob = Column(Date, nullable=True)  # Date of Birth
     doj = Column(Date, nullable=True)  # Date of Joining
+    emp_inactive_date = Column(Date, nullable=True)  # Employee Inactive Date
     bank_details = Column(JSONB, nullable=True)  # bank_name, account_number, ifsc, pan, aadhar
     family_details = Column(JSONB, nullable=True)  # name, relation, phone, aadhar
     nominee_details = Column(JSONB, nullable=True)  # name, relation, phone, aadhar
@@ -39,6 +40,7 @@ class User(Base):
     company_name = Column(String(255), nullable=True)
     branch_name = Column(String(255), nullable=True)
     department_name = Column(String(255), nullable=True)
+    salary_per_annum = Column(Numeric(12, 2), nullable=True)  # Salary per annum
     
     __table_args__ = (
         CheckConstraint(role.in_(['Admin', 'Manager', 'Employee', 'HR']), name='check_role'),
@@ -321,6 +323,8 @@ class PunchLog(Base):
     punch_type = Column(String(10), nullable=False)  # 'in' or 'out'
     punch_time = Column(DateTime, nullable=False)
     image = Column(Text, nullable=True)  # Base64 encoded image
+    location = Column(Text, nullable=True)  # Location address
+    remarks = Column(Text, nullable=True)  # Remarks/notes
     status = Column(String(20), default='present')  # present, late, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -429,6 +433,9 @@ class Leave(Base):
     status = Column(String(20), default='pending')  # pending, approved, rejected
     approved_by = Column(String(20), ForeignKey('users.empid'), nullable=True)
     approved_date = Column(DateTime, nullable=True)
+    # Temporarily commented out until migration is run
+    # half_from = Column(String(20), nullable=True)  # morning, evening, None
+    # half_to = Column(String(20), nullable=True)  # morning, evening, None
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -557,8 +564,7 @@ class AttendanceList(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(Text)
-    empid = Column(String(20), ForeignKey('users.empid'), nullable=True)  # Reference users.empid
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Also reference users.id for joins
+    empid = Column(Integer, nullable=True)  # INTEGER - stores employee's empid as integer (no foreign key)
     doj = Column(Date, nullable=True)  # Date of Joining
     from_date = Column(Date, nullable=True)
     to_date = Column(Date, nullable=True)
@@ -581,13 +587,28 @@ class AttendanceList(Base):
     updated_by = Column(Text, nullable=True)
     updated_date = Column(DateTime, nullable=True)
 
+# AttendanceCycle Model
+class AttendanceCycle(Base):
+    __tablename__ = "attendance_cycle"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    shift_start_time = Column(Time, nullable=False)
+    shift_end_time = Column(Time, nullable=False)
+    late_log_time = Column(Time, nullable=False)
+    full_day_duration = Column(Time, nullable=False)
+    half_day_duration = Column(Time, nullable=False)
+    attendance_cycle_start_date = Column(Integer, nullable=False)  # 1-31
+    attendance_cycle_end_date = Column(Integer, nullable=False)  # 1-31
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # SalaryStructure Model
 class SalaryStructure(Base):
     __tablename__ = "salary_structure"
     
     id = Column(Integer, primary_key=True, index=True)
     empid = Column(String(20), ForeignKey('users.empid'), nullable=True)  # Reference users.empid
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Also reference users.id for joins
+    # user_id column removed - not in database table
     name = Column(String(100), nullable=True)
     doj = Column(Date, nullable=True)  # Date of Joining
     salary_per_annum = Column(Numeric(18, 2), nullable=True)
@@ -667,5 +688,77 @@ class PayslipData(Base):
         Index('idx_payslip_month_year', 'month', 'year'),
         Index('idx_payslip_emp_id', 'emp_id'),
         Index('idx_payslip_freaze_status', 'freaze_status'),
+    )
+
+class Policy(Base):
+    __tablename__ = "policies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    policy = Column(JSONB, nullable=False)  # {name: string, type: string, pages: integer, file_url?: string}
+    readby = Column(JSONB, default=[])  # [{empid: string, name: string, status: "viewed", viewed_at: timestamp}]
+    likes = Column(JSONB, default=[])  # [{empid: string, name: string, page: integer, liked_at: timestamp}]
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class LeaveBalanceList(Base):
+    __tablename__ = "leave_balance_list"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    empid = Column(Integer, nullable=True)
+    name = Column(Text, nullable=True)
+    
+    total_casual_leaves = Column(Numeric(10, 1), nullable=True)
+    used_casual_leaves = Column(Numeric(10, 1), nullable=True)
+    balance_casual_leaves = Column(Numeric(10, 1), nullable=True)
+    
+    total_sick_leaves = Column(Numeric(10, 1), nullable=True)
+    used_sick_leaves = Column(Numeric(10, 1), nullable=True)
+    balance_sick_leaves = Column(Numeric(10, 1), nullable=True)
+    
+    total_comp_off_leaves = Column(Numeric(10, 1), nullable=True)
+    used_comp_off_leaves = Column(Numeric(10, 1), nullable=True)
+    balance_comp_off_leaves = Column(Numeric(10, 1), nullable=True)
+    
+    year = Column(Integer, nullable=True)
+    updated_by = Column(Text, nullable=True)
+    updated_date = Column(DateTime, nullable=True)
+    
+    __table_args__ = (
+        Index('idx_leave_balance_empid_year', 'empid', 'year'),
+    )
+
+# EmployeeLoan Model
+class EmployeeLoan(Base):
+    __tablename__ = "employee_loans"
+    
+    loan_id = Column(Integer, primary_key=True, index=True)
+    empid = Column(String(20), ForeignKey('users.empid'), nullable=False)
+    loan_type = Column(String(50), nullable=True)
+    loan_amount = Column(Numeric(12, 2), nullable=False)
+    tenure_months = Column(Integer, nullable=False)
+    manager_status = Column(JSONB, nullable=False, default=lambda: {"status": "PENDING", "approved_name": None, "approved_time": None})
+    hr_status = Column(JSONB, nullable=False, default=lambda: {"status": "PENDING", "approved_name": None, "approved_time": None})
+    accounts_status = Column(JSONB, nullable=False, default=lambda: {"status": "PENDING", "approved_name": None, "approved_time": None})
+    approval_remarks = Column(Text, nullable=True)
+    status = Column(String(20), default='APPLIED')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_employee_loans_empid', 'empid'),
+        Index('idx_employee_loans_status', 'status'),
+    )
+
+# LoanInstallment Model
+class LoanInstallment(Base):
+    __tablename__ = "loan_installments"
+    
+    installment_id = Column(Integer, primary_key=True, index=True)
+    loan_id = Column(Integer, ForeignKey('employee_loans.loan_id', ondelete='CASCADE'), nullable=False)
+    empid = Column(String(20), ForeignKey('users.empid'), nullable=False)
+    installments = Column(JSONB, nullable=False)  # Array of installment objects
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_loan_installments_loan_id', 'loan_id'),
+        Index('idx_loan_installments_empid', 'empid'),
     )
 

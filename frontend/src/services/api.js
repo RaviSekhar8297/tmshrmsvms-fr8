@@ -30,6 +30,14 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const token = localStorage.getItem('token');
       const isLoginRequest = error.config?.url?.includes('/auth/login');
+      const isUsersRequest = error.config?.url?.includes('/users/');
+      
+      // Don't redirect for /users/ endpoint - it might be a permission issue, not auth
+      // This endpoint is used for optional features like employee dropdowns
+      if (isUsersRequest) {
+        // Just reject the error without redirecting
+        return Promise.reject(error);
+      }
       
       // If it's a login request returning 401, it's invalid credentials - don't redirect
       if (!isLoginRequest && token) {
@@ -51,7 +59,7 @@ export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   logout: () => api.post('/auth/logout'),
   getMe: () => api.get('/auth/me'),
-  changePassword: (data) => api.post('/auth/change-password', null, { params: data }),
+  changePassword: (data) => api.post('/auth/change-password', data),
 };
 
 export const usersAPI = {
@@ -64,6 +72,7 @@ export const usersAPI = {
   getManagers: () => api.get('/users/managers'),
   getTeam: (userId) => api.get(`/users/${userId}/team`),
   updateDetail: (id, detailType, data) => api.put(`/users/${id}/details/${detailType}`, data),
+  updatePayslipBankDetails: (empid, data) => api.put(`/payslip/bank-details/${empid}`, data),
 };
 
 export const projectsAPI = {
@@ -85,6 +94,7 @@ export const tasksAPI = {
   getDurations: (id) => api.get(`/tasks/${id}/durations`),
   getStats: () => api.get('/tasks/stats'),
   getByEmployee: () => api.get('/tasks/by-employee'),
+  getCalendar: (month, year) => api.get('/tasks/calendar', { params: { month, year } }),
   create: (data) => api.post('/tasks/', data),
   update: (id, data) => api.put(`/tasks/${id}`, data),
   delete: (id) => api.delete(`/tasks/${id}`),
@@ -173,6 +183,10 @@ export const attendanceAPI = {
   getHistoryMonth: (month, year) => api.get('/attendance/history-month', { params: { month, year } }),
   getPrevious: (startDate, endDate) => api.get('/attendance/previous', { params: { start_date: startDate, end_date: endDate } }),
   modify: (data) => api.post('/attendance/modify', data),
+  getCycle: () => api.get('/attendance/cycle'),
+  createCycle: (data) => api.post('/attendance/cycle', data),
+  updateCycle: (data) => api.put('/attendance/cycle', data),
+  generate: (data) => api.post('/attendance/generate', data),
 };
 
 export const visitorsAPI = {
@@ -180,4 +194,23 @@ export const visitorsAPI = {
   getById: (id) => api.get(`/vms/visitors/${id}`),
   add: (data) => api.post('/vms/visitors/add', data),
   checkout: (id) => api.put(`/vms/visitors/${id}/checkout`),
+};
+
+export const policiesAPI = {
+  getAll: () => api.get('/policies/'),
+  getById: (id) => api.get(`/policies/${id}`),
+  create: (data) => api.post('/policies/', data),
+  upload: (formData) => api.post('/policies/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
+  update: (id, data) => api.put(`/policies/${id}`, data),
+  delete: (id) => api.delete(`/policies/${id}`),
+  markAsRead: (id, data) => api.post(`/policies/${id}/mark-read`, data),
+  getReadStatus: (id) => api.get(`/policies/${id}/read-status`),
+  toggleLike: (id, page) => api.post(`/policies/${id}/like/${page}`),
+  getPageLikes: (id, page) => api.get(`/policies/${id}/likes/${page}`),
+  getUnread: () => api.get('/policies/unread'),
+  acknowledge: (id) => api.post(`/policies/${id}/acknowledge`),
 };

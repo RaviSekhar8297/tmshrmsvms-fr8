@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func, case, or_, cast, String
 from datetime import datetime
 from decimal import Decimal
 from database import get_db
 from models import PayrollStructure, Payroll, User, SalaryStructure, PayslipData
 from routes.auth import get_current_user
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel
 import io
 
@@ -280,12 +280,13 @@ def get_payslips(
 
 @router.get("/payroll/salary-structure")
 def get_salary_structure(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Get all salary structure records with employee information"""
     try:
-        # Get all salary structures - only select columns that exist in the table
-        salary_structures = db.query(
+        # Build query for salary structures
+        query = db.query(
             SalaryStructure.id,
             SalaryStructure.empid,
             SalaryStructure.name,
@@ -308,7 +309,13 @@ def get_salary_structure(
             SalaryStructure.monthly_ctc,
             SalaryStructure.pf_check,
             SalaryStructure.esi_check
-        ).all()
+        )
+        
+        # Filter by user role - Employee and Manager see only their own
+        if current_user.role in ['Employee', 'Manager']:
+            query = query.filter(SalaryStructure.empid == current_user.empid)
+        
+        salary_structures = query.all()
         
         result = []
         for salary in salary_structures:
@@ -661,6 +668,126 @@ def toggle_esi_check(
         print(f"Error updating ESI check: {error_detail}")
         raise HTTPException(status_code=500, detail=f"Error updating ESI check: {str(e)}")
 
+@router.put("/payroll/salary-structure")
+def update_salary_structure(
+    salary_data: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update salary_per_annum in users table by empid"""
+    from utils import is_admin_or_hr
+    
+    print(f"=== Salary Update Request ===")
+    print(f"Request data: {salary_data}")
+    print(f"Current user: {current_user.empid}, Role: {current_user.role}")
+    
+    if not is_admin_or_hr(current_user):
+        raise HTTPException(status_code=403, detail="Only Admin or HR can update salary")
+    
+    try:
+        empid = salary_data.get('empid')
+        if not empid:
+            raise HTTPException(status_code=400, detail="empid is required")
+        
+        print(f"Looking for user with empid: {empid}")
+        
+        # Find user by empid
+        user = db.query(User).filter(User.empid == empid).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User with empid {empid} not found")
+        
+        print(f"Found user: ID={user.id}, Name={user.name}")
+        
+        # Check if salary_per_annum column exists in users table
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.bind)
+        user_columns = [col['name'] for col in inspector.get_columns('users')]
+        print(f"Columns in users table: {user_columns}")
+        
+        # Update salary_per_annum in users table
+        if 'salary_per_annum' in salary_data and salary_data['salary_per_annum'] is not None:
+            try:
+                new_value = Decimal(str(salary_data['salary_per_annum']))
+                print(f"Updating salary_per_annum to {new_value}")
+                
+                # Use explicit SQL update to update users table
+                from sqlalchemy import update as sql_update
+                update_stmt = sql_update(User).where(
+                    User.empid == empid
+                ).values(salary_per_annum=new_value)
+                result = db.execute(update_stmt)
+                print(f"SQL update executed. Rows affected: {result.rowcount}")
+                
+                # Also try ORM update if column exists in model
+                if hasattr(user, 'salary_per_annum'):
+                    user.salary_per_annum = new_value
+                    print(f"ORM update: Value set on user object")
+                
+                db.flush()
+                print(f"Flush successful")
+                
+            except Exception as e:
+                print(f"Error converting/updating salary_per_annum: {e}")
+                import traceback
+                print(traceback.format_exc())
+                raise HTTPException(status_code=400, detail=f"Invalid salary_per_annum value: {str(e)}")
+        else:
+            print(f"salary_per_annum not in request or is None. Request keys: {salary_data.keys()}, salary_per_annum value: {salary_data.get('salary_per_annum')}")
+        
+        try:
+            db.commit()
+            print(f"Commit successful")
+            
+            # Refresh user to get updated value
+            db.refresh(user)
+            
+            # Verify the update by querying the database again
+            verify_user = db.query(User).filter(User.empid == empid).first()
+            if verify_user:
+                salary_value = getattr(verify_user, 'salary_per_annum', None)
+                print(f"Verification query - salary_per_annum in DB: {salary_value}")
+                
+                # If column doesn't exist in model, query directly
+                if salary_value is None:
+                    result = db.execute(text("SELECT salary_per_annum FROM users WHERE empid = :empid"), {"empid": empid})
+                    row = result.fetchone()
+                    if row:
+                        print(f"Direct SQL query - salary_per_annum: {row[0]}")
+                        salary_value = row[0]
+        except Exception as e:
+            print(f"Error during commit: {e}")
+            import traceback
+            print(traceback.format_exc())
+            db.rollback()
+            raise
+        
+        # Get the final value
+        final_value = getattr(user, 'salary_per_annum', None)
+        if final_value is None:
+            # Try direct query
+            try:
+                result = db.execute(text("SELECT salary_per_annum FROM users WHERE empid = :empid"), {"empid": empid})
+                row = result.fetchone()
+                if row:
+                    final_value = row[0]
+            except:
+                pass
+        
+        return {
+            "message": "Salary updated successfully",
+            "empid": empid,
+            "salary_per_annum": float(final_value) if final_value else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"Error updating salary: {error_detail}")
+        raise HTTPException(status_code=500, detail=f"Error updating salary: {str(e)}")
+
 # Payslip Data Routes
 @router.get("/payslip/months")
 def get_payslip_months(
@@ -668,27 +795,47 @@ def get_payslip_months(
     current_user: User = Depends(get_current_user)
 ):
     """Get list of months with payslip data and freeze status"""
-    from sqlalchemy import func, distinct
-    
-    # Get distinct month/year combinations with freeze status
-    results = db.query(
-        PayslipData.month,
-        PayslipData.year,
-        func.max(PayslipData.freaze_status).label('freaze_status')
-    ).group_by(
-        PayslipData.month,
-        PayslipData.year
-    ).all()
-    
-    months = []
-    for result in results:
-        months.append({
-            "month": result.month,
-            "year": result.year,
-            "freaze_status": bool(result.freaze_status)
-        })
-    
-    return months
+    try:
+        # Build query - ALL roles only see frozen payslips
+        query = db.query(
+            PayslipData.month,
+            PayslipData.year,
+            func.max(case((PayslipData.freaze_status == True, 1), else_=0)).label('freaze_status')
+        ).filter(
+            PayslipData.freaze_status == True  # Only show months with frozen payslips
+        )
+        
+        # For employees, only show months where they have frozen payslips
+        if current_user.role == "Employee":
+            try:
+                emp_id_int = int(current_user.empid) if current_user.empid else None
+                if emp_id_int:
+                    query = query.filter(PayslipData.emp_id == emp_id_int)
+            except:
+                pass
+        
+        # Group by month and year
+        results = query.group_by(
+            PayslipData.month,
+            PayslipData.year
+        ).all()
+        
+        months = []
+        for result in results:
+            months.append({
+                "month": result.month,
+                "year": result.year,
+                "freaze_status": bool(result.freaze_status) if result.freaze_status is not None and result.freaze_status > 0 else False
+            })
+        
+        return months
+    except Exception as e:
+        # If table doesn't exist or query fails, return empty list
+        print(f"Error in get_payslip_months: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return empty list instead of raising error to prevent 500
+        return []
 
 @router.post("/payslip/toggle-freeze")
 def toggle_payslip_freeze(
@@ -731,4 +878,851 @@ def toggle_payslip_freeze(
         "freaze_status": new_status,
         "updated_count": len(payslips)
     }
+
+@router.get("/payslip/list")
+def get_payslip_list(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    page: int = 1,
+    limit: int = 20,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get payslip data with pagination"""
+    try:
+        # Build query
+        query = db.query(PayslipData)
+        
+        # Apply filters
+        if month is not None:
+            query = query.filter(PayslipData.month == month)
+        if year is not None:
+            query = query.filter(PayslipData.year == year)
+        
+        # Apply search filter
+        if search and search.strip():
+            search_term = search.strip().lower()
+            query = query.filter(
+                or_(
+                    func.lower(PayslipData.full_name).contains(search_term),
+                    cast(PayslipData.emp_id, String).contains(search_term)
+                )
+            )
+        
+        # Apply freeze status filter - HR role can see all (frozen and unfrozen), others only frozen
+        if current_user.role != "HR":
+            query = query.filter(PayslipData.freaze_status == True)
+        
+        # Role-based filtering for employee data
+        if current_user.role == "Employee":
+            # Employees can only see their own payslips
+            try:
+                emp_id_int = int(current_user.empid) if current_user.empid else None
+                if emp_id_int:
+                    query = query.filter(PayslipData.emp_id == emp_id_int)
+            except:
+                pass
+        # Manager, HR, and Admin can see all frozen payslips (filtered above)
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        payslips = query.order_by(PayslipData.year.desc(), PayslipData.month.desc()).offset(offset).limit(limit).all()
+        
+        # Format response
+        result = []
+        for payslip in payslips:
+            earnings = payslip.earnings if isinstance(payslip.earnings, dict) else {}
+            deductions = payslip.deductions if isinstance(payslip.deductions, dict) else {}
+            
+            result.append({
+                "payslip_id": payslip.payslip_id,
+                "full_name": payslip.full_name or "",
+                "emp_id": payslip.emp_id,
+                "doj": payslip.doj.strftime('%Y-%m-%d') if payslip.doj else None,
+                "month": payslip.month,
+                "year": payslip.year,
+                "salary_per_month": float(payslip.salary_per_month) if payslip.salary_per_month else 0,
+                "salary_per_day": float(payslip.salary_per_day) if payslip.salary_per_day else 0,
+                "earned_gross": float(payslip.earned_gross) if payslip.earned_gross else 0,
+                "net_salary": float(payslip.net_salary) if payslip.net_salary else 0,
+                "basic": float(earnings.get("Basic", 0)) if earnings else 0,
+                "hra": float(earnings.get("HRA", 0)) if earnings else 0,
+                "ca": float(earnings.get("CA", 0)) if earnings else 0,
+                "ma": float(earnings.get("MA", 0)) if earnings else 0,
+                "sa": float(earnings.get("SA", 0)) if earnings else 0,
+                "pf": float(deductions.get("PF", 0)) if deductions else 0,
+                "esi": float(deductions.get("ESI", 0)) if deductions else 0,
+                "pt": float(deductions.get("PT", 0)) if deductions else 0,
+                "lop": float(deductions.get("LOP", 0)) if deductions else 0,
+                "tds": float(deductions.get("TDS", 0)) if deductions else 0,
+                "late_logins": float(deductions.get("LateLogins", 0)) if deductions else 0,
+                "late_login_deductions": float(deductions.get("LateLogDeduction", 0)) if deductions else 0,
+                "total_deductions": float((deductions.get("PF", 0) or 0) + (deductions.get("ESI", 0) or 0) + (deductions.get("PT", 0) or 0) + (deductions.get("LateLogDeduction", 0) or 0) + (deductions.get("LOP", 0) or 0)) if deductions else 0,
+                "present": float(payslip.present) if payslip.present else 0,
+                "absent": float(payslip.absent) if payslip.absent else 0,
+                "half_days": float(payslip.half_days) if payslip.half_days else 0,
+                "holidays": float(payslip.holidays) if payslip.holidays else 0,
+                "wo": float(payslip.wo) if payslip.wo else 0,
+                "leaves": float(payslip.leaves) if payslip.leaves else 0,
+                "payable_days": float(payslip.payable_days) if payslip.payable_days else 0,
+                "arrear_salary": float(payslip.arrear_salary) if payslip.arrear_salary else 0,
+                "loan_amount": float(payslip.loan_amount) if payslip.loan_amount else 0,
+                "other_deduction": float(payslip.other_deduction) if payslip.other_deduction else 0,
+                "designation": payslip.designation or "",
+                "gross_salary": float(earnings.get("GrossSalary", 0)) if earnings else 0,
+                "company_name": payslip.company_name or "",
+                "branch_name": payslip.branch_name or "",
+                "department_name": payslip.department_name or "",
+                "pf_no": payslip.pf_no or "",
+                "esi_no": payslip.esi_no or "",
+                "freaze_status": payslip.freaze_status if payslip.freaze_status is not None else False
+            })
+        
+        return {
+            "data": result,
+            "total": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1
+        }
+    except Exception as e:
+        print(f"Error in get_payslip_list: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching payslip data: {str(e)}")
+
+@router.get("/payslip/export-excel")
+def export_payslip_excel(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Export payslip data to Excel"""
+    if current_user.role not in ["Admin", "HR"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        
+        # Build query (same logic as get_payslip_list)
+        query = db.query(PayslipData)
+        
+        # ALL roles can only export frozen payslips
+        query = query.filter(PayslipData.freaze_status == True)
+        
+        if month is not None:
+            query = query.filter(PayslipData.month == month)
+        if year is not None:
+            query = query.filter(PayslipData.year == year)
+        
+        if search and search.strip():
+            search_term = search.strip().lower()
+            query = query.filter(
+                or_(
+                    func.lower(PayslipData.full_name).contains(search_term),
+                    cast(PayslipData.emp_id, String).contains(search_term)
+                )
+            )
+        
+        payslips = query.order_by(PayslipData.year.desc(), PayslipData.month.desc()).all()
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Payslip Data"
+        
+        # Header style
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Headers
+        headers = [
+            'Full Name', 'Emp ID', 'Designation', 'Salary Per Month', 'Salary Per Day',
+            'Basic', 'HRA', 'CA', 'MA', 'SA', 'Gross Salary',
+            'PF', 'ESI', 'LOP', 'TDS', 'Late Logins', 'Late Login Deductions',
+            'Earned Gross', 'Net Salary',
+            'Presents', 'Absents', 'Half Days', 'Holidays', 'WO', 'Leaves', 'Payable Days',
+            'Arrear Salary', 'Loan Amount', 'Other Deductions', 'Month', 'Year'
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Data rows
+        for row_idx, payslip in enumerate(payslips, 2):
+            earnings = payslip.earnings if isinstance(payslip.earnings, dict) else {}
+            deductions = payslip.deductions if isinstance(payslip.deductions, dict) else {}
+            
+            row_data = [
+                payslip.full_name or "",
+                payslip.emp_id or 0,
+                payslip.designation or "",
+                float(payslip.salary_per_month) if payslip.salary_per_month else 0,
+                float(payslip.salary_per_day) if payslip.salary_per_day else 0,
+                float(earnings.get("Basic", 0)) if earnings else 0,
+                float(earnings.get("HRA", 0)) if earnings else 0,
+                float(earnings.get("CA", 0)) if earnings else 0,
+                float(earnings.get("MA", 0)) if earnings else 0,
+                float(earnings.get("SA", 0)) if earnings else 0,
+                float(earnings.get("GrossSalary", 0)) if earnings else 0,
+                float(deductions.get("PF", 0)) if deductions else 0,
+                float(deductions.get("ESI", 0)) if deductions else 0,
+                float(deductions.get("LOP", 0)) if deductions else 0,
+                float(deductions.get("TDS", 0)) if deductions else 0,
+                float(deductions.get("LateLogins", 0)) if deductions else 0,
+                float(deductions.get("LateLogDeduction", 0)) if deductions else 0,
+                float(payslip.earned_gross) if payslip.earned_gross else 0,
+                float(payslip.net_salary) if payslip.net_salary else 0,
+                float(payslip.present) if payslip.present else 0,
+                float(payslip.absent) if payslip.absent else 0,
+                float(payslip.half_days) if payslip.half_days else 0,
+                float(payslip.holidays) if payslip.holidays else 0,
+                float(payslip.wo) if payslip.wo else 0,
+                float(payslip.leaves) if payslip.leaves else 0,
+                float(payslip.payable_days) if payslip.payable_days else 0,
+                float(payslip.arrear_salary) if payslip.arrear_salary else 0,
+                float(payslip.loan_amount) if payslip.loan_amount else 0,
+                float(payslip.other_deduction) if payslip.other_deduction else 0,
+                payslip.month or 0,
+                payslip.year or 0
+            ]
+            
+            for col, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_idx, column=col, value=value)
+                cell.border = border
+                if col > 3:  # Number columns
+                    cell.number_format = '#,##0.00'
+        
+        # Auto-adjust column widths
+        for col in range(1, len(headers) + 1):
+            ws.column_dimensions[ws.cell(1, col).column_letter].width = 15
+        
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        filename = f"payslip_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        print(f"Error exporting payslip Excel: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error exporting Excel: {str(e)}")
+
+@router.post("/payslip/upload-excel")
+def upload_payslip_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload payslip data from Excel file (insert/update based on emp_id, month, year)"""
+    if current_user.role not in ["Admin", "HR"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    try:
+        from openpyxl import load_workbook
+        
+        # Read file content
+        contents = file.file.read()
+        wb = load_workbook(io.BytesIO(contents))
+        ws = wb.active
+        
+        updated_count = 0
+        inserted_count = 0
+        errors = []
+        
+        # Skip header row, start from row 2
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), 2):
+            try:
+                if not row[0] or not row[1]:  # Skip rows without name and emp_id
+                    continue
+                
+                # Parse row data (matching Excel column order)
+                full_name = str(row[0]) if row[0] else ""
+                emp_id = int(row[1]) if row[1] else None
+                designation = str(row[2]) if row[2] else ""
+                salary_per_month = Decimal(str(row[3])) if row[3] else Decimal(0)
+                salary_per_day = Decimal(str(row[4])) if row[4] else Decimal(0)
+                basic = Decimal(str(row[5])) if row[5] else Decimal(0)
+                hra = Decimal(str(row[6])) if row[6] else Decimal(0)
+                ca = Decimal(str(row[7])) if row[7] else Decimal(0)
+                ma = Decimal(str(row[8])) if row[8] else Decimal(0)
+                sa = Decimal(str(row[9])) if row[9] else Decimal(0)
+                gross_salary = Decimal(str(row[10])) if row[10] else Decimal(0)
+                pf = Decimal(str(row[11])) if row[11] else Decimal(0)
+                esi = Decimal(str(row[12])) if row[12] else Decimal(0)
+                lop = Decimal(str(row[13])) if row[13] else Decimal(0)
+                tds = Decimal(str(row[14])) if row[14] else Decimal(0)
+                late_logins = Decimal(str(row[15])) if row[15] else Decimal(0)
+                late_login_deductions = Decimal(str(row[16])) if row[16] else Decimal(0)
+                earned_gross = Decimal(str(row[17])) if row[17] else Decimal(0)
+                net_salary = Decimal(str(row[18])) if row[18] else Decimal(0)
+                presents = Decimal(str(row[19])) if row[19] else Decimal(0)
+                absents = Decimal(str(row[20])) if row[20] else Decimal(0)
+                half_days = Decimal(str(row[21])) if row[21] else Decimal(0)
+                holidays = Decimal(str(row[22])) if row[22] else Decimal(0)
+                wo = Decimal(str(row[23])) if row[23] else Decimal(0)
+                leaves = Decimal(str(row[24])) if row[24] else Decimal(0)
+                payable_days = Decimal(str(row[25])) if row[25] else Decimal(0)
+                arrear_salary = Decimal(str(row[26])) if row[26] else Decimal(0)
+                loan_amount = Decimal(str(row[27])) if row[27] else Decimal(0)
+                other_deduction = Decimal(str(row[28])) if row[28] else Decimal(0)
+                month = int(row[29]) if row[29] else None
+                year = int(row[30]) if row[30] else None
+                
+                if not emp_id or not month or not year:
+                    errors.append(f"Row {row_num}: Missing emp_id, month, or year")
+                    continue
+                
+                # Check if payslip exists (based on emp_id, month, year)
+                existing_payslip = db.query(PayslipData).filter(
+                    and_(
+                        PayslipData.emp_id == emp_id,
+                        PayslipData.month == month,
+                        PayslipData.year == year
+                    )
+                ).first()
+                
+                # Prepare earnings and deductions JSONB
+                earnings = {
+                    "GrossSalary": float(gross_salary),
+                    "Basic": float(basic),
+                    "HRA": float(hra),
+                    "CA": float(ca),
+                    "MA": float(ma),
+                    "SA": float(sa)
+                }
+                
+                deductions = {
+                    "PF": float(pf),
+                    "ESI": float(esi),
+                    "LOP": float(lop),
+                    "TDS": float(tds),
+                    "LateLogins": float(late_logins),
+                    "LateLogDeduction": float(late_login_deductions)
+                }
+                
+                if existing_payslip:
+                    # Update existing
+                    existing_payslip.full_name = full_name
+                    existing_payslip.designation = designation
+                    existing_payslip.salary_per_month = salary_per_month
+                    existing_payslip.salary_per_day = salary_per_day
+                    existing_payslip.earnings = earnings
+                    existing_payslip.deductions = deductions
+                    existing_payslip.earned_gross = earned_gross
+                    existing_payslip.net_salary = net_salary
+                    existing_payslip.present = presents
+                    existing_payslip.absent = absents
+                    existing_payslip.half_days = half_days
+                    existing_payslip.holidays = holidays
+                    existing_payslip.wo = wo
+                    existing_payslip.leaves = leaves
+                    existing_payslip.payable_days = payable_days
+                    existing_payslip.arrear_salary = arrear_salary
+                    existing_payslip.loan_amount = loan_amount
+                    existing_payslip.other_deduction = other_deduction
+                    existing_payslip.updated_date = datetime.now().date()
+                    existing_payslip.updated_by = current_user.name or current_user.empid
+                    updated_count += 1
+                else:
+                    # Insert new
+                    new_payslip = PayslipData(
+                        full_name=full_name,
+                        emp_id=emp_id,
+                        designation=designation,
+                        salary_per_month=salary_per_month,
+                        salary_per_day=salary_per_day,
+                        earnings=earnings,
+                        deductions=deductions,
+                        earned_gross=earned_gross,
+                        net_salary=net_salary,
+                        present=presents,
+                        absent=absents,
+                        half_days=half_days,
+                        holidays=holidays,
+                        wo=wo,
+                        leaves=leaves,
+                        payable_days=payable_days,
+                        arrear_salary=arrear_salary,
+                        loan_amount=loan_amount,
+                        other_deduction=other_deduction,
+                        month=month,
+                        year=year,
+                        freaze_status=False,
+                        created_date=datetime.now().date(),
+                        created_by=current_user.name or current_user.empid
+                    )
+                    db.add(new_payslip)
+                    inserted_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {row_num}: {str(e)}")
+                continue
+        
+        db.commit()
+        
+        return {
+            "message": "Payslip data uploaded successfully",
+            "inserted": inserted_count,
+            "updated": updated_count,
+            "errors": errors[:10]  # Return first 10 errors
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"Error uploading payslip Excel: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error uploading Excel: {str(e)}")
+
+@router.post("/payroll/generate")
+def generate_payroll(
+    request_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Generate payroll (alias for payslip/generate to match frontend)
+    Accepts month in "YYYY-MM" format from frontend
+    """
+    from routes.payslip_calculate import generate_payslips
+    from routes.payslip_calculate import PayslipCalculationRequest
+    
+    # Parse month from "YYYY-MM" format
+    month_str = request_data.get('month', '')
+    if not month_str:
+        raise HTTPException(status_code=400, detail="Month is required")
+    
+    if '-' in month_str:
+        parts = month_str.split('-')
+        year = int(parts[0])
+        month = int(parts[1])
+    else:
+        raise HTTPException(status_code=400, detail="Invalid month format. Expected YYYY-MM")
+    
+    # Convert request data to PayslipCalculationRequest
+    payslip_request = PayslipCalculationRequest(
+        company_id=request_data.get('company_id'),
+        branch_id=request_data.get('branch_id'),
+        department_id=request_data.get('department_id'),
+        employee_id=request_data.get('employee_id'),
+        month=month,
+        year=year
+    )
+    
+    # Call the payslip generate function
+    return generate_payslips(payslip_request, db, current_user)
+
+@router.put("/payslip/bank-details/{empid}")
+def update_payslip_bank_details(
+    empid: str,
+    bank_data: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update payslip_data table with bank details for all payslips of an employee"""
+    try:
+        # Convert empid to integer
+        try:
+            emp_id_int = int(empid)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid employee ID")
+        
+        # Only allow users to update their own payslip data, or Admin/HR can update any
+        if current_user.role not in ["Admin", "HR"]:
+            if current_user.empid != empid:
+                raise HTTPException(status_code=403, detail="Access denied - You can only update your own payslip data")
+        
+        # Update all payslips for this employee
+        payslips = db.query(PayslipData).filter(PayslipData.emp_id == emp_id_int).all()
+        
+        updated_count = 0
+        for payslip in payslips:
+            if bank_data.get("bank_name") is not None:
+                payslip.bank_name = bank_data["bank_name"]
+            if bank_data.get("bank_acc_no") is not None:
+                payslip.bank_acc_no = bank_data["bank_acc_no"]
+            if bank_data.get("ifsc_code") is not None:
+                payslip.ifsc_code = bank_data["ifsc_code"]
+            if bank_data.get("pan_no") is not None:
+                payslip.pan_no = bank_data["pan_no"]
+            if bank_data.get("pf_no") is not None:
+                payslip.pf_no = bank_data["pf_no"]
+            if bank_data.get("esi_no") is not None:
+                payslip.esi_no = bank_data["esi_no"]
+            updated_count += 1
+        
+        db.commit()
+        
+        return {
+            "message": f"Successfully updated {updated_count} payslip(s)",
+            "updated_count": updated_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating payslip bank details: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error updating payslip bank details: {str(e)}")
+
+@router.post("/payslip/send-email")
+def send_payslip_email(
+    to_email: str = Body(...),
+    subject: str = Body(...),
+    message: str = Body(...),
+    month: int = Body(...),
+    year: int = Body(...),
+    emp_id: int = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Send payslip via email with PDF attachment"""
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.base import MIMEBase
+        from email import encoders
+        import io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+        from reportlab.lib.units import mm
+        import requests
+        
+        # Get payslip data
+        payslip = db.query(PayslipData).filter(
+            and_(
+                PayslipData.emp_id == emp_id,
+                PayslipData.month == month,
+                PayslipData.year == year
+            )
+        ).first()
+        
+        if not payslip:
+            raise HTTPException(status_code=404, detail="Payslip not found")
+        
+        # Email configuration
+        from_email = "hrms@brihaspathi.com"
+        smtp_server = "smtp.gmail.com"
+        smtp_port = 587
+        smtp_password = "aakbcohigtogpyrl"
+        
+        # Create email message
+        msg = MIMEMultipart('alternative')
+        msg['From'] = from_email
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        
+        # Create HTML email body
+        months = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        month_name = months[month] if month <= 12 else ''
+        
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #f4f4f4;
+                }}
+                .email-container {{
+                    background: white;
+                    border-radius: 10px;
+                    padding: 30px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }}
+                .header {{
+                    text-align: center;
+                    padding-bottom: 20px;
+                    border-bottom: 2px solid #007bff;
+                    margin-bottom: 30px;
+                }}
+                .header h1 {{
+                    color: #007bff;
+                    margin: 0;
+                    font-size: 24px;
+                }}
+                .content {{
+                    margin-bottom: 30px;
+                }}
+                .content p {{
+                    margin: 15px 0;
+                    font-size: 16px;
+                }}
+                .payslip-info {{
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }}
+                .payslip-info p {{
+                    margin: 8px 0;
+                    font-size: 14px;
+                }}
+                .footer {{
+                    text-align: center;
+                    padding-top: 20px;
+                    border-top: 1px solid #ddd;
+                    margin-top: 30px;
+                    color: #666;
+                    font-size: 12px;
+                }}
+                .button {{
+                    display: inline-block;
+                    padding: 12px 30px;
+                    background-color: #007bff;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                <div class="header">
+                    <h1>📄 Payslip Notification</h1>
+                </div>
+                <div class="content">
+                    <p>{message.replace(chr(10), '<br>')}</p>
+                    <div class="payslip-info">
+                        <p><strong>Employee Name:</strong> {payslip.full_name or 'N/A'}</p>
+                        <p><strong>Employee ID:</strong> {payslip.emp_id or 'N/A'}</p>
+                        <p><strong>Month:</strong> {month_name} {year}</p>
+                        <p><strong>Net Salary:</strong> ₹{float(payslip.net_salary) if payslip.net_salary else 0:.2f}</p>
+                    </div>
+                    <p>Please find your payslip attached to this email in PDF format.</p>
+                </div>
+                <div class="footer">
+                    <p><strong>Brihaspathi Technologies Limited</strong></p>
+                    <p>This is an automated email. Please do not reply to this email.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Plain text version
+        text_body = f"""
+{message}
+
+Employee Name: {payslip.full_name or 'N/A'}
+Employee ID: {payslip.emp_id or 'N/A'}
+Month: {month_name} {year}
+Net Salary: ₹{float(payslip.net_salary) if payslip.net_salary else 0:.2f}
+
+Please find your payslip attached to this email in PDF format.
+
+Best regards,
+Brihaspathi Technologies Limited
+        """
+        
+        # Attach both versions
+        part1 = MIMEText(text_body, 'plain')
+        part2 = MIMEText(html_body, 'html')
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        # Generate PDF
+        pdf_buffer = io.BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=20*mm, bottomMargin=20*mm)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#007bff'),
+            spaceAfter=20,
+            alignment=1
+        )
+        elements.append(Paragraph(f"PAYSLIP FOR THE MONTH OF {month_name.upper()} {year}", title_style))
+        elements.append(Spacer(1, 20))
+        
+        # Employee Details
+        emp_data = [
+            ['NAME OF THE EMPLOYEE:', payslip.full_name or '-'],
+            ['EMPLOYEE ID:', str(payslip.emp_id) if payslip.emp_id else '-', 'MONTH:', month_name, 'PF NO:', payslip.pf_no or '-'],
+            ['DESIGNATION:', payslip.designation or '-', 'PAID DAYS:', f"{float(payslip.payable_days) if payslip.payable_days else 0:.2f}", 'ESI NO:', payslip.esi_no or '-']
+        ]
+        
+        emp_table = Table(emp_data, colWidths=[80*mm, 50*mm, 40*mm, 30*mm, 40*mm, 30*mm])
+        emp_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f3f5')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        elements.append(emp_table)
+        elements.append(Spacer(1, 15))
+        
+        # Extract earnings and deductions from JSONB
+        earnings_dict = payslip.earnings if isinstance(payslip.earnings, dict) else {}
+        deductions_dict = payslip.deductions if isinstance(payslip.deductions, dict) else {}
+        
+        # Earnings
+        elements.append(Paragraph("EARNINGS", ParagraphStyle('SectionHeader', parent=styles['Heading2'], fontSize=14, textColor=colors.white, backColor=colors.HexColor('#6b7785'), alignment=1)))
+        earnings_data = [
+            ['BASIC', 'HRA', 'CONV', 'ARREARS', 'FIX HRA', 'OTHER ALLOW', 'UNIFORM ALLOW', 'MED ALLOW', 'CCA', 'MOBILE ALLOWANCES'],
+            [
+                f"{float(earnings_dict.get('Basic', 0)):.2f}",
+                f"{float(earnings_dict.get('HRA', 0)):.2f}",
+                f"{float(earnings_dict.get('CA', 0)):.2f}",
+                f"{float(payslip.arrear_salary) if payslip.arrear_salary else 0:.2f}",
+                "0.00",
+                f"{float(earnings_dict.get('SA', 0)):.2f}",
+                "0.00",
+                f"{float(earnings_dict.get('MA', 0)):.2f}",
+                "0.00",
+                "0.00"
+            ]
+        ]
+        earnings_table = Table(earnings_data, colWidths=[20*mm] * 10)
+        earnings_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f3f5')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        elements.append(earnings_table)
+        elements.append(Spacer(1, 15))
+        
+        # Deductions
+        elements.append(Paragraph("DEDUCTIONS", ParagraphStyle('SectionHeader', parent=styles['Heading2'], fontSize=14, textColor=colors.white, backColor=colors.HexColor('#6b7785'), alignment=1)))
+        deductions_data = [
+            ['PF', 'ESI', 'PROF TAX', 'LWF', 'IT', 'LIC', 'OTHER', 'BANK LOAN', 'COMP LOAN', 'RENT PAID', 'SALARY ADV'],
+            [
+                f"{float(deductions_dict.get('PF', 0)):.2f}",
+                f"{float(deductions_dict.get('ESI', 0)):.2f}",
+                f"{float(deductions_dict.get('PT', 0)):.2f}",
+                "0.00",
+                f"{float(deductions_dict.get('TDS', 0)):.2f}",
+                "0.00",
+                f"{float(payslip.other_deduction) if payslip.other_deduction else 0:.2f}",
+                "0.00",
+                f"{float(payslip.loan_amount) if payslip.loan_amount else 0:.2f}",
+                "0.00",
+                "0.00"
+            ]
+        ]
+        deductions_table = Table(deductions_data, colWidths=[18*mm] * 11)
+        deductions_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f3f5')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        elements.append(deductions_table)
+        elements.append(Spacer(1, 15))
+        
+        # Calculate total deductions
+        total_deductions = (
+            float(deductions_dict.get('PF', 0)) +
+            float(deductions_dict.get('ESI', 0)) +
+            float(deductions_dict.get('PT', 0)) +
+            float(deductions_dict.get('TDS', 0)) +
+            float(payslip.other_deduction if payslip.other_deduction else 0) +
+            float(payslip.loan_amount if payslip.loan_amount else 0)
+        )
+        
+        # Totals
+        total_data = [
+            ['TOTAL EARNINGS (IN INR)', f"{float(payslip.earned_gross) if payslip.earned_gross else 0:.2f}"],
+            ['TOTAL DEDUCTIONS (IN INR)', f"{total_deductions:.2f}"],
+            ['NET PAY (IN INR)', f"{float(payslip.net_salary) if payslip.net_salary else 0:.2f}"]
+        ]
+        total_table = Table(total_data, colWidths=[100*mm, 80*mm])
+        total_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f3f5')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        elements.append(total_table)
+        elements.append(Spacer(1, 10))
+        
+        # Footer
+        elements.append(Paragraph("** system generated print out. no signature required **", ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8, textColor=colors.grey, alignment=1)))
+        
+        doc.build(elements)
+        pdf_buffer.seek(0)
+        
+        # Attach PDF
+        attachment = MIMEBase('application', 'octet-stream')
+        attachment.set_payload(pdf_buffer.read())
+        encoders.encode_base64(attachment)
+        attachment.add_header('Content-Disposition', f'attachment; filename=Payslip_{month_name}_{year}_{payslip.emp_id}.pdf')
+        msg.attach(attachment)
+        
+        # Send email
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(from_email, smtp_password)
+        server.send_message(msg)
+        server.quit()
+        
+        return {
+            "success": True,
+            "message": "Payslip sent via email successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error sending payslip email: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error sending email: {str(e)}")
 

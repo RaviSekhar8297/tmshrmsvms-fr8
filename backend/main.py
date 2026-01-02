@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from database import engine, Base
+import os
 
 # Import routes
-from routes import auth, users, projects, tasks, meetings, issues, ratings, dashboard, reports, notifications, calendar_auth, conversations, hr, vms, payroll, leaves, permissions, requests, holidays, work_reports, week_offs, company
+from routes import auth, users, projects, tasks, meetings, issues, ratings, dashboard, reports, notifications, calendar_auth, conversations, hr, vms, payroll, leaves, permissions, requests, holidays, work_reports, week_offs, company, policies, payslip_calculate, employee_data, letters, chatbot, loans
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -52,6 +54,17 @@ app.include_router(holidays.router, prefix="/api")
 app.include_router(work_reports.router, prefix="/api")
 app.include_router(week_offs.router, prefix="/api")
 app.include_router(company.router, prefix="/api")
+app.include_router(policies.router, prefix="/api")
+app.include_router(payslip_calculate.router, prefix="/api")
+app.include_router(employee_data.router, prefix="/api")
+app.include_router(letters.router, prefix="/api")
+app.include_router(chatbot.router, prefix="/api")
+app.include_router(loans.router, prefix="/api")
+
+# Mount static files for uploaded policies
+uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
+if os.path.exists(uploads_dir):
+    app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 @app.get("/")
 def root():

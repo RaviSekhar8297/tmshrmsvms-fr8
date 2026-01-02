@@ -73,6 +73,39 @@ def get_authorization_url(user_email=None):
     authorization_url, state = flow.authorization_url(**auth_params)
     return authorization_url, state
 
+def get_user_email_from_credentials(credentials_dict):
+    """Get user email from Google credentials"""
+    try:
+        from google.oauth2.credentials import Credentials
+        credentials = Credentials.from_authorized_user_info(credentials_dict)
+        
+        # Use tokeninfo endpoint to get user email
+        import requests
+        token_info_url = f"https://www.googleapis.com/oauth2/v1/tokeninfo?access_token={credentials.token}"
+        response = requests.get(token_info_url)
+        
+        if response.status_code == 200:
+            token_info = response.json()
+            return token_info.get('email')
+        else:
+            # Fallback: try to refresh and get userinfo
+            if credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+                credentials_dict = credentials_to_dict(credentials)
+            
+            # Try userinfo endpoint
+            userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+            headers = {'Authorization': f'Bearer {credentials.token}'}
+            response = requests.get(userinfo_url, headers=headers)
+            if response.status_code == 200:
+                user_info = response.json()
+                return user_info.get('email')
+        
+        return None
+    except Exception as e:
+        print(f"Error getting user email from credentials: {e}")
+        return None
+
 def get_credentials_from_code(code: str):
     """Exchange authorization code for credentials"""
     _validate_google_credentials()

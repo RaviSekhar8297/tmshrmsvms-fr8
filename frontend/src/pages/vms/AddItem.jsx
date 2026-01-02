@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 import { visitorsAPI, usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiCamera, FiX, FiUser, FiMail, FiPhone, FiClock, FiSearch } from 'react-icons/fi';
@@ -8,9 +9,22 @@ import '../Users.css';
 
 const AddItem = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [visitors, setVisitors] = useState([]);
-  const [activeTab, setActiveTab] = useState('add'); // 'add' or 'list'
+  // Set default tab based on route and role - Employee always sees 'list', others see 'add' or 'list' based on route
+  const [activeTab, setActiveTab] = useState(
+    user?.role === 'Employee' 
+      ? 'list' 
+      : (location.pathname.includes('/vms/list') ? 'list' : 'add')
+  );
+  
+  // Ensure Employee always sees list view
+  useEffect(() => {
+    if (user?.role === 'Employee' && activeTab !== 'list') {
+      setActiveTab('list');
+    }
+  }, [user?.role, activeTab]);
   const [users, setUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -191,13 +205,12 @@ const AddItem = () => {
   const formatDateTime = (dateString) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
   };
 
   const handleCheckout = async (visitorId) => {
@@ -216,21 +229,23 @@ const AddItem = () => {
         <h1>Visitor Management</h1>
       </div>
 
-      {/* Tabs - Like Users page */}
-      <div className="filter-tabs" style={{ marginBottom: '24px' }}>
-        <button
-          className={`filter-tab ${activeTab === 'add' ? 'active' : ''}`}
-          onClick={() => setActiveTab('add')}
-        >
-          Add Visitor
-        </button>
-        <button
-          className={`filter-tab ${activeTab === 'list' ? 'active' : ''}`}
-          onClick={() => setActiveTab('list')}
-        >
-          Visitors List
-        </button>
-      </div>
+      {/* Tabs - Like Users page - Hide Add Visitor tab for Employee role */}
+      {(user?.role !== 'Employee') && (
+        <div className="filter-tabs" style={{ marginBottom: '24px' }}>
+          <button
+            className={`filter-tab ${activeTab === 'add' ? 'active' : ''}`}
+            onClick={() => setActiveTab('add')}
+          >
+            Add Visitor
+          </button>
+          <button
+            className={`filter-tab ${activeTab === 'list' ? 'active' : ''}`}
+            onClick={() => setActiveTab('list')}
+          >
+            Visitors List
+          </button>
+        </div>
+      )}
 
       {/* Add Visitor Tab */}
       {activeTab === 'add' && (
@@ -478,73 +493,335 @@ const AddItem = () => {
               <h3>No visitors found</h3>
             </div>
           ) : (
-            <div className="users-grid">
+            <div className="users-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
               {visitors.map((visitor) => (
-                <div key={visitor.id} className="user-card">
-                  <div className="user-card-header">
-                    <div className="avatar avatar-lg">
+                <div 
+                  key={visitor.id} 
+                  className="user-card"
+                  style={{
+                    background: 'var(--bg-card)',
+                    borderRadius: '16px',
+                    border: '1px solid var(--border-color)',
+                    overflow: 'hidden',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.12)';
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.05)';
+                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                  }}
+                >
+                  <div 
+                    className="user-card-header"
+                    style={{
+                      padding: '24px 20px 20px 20px',
+                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '16px',
+                      position: 'relative'
+                    }}
+                  >
+                    {/* Image on left */}
+                    <div 
+                      className="avatar avatar-lg"
+                      style={{
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '50%',
+                        border: '3px solid var(--bg-card)',
+                        overflow: 'hidden',
+                        background: 'var(--bg-hover)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                        flexShrink: 0
+                      }}
+                    >
                       {visitor.selfie ? (
-                        <img src={visitor.selfie} alt={visitor.fullname} />
+                        <img 
+                          src={visitor.selfie} 
+                          alt={visitor.fullname}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover'
+                          }}
+                        />
                       ) : (
-                        <FiUser size={24} />
+                        <FiUser size={32} style={{ color: 'var(--text-secondary)' }} />
                       )}
                     </div>
-                    <span className={`badge ${visitor.status === 'IN' ? 'badge-success' : 'badge-danger'}`}>
-                      {visitor.status}
-                    </span>
+                    
+                    {/* Status and VTID on right in column */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      gap: '8px',
+                      flex: 1,
+                      alignItems: 'flex-start'
+                    }}>
+                      <span 
+                        className={`badge ${visitor.status === 'IN' ? 'badge-success' : 'badge-danger'}`}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}
+                      >
+                        {visitor.status}
+                      </span>
+                      <p style={{ 
+                        fontSize: '0.85rem', 
+                        color: 'var(--text-secondary)',
+                        margin: 0
+                      }}>
+                        VT ID: <strong style={{ color: 'var(--text-primary)' }}>{visitor.vtid}</strong>
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="user-card-body">
-                    <h3>{visitor.fullname}</h3>
-                    <p className="user-empid">VT ID: {visitor.vtid}</p>
-                    {visitor.purpose && <p className="user-designation">{visitor.purpose}</p>}
+                  <div 
+                    className="user-card-body"
+                    style={{
+                      padding: '20px',
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px'
+                    }}
+                  >
+                    {/* Name and Purpose in row */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '12px',
+                      flexWrap: 'wrap'
+                    }}>
+                      <h3 style={{ 
+                        fontSize: '1.2rem', 
+                        fontWeight: 700, 
+                        margin: 0,
+                        color: 'var(--text-primary)',
+                        lineHeight: '1.3',
+                        flex: 1,
+                        minWidth: '120px'
+                      }}>
+                        {visitor.fullname}
+                      </h3>
+                      {visitor.purpose && (
+                        <span style={{ 
+                          fontSize: '0.9rem', 
+                          color: 'var(--primary)',
+                          fontWeight: 500,
+                          padding: '4px 12px',
+                          background: 'rgba(99, 102, 241, 0.1)',
+                          borderRadius: '12px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {visitor.purpose}
+                        </span>
+                      )}
+                    </div>
 
-                    <div className="user-contact">
+                    <div 
+                      className="user-contact"
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                        marginTop: '8px',
+                        paddingTop: '16px',
+                        borderTop: '1px solid var(--border-color)'
+                      }}
+                    >
                       {visitor.email && (
-                        <div className="contact-item">
-                          <FiMail />
-                          <span>{visitor.email}</span>
+                        <div 
+                          className="contact-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <FiMail size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <span style={{ 
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {visitor.email}
+                          </span>
                         </div>
                       )}
                       {visitor.phone && (
-                        <div className="contact-item">
-                          <FiPhone />
+                        <div 
+                          className="contact-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <FiPhone size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                           <span>{visitor.phone}</span>
                         </div>
                       )}
                       {visitor.whometomeet && (
-                        <div className="contact-item">
-                          <FiUser />
-                          <span>Meeting: {visitor.whometomeet}</span>
+                        <div 
+                          className="contact-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <FiUser size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          <span style={{ 
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            Meeting: <strong style={{ color: 'var(--text-primary)' }}>{visitor.whometomeet}</strong>
+                          </span>
                         </div>
                       )}
                     </div>
 
-                    <div className="user-status" style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        <FiClock size={14} style={{ marginRight: '4px' }} />
-                        Check In: {formatDateTime(visitor.checkintime)}
-                      </div>
-                      {visitor.checkouttime && (
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          <FiClock size={14} style={{ marginRight: '4px' }} />
-                          Check Out: {formatDateTime(visitor.checkouttime)}
+                    <div 
+                      className="user-status"
+                      style={{
+                        marginTop: 'auto',
+                        paddingTop: '16px',
+                        borderTop: '1px solid var(--border-color)',
+                        width: '100%'
+                      }}
+                    >
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '12px',
+                        fontSize: '0.85rem',
+                        width: '100%'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          alignItems: 'center',
+                          padding: '12px',
+                          background: 'var(--bg-hover)',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{
+                            fontWeight: 600,
+                            color: 'var(--primary)',
+                            fontSize: '0.75rem',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            marginBottom: '4px'
+                          }}>
+                            IN
+                          </div>
+                          <div style={{
+                            color: 'var(--text-primary)',
+                            fontSize: '0.85rem',
+                            textAlign: 'center',
+                            wordBreak: 'break-word',
+                            fontWeight: 500
+                          }}>
+                            {formatDateTime(visitor.checkintime)}
+                          </div>
                         </div>
-                      )}
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          alignItems: 'center',
+                          padding: '12px',
+                          background: 'var(--bg-hover)',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{
+                            fontWeight: 600,
+                            color: visitor.checkouttime ? 'var(--primary)' : 'var(--text-secondary)',
+                            fontSize: '0.75rem',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            marginBottom: '4px'
+                          }}>
+                            OUT
+                          </div>
+                          <div style={{
+                            color: visitor.checkouttime ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontSize: '0.85rem',
+                            textAlign: 'center',
+                            wordBreak: 'break-word',
+                            fontWeight: 500
+                          }}>
+                            {visitor.checkouttime ? formatDateTime(visitor.checkouttime) : '-'}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="user-card-footer">
-                    {visitor.status === 'IN' && (
+                  {visitor.status === 'IN' && (
+                    <div 
+                      className="user-card-footer"
+                      style={{
+                        padding: '16px 20px',
+                        borderTop: '1px solid var(--border-color)',
+                        background: 'var(--bg-hover)'
+                      }}
+                    >
                       <button 
                         className="btn btn-primary btn-sm" 
                         onClick={() => handleCheckout(visitor.id)}
-                        style={{ width: '100%' }}
+                        style={{ 
+                          width: '100%',
+                          padding: '10px 16px',
+                          fontSize: '0.9rem',
+                          fontWeight: 600,
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
+                          color: 'white',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.transform = 'translateY(-2px)';
+                          e.target.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.transform = 'translateY(0)';
+                          e.target.style.boxShadow = 'none';
+                        }}
                       >
                         Check Out
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

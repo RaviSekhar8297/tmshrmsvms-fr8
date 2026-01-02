@@ -99,7 +99,7 @@ const Holidays = () => {
   return (
     <div className="page-container employee-holidays-page">
       <div className="page-header">
-        <h1>Holidays</h1>
+        <h1>HOLIDAYS LIST</h1>
         <div className="header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input
             type="number"
@@ -132,7 +132,7 @@ const Holidays = () => {
         </div>
       ) : (
         <div>
-            <h2 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>All Holidays ({year})</h2>
+            <h2 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>ALL HOLIDAYS OF ({year})</h2>
             <div className="table-container">
               <table className="data-table">
                 <thead>

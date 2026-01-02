@@ -12,12 +12,86 @@ from schemas import (
     TimerStart, TimerStop, TimerResponse
 )
 from routes.auth import get_current_user
-from datetime import datetime, date,timezone
+from datetime import datetime, date, timezone
 from typing import Optional, List
+from sqlalchemy import extract, func as sql_func
 
 
 UTC = timezone.utc
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+@router.get("/calendar")
+def get_calendar_tasks(
+    month: int = None,
+    year: int = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get tasks for calendar view grouped by due_date"""
+    try:
+        from datetime import date as date_type
+        from sqlalchemy import extract
+        
+        if not month:
+            month = datetime.now().month
+        if not year:
+            year = datetime.now().year
+        
+        # Build query based on role
+        query = db.query(Task)
+        
+        if current_user.role == "Employee":
+            query = query.filter(
+                or_(
+                    Task.assigned_to_id == current_user.id,
+                    cast(Task.assigned_to_ids, JSONB).contains([{"empid": current_user.empid}])
+                )
+            )
+        elif current_user.role == "Manager":
+            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
+            team_ids.append(current_user.id)
+            query = query.filter(
+                or_(
+                    Task.assigned_by_id == current_user.id,
+                    Task.assigned_to_id.in_(team_ids) if team_ids else False
+                )
+            )
+        
+        # Filter by month and year
+        query = query.filter(
+            extract('month', Task.due_date) == month,
+            extract('year', Task.due_date) == year
+        )
+        
+        tasks = query.filter(Task.due_date.isnot(None)).all()
+        
+        # Group tasks by date
+        tasks_by_date = {}
+        for task in tasks:
+            if task.due_date:
+                due_date = task.due_date
+                if isinstance(due_date, datetime):
+                    due_date = due_date.date()
+                
+                date_key = due_date.isoformat()
+                if date_key not in tasks_by_date:
+                    tasks_by_date[date_key] = []
+                
+                tasks_by_date[date_key].append({
+                    "id": task.id,
+                    "title": task.title,
+                    "description": task.description,
+                    "status": task.status,
+                    "priority": task.priority,
+                    "due_date": date_key,
+                    "assigned_to_name": None
+                })
+        
+        return tasks_by_date
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching calendar tasks: {str(e)}")
 
 @router.get("/", response_model=List[TaskResponse])
 def get_tasks(
@@ -207,29 +281,43 @@ def get_task_durations(
     
     now = datetime.now(timezone.utc)
     
-    # Assigned Duration: time since task was assigned (start_date or created_at)
-    assigned_start = None
+    # Assigned Duration: time since task was assigned
+    # For newly created tasks, ALWAYS start from created_at to ensure timer starts at 00:00:00
+    # Only use start_date if it's clearly in the future (scheduled tasks)
+    # This ensures that even if start_date is set to today or past, timer starts from creation time
+    assigned_start = task.created_at
+    if assigned_start.tzinfo is None:
+        assigned_start = assigned_start.replace(tzinfo=timezone.utc)
+    
+    # Only use start_date if it's clearly in the future (scheduled task)
+    # We check if start_date is at least 1 hour in the future to avoid timezone/calculation issues
     if task.start_date:
+        start_date_dt = None
         if isinstance(task.start_date, datetime):
-            assigned_start = task.start_date
+            start_date_dt = task.start_date
         else:
             # Convert date to datetime at start of day
             from datetime import date as date_type
             if isinstance(task.start_date, date_type):
-                assigned_start = datetime.combine(task.start_date, datetime.min.time())
+                start_date_dt = datetime.combine(task.start_date, datetime.min.time())
             else:
                 # Try to parse string date
                 try:
-                    assigned_start = datetime.fromisoformat(str(task.start_date).replace('Z', '+00:00'))
+                    start_date_dt = datetime.fromisoformat(str(task.start_date).replace('Z', '+00:00'))
                 except:
-                    assigned_start = datetime.combine(task.start_date, datetime.min.time())
+                    start_date_dt = datetime.combine(task.start_date, datetime.min.time())
             
-            if assigned_start.tzinfo is None:
-                assigned_start = assigned_start.replace(tzinfo=timezone.utc)
-    else:
-        assigned_start = task.created_at
-        if assigned_start.tzinfo is None:
-            assigned_start = assigned_start.replace(tzinfo=timezone.utc)
+            if start_date_dt.tzinfo is None:
+                start_date_dt = start_date_dt.replace(tzinfo=timezone.utc)
+        
+        # Only use start_date if it's clearly in the future (at least 1 hour ahead)
+        # This ensures newly created tasks always start from created_at (00:00:00)
+        # and only scheduled tasks use their future start_date
+        if start_date_dt:
+            time_diff = (start_date_dt - now).total_seconds()
+            # Only use start_date if it's at least 1 hour in the future
+            if time_diff > 3600:  # 1 hour in seconds
+                assigned_start = start_date_dt
     
     # Assigned Duration: time from assigned to completion (or now if not done)
     # If task is done, use updated_at as end time, otherwise use now
@@ -438,6 +526,17 @@ def create_task(
     if current_user.role == "Employee":
         raise HTTPException(status_code=403, detail="Employees cannot create tasks")
     
+    # Check for duplicate title (case-insensitive)
+    existing_task = db.query(Task).filter(
+        func.lower(Task.title) == func.lower(task_data.title.strip())
+    ).first()
+    
+    if existing_task:
+        raise HTTPException(
+            status_code=400, 
+            detail="Task title already exists. Please use a different title."
+        )
+    
     # Get assigned to name
     assigned_to_name = None
     if task_data.assigned_to_id:
@@ -490,6 +589,19 @@ def update_task(
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Check for duplicate title if title is being updated (case-insensitive)
+    if task_data.title is not None:
+        existing_task = db.query(Task).filter(
+            func.lower(Task.title) == func.lower(task_data.title.strip()),
+            Task.id != task_id
+        ).first()
+        
+        if existing_task:
+            raise HTTPException(
+                status_code=400, 
+                detail="Task title already exists. Please use a different title."
+            )
     
     # Employees can only update status and percent_complete
     if current_user.role == "Employee":

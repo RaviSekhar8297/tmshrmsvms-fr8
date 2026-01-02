@@ -9,14 +9,17 @@ const Permission = () => {
   const { user } = useAuth();
   const location = useLocation();
   const isSelfPage = location.pathname.includes('/self/');
+  const isEmployeesPage = location.pathname.includes('/employees/');
   const [loading, setLoading] = useState(false);
   const [permissions, setPermissions] = useState([]);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     type: '',
-    from_datetime: '',
-    to_datetime: '',
+    from_date: '',
+    from_time: '',
+    to_date: '',
+    to_time: '',
     reason: ''
   });
 
@@ -27,10 +30,12 @@ const Permission = () => {
   const fetchPermissions = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/permissions/self');
+      const endpoint = (['Admin', 'Manager', 'HR'].includes(user?.role) && isEmployeesPage) ? '/permissions' : '/permissions/self';
+      const response = await api.get(endpoint);
       setPermissions(response.data);
     } catch (error) {
       console.error('Error fetching permissions:', error);
+      toast.error('Failed to fetch permissions');
     } finally {
       setLoading(false);
     }
@@ -39,21 +44,145 @@ const Permission = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    
+    // Validate required fields
+    if (!formData.type) {
+      toast.error('Please select Permission Type');
+      setLoading(false);
+      return;
+    }
+    if (!formData.from_date) {
+      toast.error('Please select From Date');
+      setLoading(false);
+      return;
+    }
+    if (!formData.from_time) {
+      toast.error('Please select From Time');
+      setLoading(false);
+      return;
+    }
+    if (!formData.to_date) {
+      toast.error('Please ensure To Date is set');
+      setLoading(false);
+      return;
+    }
+    if (!formData.to_time) {
+      toast.error('Please ensure To Time is set');
+      setLoading(false);
+      return;
+    }
+    if (!formData.reason || formData.reason.trim() === '') {
+      toast.error('Please enter Reason');
+      setLoading(false);
+      return;
+    }
+    
+    // Validate time range (09:30 to 17:00)
+    const [hours, minutes] = formData.from_time.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes;
+    const minMinutes = 9 * 60 + 30; // 09:30
+    const maxMinutes = 17 * 60; // 17:00
+    
+    if (totalMinutes < minMinutes || totalMinutes > maxMinutes) {
+      toast.error('From Time must be between 09:30 and 17:00');
+      setLoading(false);
+      return;
+    }
+    
     try {
-      await api.post('/permissions', formData);
+      // Combine date and time into datetime strings for API
+      const submitData = {
+        permission_type: formData.type,
+        from_datetime: formData.from_date && formData.from_time 
+          ? `${formData.from_date}T${formData.from_time}:00` 
+          : '',
+        to_datetime: formData.to_date && formData.to_time 
+          ? `${formData.to_date}T${formData.to_time}:00` 
+          : '',
+        reason: formData.reason || ''
+      };
+      await api.post('/permissions', submitData);
       toast.success('Permission request submitted successfully');
       setShowForm(false);
-      setFormData({ type: '', from_datetime: '', to_datetime: '', reason: '' });
+      setFormData({ type: '', from_date: '', from_time: '', to_date: '', to_time: '', reason: '' });
       fetchPermissions();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to submit permission request');
+      // Handle validation errors (422)
+      if (error.response?.status === 422 && error.response?.data?.detail) {
+        const details = error.response.data.detail;
+        if (Array.isArray(details)) {
+          // Pydantic validation errors
+          const errorMessages = details.map(err => err.msg || err.message || JSON.stringify(err)).join(', ');
+          toast.error(`Validation error: ${errorMessages}`);
+        } else if (typeof details === 'string') {
+          toast.error(details);
+        } else {
+          toast.error('Validation error occurred');
+        }
+      } else {
+        const errorMessage = error.response?.data?.detail || error.response?.data?.message || 'Failed to submit permission request';
+        toast.error(typeof errorMessage === 'string' ? errorMessage : 'Failed to submit permission request');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    const updatedFormData = { ...formData, [name]: value };
+    
+    // When from_time changes, automatically calculate to_datetime (add 2 hours)
+    if (name === 'from_time' && value && formData.from_date) {
+      const [hours, minutes] = value.split(':');
+      let newHours = parseInt(hours) + 2;
+      const newMinutes = minutes;
+      
+      // Handle day overflow (if hours exceed 23)
+      let newDate = formData.from_date;
+      if (newHours >= 24) {
+        newHours = newHours - 24;
+        const currentDate = new Date(formData.from_date);
+        currentDate.setDate(currentDate.getDate() + 1);
+        newDate = currentDate.toISOString().split('T')[0];
+      }
+      
+      const newTime = `${String(newHours).padStart(2, '0')}:${newMinutes}`;
+      updatedFormData.to_date = newDate;
+      updatedFormData.to_time = newTime;
+    }
+    
+    // When from_date changes, update to_date if from_time is set
+    if (name === 'from_date' && value && formData.from_time) {
+      const [hours, minutes] = formData.from_time.split(':');
+      let newHours = parseInt(hours) + 2;
+      const newMinutes = minutes;
+      
+      let newDate = value;
+      if (newHours >= 24) {
+        newHours = newHours - 24;
+        const currentDate = new Date(value);
+        currentDate.setDate(currentDate.getDate() + 1);
+        newDate = currentDate.toISOString().split('T')[0];
+      }
+      
+      const newTime = `${String(newHours).padStart(2, '0')}:${newMinutes}`;
+      updatedFormData.to_date = newDate;
+      updatedFormData.to_time = newTime;
+    }
+    
+    setFormData(updatedFormData);
+  };
+
+  const handleStatusUpdate = async (permissionId, status) => {
+    try {
+      await api.put(`/permissions/${permissionId}`, { status });
+      toast.success(`Permission ${status} successfully`);
+      fetchPermissions();
+    } catch (error) {
+      const errorMessage = error.response?.data?.detail || 'Failed to update permission status';
+      toast.error(errorMessage);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -117,37 +246,92 @@ const Permission = () => {
                     name="type"
                     value={formData.type}
                     onChange={handleChange}
-                    required
+                    
                     className="form-select"
+                    style={{ width: '100%' }}
                   >
                     <option value="">Select Type</option>
-                    <option value="late-arrival">Late Arrival</option>
-                    <option value="early-departure">Early Departure</option>
-                    <option value="half-day">Half Day</option>
-                    <option value="short-leave">Short Leave</option>
+                    <option value="morning-short-leave">Morning-Short Leave</option>
+                    <option value="evening-short-leave">Evening-Short Leave</option>
                   </select>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label>From Date & Time *</label>
+                    <label>From Date *</label>
                     <input
-                      type="datetime-local"
-                      name="from_datetime"
-                      value={formData.from_datetime}
+                      type="date"
+                      name="from_date"
+                      value={formData.from_date}
                       onChange={handleChange}
-                      required
+                      
                       className="form-input"
+                      style={{ width: '100%' }}
                     />
                   </div>
                   <div className="form-group">
-                    <label>To Date & Time *</label>
+                    <label>From Time *</label>
                     <input
-                      type="datetime-local"
-                      name="to_datetime"
-                      value={formData.to_datetime}
+                      type="time"
+                      name="from_time"
+                      value={formData.from_time}
+                      onChange={(e) => {
+                        const selectedTime = e.target.value;
+                        // Validate time range (09:30 to 17:00)
+                        if (selectedTime) {
+                          const [hours, minutes] = selectedTime.split(':').map(Number);
+                          const totalMinutes = hours * 60 + minutes;
+                          const minMinutes = 9 * 60 + 30; // 09:30
+                          const maxMinutes = 17 * 60; // 17:00
+                          
+                          if (totalMinutes < minMinutes || totalMinutes > maxMinutes) {
+                            toast.error('Time must be between 09:30 and 17:00');
+                            return;
+                          }
+                        }
+                        handleChange(e);
+                      }}
+                      
+                      min="09:30"
+                      max="17:00"
+                      step="1800"
+                      className="form-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>To Date *</label>
+                    <input
+                      type="date"
+                      name="to_date"
+                      value={formData.to_date}
                       onChange={handleChange}
                       required
                       className="form-input"
+                      readOnly
+                      style={{ 
+                        width: '100%',
+                        background: 'var(--bg-hover)', 
+                        cursor: 'not-allowed'
+                      }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>To Time *</label>
+                    <input
+                      type="time"
+                      name="to_time"
+                      value={formData.to_time}
+                      onChange={handleChange}
+                      
+                      className="form-input"
+                      readOnly
+                      style={{ 
+                        width: '100%',
+                        background: 'var(--bg-hover)', 
+                        cursor: 'not-allowed'
+                      }}
                     />
                   </div>
                 </div>
@@ -157,9 +341,10 @@ const Permission = () => {
                     name="reason"
                     value={formData.reason}
                     onChange={handleChange}
-                    required
+                    
                     rows="5"
                     className="form-input"
+                    style={{ width: '100%' }}
                     placeholder="Enter reason for permission..."
                   />
                 </div>
@@ -187,6 +372,7 @@ const Permission = () => {
           <table className="data-table">
             <thead>
               <tr>
+                {isEmployeesPage && <th>Employee</th>}
                 <th>Applied Date</th>
                 <th>Date</th>
                 <th>From Time</th>
@@ -194,6 +380,8 @@ const Permission = () => {
                 <th>Type</th>
                 <th>Status</th>
                 <th>Reason</th>
+                <th>Approved By</th>
+                {isEmployeesPage && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -204,11 +392,19 @@ const Permission = () => {
                   return (
                     p.type?.toLowerCase().includes(term) ||
                     p.status?.toLowerCase().includes(term) ||
-                    p.reason?.toLowerCase().includes(term)
+                    p.reason?.toLowerCase().includes(term) ||
+                    p.name?.toLowerCase().includes(term) ||
+                    p.empid?.toLowerCase().includes(term)
                   );
                 })
                 .map((permission) => (
                   <tr key={permission.id}>
+                    {isEmployeesPage && (
+                      <td>
+                        <div>{permission.name || '-'}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{permission.empid || '-'}</div>
+                      </td>
+                    )}
                     <td>{new Date(permission.applied_date).toLocaleDateString()}</td>
                     <td>{new Date(permission.from_datetime).toLocaleDateString()}</td>
                     <td>{new Date(permission.from_datetime).toLocaleTimeString()}</td>
@@ -216,6 +412,47 @@ const Permission = () => {
                     <td>{permission.type}</td>
                     <td>{getStatusBadge(permission.status)}</td>
                     <td>{permission.reason || '-'}</td>
+                    <td>{permission.approved_by || 'Pending'}</td>
+                    {isEmployeesPage && (
+                      <td>
+                        {permission.status === 'pending' ? (
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="btn"
+                              style={{ 
+                                padding: '6px 12px', 
+                                fontSize: '0.85rem',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => handleStatusUpdate(permission.id, 'approved')}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn"
+                              style={{ 
+                                padding: '6px 12px', 
+                                fontSize: '0.85rem',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => handleStatusUpdate(permission.id, 'rejected')}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>-</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               {permissions.filter((p) => {
@@ -224,11 +461,13 @@ const Permission = () => {
                 return (
                   p.type?.toLowerCase().includes(term) ||
                   p.status?.toLowerCase().includes(term) ||
-                  p.reason?.toLowerCase().includes(term)
+                  p.reason?.toLowerCase().includes(term) ||
+                  p.name?.toLowerCase().includes(term) ||
+                  p.empid?.toLowerCase().includes(term)
                 );
               }).length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">No permission requests found</td>
+                  <td colSpan={isEmployeesPage ? 10 : 8} className="text-center">No permission requests found</td>
                 </tr>
               ) : null}
             </tbody>

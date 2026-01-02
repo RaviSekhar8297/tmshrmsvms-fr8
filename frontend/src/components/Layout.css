@@ -6,10 +6,54 @@
   min-height: 100vh;
   padding: 24px;
   padding-top: 105px; /* header height + padding */
+  overflow-x: hidden;
+}
+
+.page-content {
+  width: 100%;
+  height: calc(100vh - 105px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 24px;
+}
+
+/* Ensure page-container inside page-content scrolls properly */
+.page-content .page-container {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 @media (max-width: 768px) {
   .main-content {
     margin-left: 0;
+    padding: 0;
+    padding-top: 70px; /* Header height */
+  }
+
+  .page-content {
+    height: calc(100vh - 70px);
+    padding: 16px;
+    padding-bottom: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .page-content .page-container {
+    padding: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding-top: 65px; /* Header height */
+  }
+
+  .page-content {
+    height: calc(100vh - 65px);
+    padding: 16px;
+    padding-bottom: 16px;
   }
 }

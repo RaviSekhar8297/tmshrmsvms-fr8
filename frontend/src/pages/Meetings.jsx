@@ -23,6 +23,7 @@ const Meetings = () => {
   const [notesLoading, setNotesLoading] = useState(false);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [checkingCalendar, setCheckingCalendar] = useState(true);
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
   const notesPopupRef = useRef(null);
   const { isEmployee, user } = useAuth();
 
@@ -47,7 +48,20 @@ const Meetings = () => {
   const checkCalendarStatus = async () => {
     try {
       const response = await googleCalendarAPI.getStatus();
-      setCalendarConnected(response.data.connected);
+      const isConnected = response.data.connected;
+      const connectedEmail = response.data.email;
+      
+      // Only set as connected if email matches user's email
+      if (isConnected && user?.email && connectedEmail) {
+        if (connectedEmail.toLowerCase() === user.email.toLowerCase()) {
+          setCalendarConnected(true);
+        } else {
+          // Email doesn't match - not connected for this user
+          setCalendarConnected(false);
+        }
+      } else {
+        setCalendarConnected(isConnected);
+      }
     } catch (error) {
       console.error('Error checking calendar status:', error);
       setCalendarConnected(false);
@@ -396,45 +410,6 @@ const Meetings = () => {
         )}
       </div>
 
-      {/* Google Calendar Connection Banner */}
-      {!checkingCalendar && !calendarConnected && (
-        <div style={{
-          background: '#fff3cd',
-          border: '1px solid #ffc107',
-          borderRadius: '8px',
-          padding: '12px 16px',
-          marginBottom: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-            <FiCalendar style={{ color: '#856404', fontSize: '20px' }} />
-            <div>
-              <strong style={{ color: '#856404' }}>Google Calendar Not Connected</strong>
-              <p style={{ margin: '4px 0 0 0', color: '#856404', fontSize: '14px' }}>
-                Connect your Google Calendar to automatically create real Google Meet links when scheduling meetings.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleConnectCalendar}
-            style={{
-              background: '#ffc107',
-              color: '#000',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            Connect Google Calendar
-          </button>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="meetings-filters">

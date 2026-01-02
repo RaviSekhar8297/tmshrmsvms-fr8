@@ -43,6 +43,7 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     dob: Optional[date] = None
     doj: Optional[date] = None
+    emp_inactive_date: Optional[date] = None
     designation: Optional[str] = None
     company_id: Optional[int] = None
     branch_id: Optional[int] = None
@@ -67,6 +68,7 @@ class UserResponse(BaseModel):
     is_active: bool
     dob: Optional[date]
     doj: Optional[date]
+    emp_inactive_date: Optional[date] = None
     designation: Optional[str]
     company_id: Optional[int]
     branch_id: Optional[int]
@@ -74,6 +76,7 @@ class UserResponse(BaseModel):
     company_name: Optional[str]
     branch_name: Optional[str]
     department_name: Optional[str]
+    salary_per_annum: Optional[Decimal] = None
     bank_details: Optional[Dict[str, Any]] = None
     family_details: Optional[List[Dict[str, Any]]] = None
     nominee_details: Optional[Dict[str, Any]] = None
@@ -90,6 +93,9 @@ class LoginRequest(BaseModel):
     username: str
     password: str
     device_info: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    new_password: str
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -450,3 +456,36 @@ class ReportFilter(BaseModel):
     employee_id: Optional[int] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+
+# ============ Policy Schemas ============
+class PolicyData(BaseModel):
+    name: str
+    type: str
+    pages: int
+    file_url: Optional[str] = None
+
+class ReadByEntry(BaseModel):
+    empid: str
+    name: str
+    status: str
+    viewed_at: Optional[datetime] = None
+
+class PolicyCreate(BaseModel):
+    policy: PolicyData
+
+class PolicyUpdate(BaseModel):
+    policy: Optional[PolicyData] = None
+
+class PolicyResponse(BaseModel):
+    id: int
+    policy: Dict[str, Any]
+    readby: List[Dict[str, Any]]
+    likes: List[Dict[str, Any]]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class MarkAsReadRequest(BaseModel):
+    empid: str
+    name: str

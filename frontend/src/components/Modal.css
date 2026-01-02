@@ -7,8 +7,22 @@
 }
 
 .modal-full {
-  max-width: 95%;
-  max-height: 95vh;
+  max-width: 98%;
+  width: 98%;
+  max-height: 98vh;
+  height: 98vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-full .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  min-height: 0;
 }
 
 

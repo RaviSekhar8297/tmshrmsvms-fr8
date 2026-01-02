@@ -2,6 +2,15 @@
   animation: fadeIn 0.3s ease;
 }
 
+@keyframes spin {
+  0% {
+    transform: translateY(-50%) rotate(0deg);
+  }
+  100% {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}
+
 .profile-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -111,6 +120,14 @@
 }
 
 /* Account Card */
+.account-card {
+  background: transparent;
+}
+
+.account-card .card-header {
+  background: transparent;
+}
+
 .account-info-table {
   margin-top: 8px;
 }
@@ -118,11 +135,13 @@
 .info-table {
   width: 100%;
   border-collapse: collapse;
+  background: transparent;
 }
 
 .info-table tbody tr {
   border-bottom: 1px solid var(--bg-hover);
   transition: background 0.2s;
+  background: transparent;
 }
 
 .info-table tbody tr:hover {
@@ -133,6 +152,10 @@
   border-bottom: none;
 }
 
+.info-table td {
+  background: transparent !important;
+}
+
 .info-label {
   padding: 12px 16px;
   font-weight: 600;
@@ -140,6 +163,7 @@
   font-size: 0.875rem;
   width: 40%;
   vertical-align: middle;
+  background: transparent !important;
 }
 
 .info-value {
@@ -148,6 +172,7 @@
   font-size: 0.9rem;
   font-weight: 500;
   vertical-align: middle;
+  background: transparent !important;
 }
 
 .account-info {
@@ -308,7 +333,7 @@
 }
 
 .detail-card {
-  background: var(--bg-card);
+  background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 22px;
@@ -377,6 +402,8 @@
 
 .detail-card-body {
   min-height: 100px;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .detail-items {
@@ -555,14 +582,88 @@
 }
 
 @media (max-width: 768px) {
+  .page-container {
+    padding: 16px;
+  }
+
+  .profile-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .profile-card {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .profile-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 16px;
+  }
+
+  .profile-avatar {
+    width: 100px;
+    height: 100px;
+    font-size: 2.5rem;
+  }
+
+  .profile-info h2 {
+    font-size: 1.5rem;
+  }
+
+  .profile-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .profile-actions .btn {
+    width: 100%;
+  }
+
+  .detail-section {
+    padding: 16px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
   .documents-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .modal-content {
+    margin: 10px;
+    max-width: calc(100% - 20px);
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 600px;
+    font-size: 0.85rem;
   }
 }
 
 @media (max-width: 480px) {
   .documents-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-avatar {
+    width: 80px;
+    height: 80px;
+    font-size: 2rem;
   }
 }
 
