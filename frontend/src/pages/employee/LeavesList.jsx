@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiChevronLeft, FiChevronRight, FiRefreshCw } from 'react-icons/fi';
+import DatePicker from '../../components/DatePicker';
 import './Employee.css';
 import '../hr/HR.css';
 
@@ -110,58 +111,19 @@ const LeavesList = () => {
           </div>
           <div className="filter-field">
             <span className="filter-label">From date</span>
-            <input
-              type="date"
+            <DatePicker
               value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="form-input"
-              style={{
-                padding: '10px 16px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                background: 'var(--bg-card)',
-                color: 'var(--text-primary)',
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                width: '100%'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = 'var(--primary)';
-                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = 'var(--border-color)';
-                e.target.style.boxShadow = 'none';
-              }}
+              onChange={(date) => setFromDate(date)}
+              placeholder="Select from date"
             />
           </div>
           <div className="filter-field">
             <span className="filter-label">To date</span>
-            <input
-              type="date"
+            <DatePicker
               value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="form-input"
-              style={{
-                padding: '10px 16px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                background: 'var(--bg-card)',
-                color: 'var(--text-primary)',
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                width: '100%'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = 'var(--primary)';
-                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = 'var(--border-color)';
-                e.target.style.boxShadow = 'none';
-              }}
+              onChange={(date) => setToDate(date)}
+              placeholder="Select to date"
+              min={fromDate || undefined}
             />
           </div>
           <div className="filter-field" style={{ minWidth: '160px' }}>

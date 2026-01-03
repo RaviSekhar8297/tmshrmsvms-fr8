@@ -1,22 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiEdit2, FiTrash2, FiPlus } from 'react-icons/fi';
+import DatePicker from '../../components/DatePicker';
 import './Employee.css';
 
 const Holidays = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [holidays, setHolidays] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [showModal, setShowModal] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState(null);
   const [newHoliday, setNewHoliday] = useState({ name: '', date: '', description: '' });
+  const [updatingPermission, setUpdatingPermission] = useState(null);
+  const updateQueueRef = useRef(new Map());
+  const processingRef = useRef(false);
+
+  const isAdminOrHR = user?.role === 'Admin' || user?.role === 'HR';
 
   useEffect(() => {
     fetchHolidays();
-  }, [year]);
+    if (isAdminOrHR) {
+      fetchBranches();
+    }
+  }, [year, isAdminOrHR]);
 
   const fetchHolidays = async () => {
     setLoading(true);
@@ -30,9 +40,19 @@ const Holidays = () => {
     }
   };
 
+  const fetchBranches = async () => {
+    try {
+      const response = await api.get('/branch/list');
+      setBranches(response.data || []);
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      toast.error('Failed to load branches');
+    }
+  };
+
+  // For delete operations, use all holidays (Admin/HR only)
   const upcomingHolidays = holidays.filter(h => new Date(h.date) >= new Date()).sort((a, b) => new Date(a.date) - new Date(b.date));
   const pastHolidays = holidays.filter(h => new Date(h.date) < new Date()).sort((a, b) => new Date(b.date) - new Date(a.date));
-  const isAdminOrHR = user?.role === 'Admin' || user?.role === 'HR';
 
   const handleAddHoliday = async (e) => {
     e.preventDefault();
@@ -41,11 +61,15 @@ const Holidays = () => {
       return;
     }
     try {
+      const holidayData = {
+        ...newHoliday,
+        holiday_permissions: []
+      };
       if (editingHoliday) {
-        await api.put(`/holidays/${editingHoliday.id}`, newHoliday);
+        await api.put(`/holidays/${editingHoliday.id}`, holidayData);
         toast.success('Holiday updated');
       } else {
-        await api.post('/holidays', newHoliday);
+        await api.post('/holidays', holidayData);
         toast.success('Holiday added');
       }
       setShowModal(false);
@@ -96,6 +120,125 @@ const Holidays = () => {
     }
   };
 
+  const isBranchChecked = (holiday, branchId) => {
+    if (!holiday.holiday_permissions || holiday.holiday_permissions.length === 0) {
+      return false;
+    }
+    return holiday.holiday_permissions.some(p => p.branch_id === branchId);
+  };
+
+  // Process update queue sequentially
+  const processQueue = async () => {
+    if (processingRef.current || updateQueueRef.current.size === 0) return;
+    
+    processingRef.current = true;
+    const queueEntries = Array.from(updateQueueRef.current.entries());
+    
+    // Clear the queue before processing to prevent duplicates
+    updateQueueRef.current.clear();
+    
+    for (const [key, { holiday, branch, isChecked }] of queueEntries) {
+      setUpdatingPermission(key);
+      
+      try {
+        await api.put(`/holidays/${holiday.id}/permissions`, {
+          branch_id: branch.id,
+          branch_name: branch.name,
+          is_checked: isChecked
+        });
+      } catch (error) {
+        console.error('Error updating permission:', error);
+        toast.error(error.response?.data?.detail || `Failed to update permission for ${branch.name}`);
+      } finally {
+        setUpdatingPermission(null);
+        // Small delay between requests to ensure DB consistency
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+    }
+    
+    // Refresh holidays after all updates complete
+    fetchHolidays();
+    processingRef.current = false;
+    
+    // Check if more items were added while processing
+    if (updateQueueRef.current.size > 0) {
+      setTimeout(processQueue, 100);
+    }
+  };
+
+  const handlePermissionToggle = async (holiday, branch) => {
+    const isChecked = isBranchChecked(holiday, branch.id);
+    const newCheckedState = !isChecked;
+    const key = `${holiday.id}-${branch.id}`;
+    
+    // Optimistic update - update local state immediately
+    const updatedHolidays = holidays.map(h => {
+      if (h.id === holiday.id) {
+        const currentPermissions = h.holiday_permissions || [];
+        let updatedPermissions;
+        
+        if (newCheckedState) {
+          // Add branch if not exists
+          if (!currentPermissions.some(p => p.branch_id === branch.id)) {
+            updatedPermissions = [...currentPermissions, { branch_id: branch.id, branch_name: branch.name }];
+          } else {
+            updatedPermissions = currentPermissions;
+          }
+        } else {
+          // Remove branch
+          updatedPermissions = currentPermissions.filter(p => p.branch_id !== branch.id);
+        }
+        
+        return { ...h, holiday_permissions: updatedPermissions };
+      }
+      return h;
+    });
+    setHolidays(updatedHolidays);
+    
+    // Add to queue for sequential processing
+    updateQueueRef.current.set(key, { holiday, branch, isChecked: newCheckedState });
+    
+    // Trigger queue processing if not already processing
+    if (!processingRef.current) {
+      setTimeout(processQueue, 50);
+    }
+  };
+
+  // Filter holidays based on user's branch_id for Employee/Manager roles
+  // Admin/HR see all holidays to manage permissions
+  const getFilteredHolidays = () => {
+    // Admin/HR see all holidays (no filtering) so they can manage permissions
+    if (isAdminOrHR) {
+      return holidays;
+    }
+    
+    // For Employee and Manager: only show holidays where their branch_id matches
+    if (user?.branch_id) {
+      return holidays.filter(holiday => {
+        // If holiday has no permissions, don't show it
+        if (!holiday.holiday_permissions || holiday.holiday_permissions.length === 0) {
+          return false;
+        }
+        // Check if user's branch_id exists in the holiday's holiday_permissions array
+        // Logic: If logged user's branch_id matches any branch_id in holiday_permissions → Show holiday
+        // Example: 
+        //   - User branch_id = 1
+        //   - holiday_permissions = [{"branch_id": 1, "branch_name": "CORPORATE OFFICE"}, {"branch_id": 2, "branch_name": "MUMBAI"}]
+        //   - Since branch_id 1 exists in the array → Show holiday ✓
+        //   - If holiday_permissions = [{"branch_id": 2, "branch_name": "MUMBAI"}] → Don't show holiday ✗
+        return holiday.holiday_permissions.some(
+          perm => perm.branch_id === user.branch_id
+        );
+      });
+    }
+    
+    // If user has no branch_id, show no holidays
+    return [];
+  };
+
+  const filteredHolidays = getFilteredHolidays();
+  const sortedHolidays = [...filteredHolidays].sort((a, b) => new Date(a.date) - new Date(b.date));
+
   return (
     <div className="page-container employee-holidays-page">
       <div className="page-header">
@@ -132,55 +275,123 @@ const Holidays = () => {
         </div>
       ) : (
         <div>
-            <h2 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>ALL HOLIDAYS OF ({year})</h2>
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>S.No</th>
-                    <th>Date</th>
-                    <th>Name</th>
-                    <th>Description</th>
-                    {isAdminOrHR && <th>Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {holidays.length === 0 ? (
+          {isAdminOrHR && branches.length > 0 && sortedHolidays.length > 0 ? (
+            <>
+              <h2 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>HOLIDAY PERMISSIONS ({year})</h2>
+              <div className="table-container holiday-permissions-matrix">
+                <table className="data-table" style={{ minWidth: '600px' }}>
+                  <thead>
                     <tr>
-                      <td colSpan={isAdminOrHR ? 5 : 4} className="text-center">No holidays found</td>
+                      <th style={{ position: 'sticky', left: 0, zIndex: 10, background: 'var(--bg-card)', minWidth: '200px' }}>
+                        Branch Name / ID
+                      </th>
+                      {sortedHolidays.map((holiday) => (
+                        <th key={holiday.id} style={{ minWidth: '120px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <strong>{holiday.name}</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 'normal' }}>
+                              {new Date(holiday.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        </th>
+                      ))}
                     </tr>
-                  ) : (
-                    holidays.sort((a, b) => new Date(a.date) - new Date(b.date)).map((holiday, idx) => {
-                      const holidayDate = new Date(holiday.date);
-                      const isPast = holidayDate < new Date();
-                      return (
-                        <tr key={holiday.id} style={{ backgroundColor: isPast ? 'rgba(107, 114, 128, 0.1)' : 'transparent' }}>
-                          <td>{idx + 1}</td>
-                          <td style={{ color: isPast ? '#6b7280' : 'inherit' }}>
-                            {holidayDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                          </td>
-                          <td><strong style={{ color: isPast ? '#6b7280' : 'inherit' }}>{holiday.name}</strong></td>
-                          <td style={{ color: isPast ? '#6b7280' : 'inherit' }}>{holiday.description || '-'}</td>
-                          {isAdminOrHR && (
-                            <td>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn-sm btn-secondary" onClick={() => handleEdit(holiday)}>
-                                  <FiEdit2 />
-                                </button>
-                                <button className="btn-sm btn-secondary" onClick={() => handleDelete(holiday.id)} style={{ background: '#ef4444', color: 'white' }}>
-                                  <FiTrash2 />
-                                </button>
+                  </thead>
+                  <tbody>
+                    {branches.map((branch) => (
+                      <tr key={branch.id}>
+                        <td style={{ position: 'sticky', left: 0, zIndex: 9, background: 'var(--bg-card)', fontWeight: 600 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span>{branch.name}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 'normal' }}>
+                              ID: {branch.id}
+                            </span>
+                          </div>
+                        </td>
+                        {sortedHolidays.map((holiday) => {
+                          const checked = isBranchChecked(holiday, branch.id);
+                          const key = `${holiday.id}-${branch.id}`;
+                          const isUpdating = updatingPermission === key;
+                          return (
+                            <td key={holiday.id} style={{ textAlign: 'center', padding: '12px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                <label className="holiday-toggle-switch" style={{ opacity: isUpdating ? 0.6 : 1, cursor: isUpdating ? 'not-allowed' : 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => !isUpdating && handlePermissionToggle(holiday, branch)}
+                                    disabled={isUpdating}
+                                  />
+                                  <span className="holiday-toggle-slider"></span>
+                                </label>
+                                <span className={`holiday-toggle-status ${checked ? 'yes' : 'no'}`} style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                                  {checked ? 'Yes' : 'No'}
+                                </span>
                               </div>
                             </td>
-                          )}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+
+          <h2 style={{ marginBottom: '16px', color: 'var(--text-primary)', marginTop: isAdminOrHR && branches.length > 0 && sortedHolidays.length > 0 ? '32px' : '0' }}>
+            ALL HOLIDAYS OF ({year})
+          </h2>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>S.No</th>
+                  <th>Date</th>
+                  <th>Name</th>
+                  <th>Description</th>
+                  {isAdminOrHR && <th>Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedHolidays.length === 0 ? (
+                  <tr>
+                    <td colSpan={isAdminOrHR ? 5 : 4} className="text-center">
+                      {isAdminOrHR ? 'No holidays found' : 'No holidays available for your branch'}
+                    </td>
+                  </tr>
+                ) : (
+                  sortedHolidays.map((holiday, idx) => {
+                    const holidayDate = new Date(holiday.date);
+                    const isPast = holidayDate < new Date();
+                    return (
+                      <tr key={holiday.id} style={{ backgroundColor: isPast ? 'rgba(107, 114, 128, 0.1)' : 'transparent' }}>
+                        <td>{idx + 1}</td>
+                        <td style={{ color: isPast ? '#6b7280' : 'inherit' }}>
+                          {holidayDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </td>
+                        <td><strong style={{ color: isPast ? '#6b7280' : 'inherit' }}>{holiday.name}</strong></td>
+                        <td style={{ color: isPast ? '#6b7280' : 'inherit' }}>{holiday.description || '-'}</td>
+                        {isAdminOrHR && (
+                          <td>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button className="btn-sm btn-secondary" onClick={() => handleEdit(holiday)}>
+                                <FiEdit2 />
+                              </button>
+                              <button className="btn-sm btn-secondary" onClick={() => handleDelete(holiday.id)} style={{ background: '#ef4444', color: 'white' }}>
+                                <FiTrash2 />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
+        </div>
       )}
 
       {showModal && (
@@ -208,12 +419,10 @@ const Holidays = () => {
                   </div>
                   <div className="form-group">
                     <label>Date *</label>
-                    <input
-                      type="date"
-                      className="form-input"
+                    <DatePicker
                       value={newHoliday.date}
-                      onChange={(e) => setNewHoliday({ ...newHoliday, date: e.target.value })}
-                      required
+                      onChange={(date) => setNewHoliday({ ...newHoliday, date: date })}
+                      placeholder="Select holiday date"
                     />
                   </div>
                 </div>
@@ -245,4 +454,3 @@ const Holidays = () => {
 };
 
 export default Holidays;
-

@@ -279,7 +279,7 @@ const Generate = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>GENERATE PAYROLL</h1>
+        <h1>GENERATE PAYROLL!</h1>
       </div>
 
       {/* Month Cards Section */}

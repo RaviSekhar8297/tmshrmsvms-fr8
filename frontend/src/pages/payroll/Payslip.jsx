@@ -69,7 +69,7 @@ const Payslip = () => {
       } else {
         setPayslipData(null);
         // Show only one message
-        toast.error('Payslip not available so please wait');
+        //toast.error('Payslip not available so please wait');
       }
     } catch (error) {
       console.error('Error fetching payslip:', error);
@@ -480,7 +480,7 @@ const Payslip = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Payslip</h1>
+        <h1>PAYSLIP</h1>
         <div className="header-actions">
           <input
             type="month"

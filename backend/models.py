@@ -482,6 +482,7 @@ class Holiday(Base):
     name = Column(String(200), nullable=False)
     date = Column(Date, nullable=False)
     description = Column(Text, nullable=True)
+    holiday_permissions = Column(JSONB, nullable=True)  # Array of {branch_id, branch_name}
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

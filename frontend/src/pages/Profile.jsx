@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FiUser, FiMail, FiPhone, FiEdit2, FiSave, FiLock, FiPlus, FiTrash2, FiX, FiDownload, FiCheck, FiAlertCircle, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import api, { usersAPI, authAPI } from '../services/api';
+import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
 import './Profile.css';
 
@@ -1066,12 +1067,10 @@ const Profile = () => {
                   <td className="info-label">Date Of Birth</td>
                   <td className="info-value">
                     {editing ? (
-                      <input
-                        type="date"
-                        className="form-input"
-                        style={{ width: '100%', maxWidth: '200px' }}
-                        value={formatDateForInput(formData.dob)}
-                        onChange={(e) => setFormData({ ...formData, dob: e.target.value || null })}
+                      <DatePicker
+                        value={formData.dob}
+                        onChange={(date) => setFormData({ ...formData, dob: date || null })}
+                        placeholder="Select date of birth"
                       />
                     ) : (
                       user?.dob ? new Date(user.dob).toLocaleDateString() : 'Pending'

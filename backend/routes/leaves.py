@@ -479,12 +479,59 @@ def get_leave_balance(
     ).first()
     
     # Calculate this month's availability
-    # Casual and Comp-Off can be forwarded (use balance from leave_balance_list)
+    # Casual and Comp-Off can be forwarded (unused leaves from previous months carry forward)
     # Sick cannot be forwarded (only current month's balance)
     
     if leave_balance:
-        # Casual: use balance (can be forwarded from previous months)
-        casual_this_month = float(leave_balance.balance_casual_leaves) if leave_balance.balance_casual_leaves else 0
+        # Get total casual leaves per year
+        total_casual_per_year = float(leave_balance.total_casual_leaves) if leave_balance.total_casual_leaves else 12
+        # Calculate leaves per month (e.g., 12 per year / 12 months = 1 per month)
+        casual_per_month = total_casual_per_year / 12.0
+        
+        # Calculate casual leaves available for current month
+        # Logic: New leave for current month (1) + unused leaves from all previous months in the year
+        # If leaves were already taken in a month, they don't carry forward
+        # Final available = (new leave + unused from previous) - used in current month
+        
+        # Get all approved casual leaves for the current year
+        all_casual_leaves = db.query(Leave).filter(
+            Leave.empid == current_user.empid,
+            Leave.status == 'approved',
+            extract('year', Leave.from_date) == current_year,
+            Leave.leave_type.in_(['casual', 'Casual', 'CASUAL'])
+        ).all()
+        
+        # Start with current month's new leave
+        casual_this_month = casual_per_month
+        
+        # Calculate unused casual leaves from previous months (Jan to current_month - 1)
+        for month in range(1, current_month):  # Previous months only (Jan to current_month - 1)
+            # Get casual leaves used in this month
+            month_leaves = [leave for leave in all_casual_leaves 
+                          if leave.from_date.month == month]
+            
+            # Calculate total days used in this month
+            used_in_month = 0
+            for leave in month_leaves:
+                # Calculate actual days (handle half days if needed)
+                days = (leave.to_date - leave.from_date).days + 1
+                used_in_month += days
+            
+            # Unused leaves from this month = casual_per_month - used_in_month
+            # Only add if unused > 0 (if leaves were taken, they don't carry forward)
+            unused_from_month = max(0, casual_per_month - used_in_month)
+            casual_this_month += unused_from_month
+        
+        # Subtract used leaves in current month
+        current_month_casual_leaves = [leave for leave in all_casual_leaves 
+                                     if leave.from_date.month == current_month]
+        used_in_current_month = 0
+        for leave in current_month_casual_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            used_in_current_month += days
+        
+        # Final available = (new leave + unused from previous) - used in current month
+        casual_this_month = max(0, casual_this_month - used_in_current_month)
         
         # Comp-Off: use balance (can be forwarded from previous months)
         comp_off_this_month = float(leave_balance.balance_comp_off_leaves) if leave_balance.balance_comp_off_leaves else 0
@@ -496,7 +543,7 @@ def get_leave_balance(
             Leave.status == 'approved',
             extract('year', Leave.from_date) == current_year,
             extract('month', Leave.from_date) == current_month,
-            Leave.leave_type == 'sick'
+            Leave.leave_type.in_(['sick', 'Sick', 'SICK'])
         ).all()
         
         # Count days used in current month for sick leaves

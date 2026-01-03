@@ -1263,11 +1263,30 @@ const AttendanceHistory = () => {
                       // Get intime/outtime from punch logs using new logic
                       const punchData = getIntimeOuttimeFromPunchLogs(punchLogs);
                       
+                      // Priority: Backend status (Holiday/WO/Leave) > Punch log calculated status (P/Abs/H/D)
+                      // Backend filters holidays by employee's branch_id (defaults to 1 if null)
+                      // If backend returns special status (Holiday/WO/Leave), use it; otherwise use punch log status
+                      const backendStatus = dayData?.status;
+                      const isSpecialStatus = backendStatus && 
+                        ['HOLIDAY', 'WO', 'SICK', 'CASUAL', 'ANNUAL', 'EMERGENCY', 'OTHER', 'SL', 'CL', 'AL'].includes(backendStatus.toUpperCase());
+                      
                       // Use punch logs data if available, otherwise fall back to dayData
                       const checkIn = punchLogs.length > 0 ? punchData.intime : formatTime(dayData?.check_in || '00:00');
                       const checkOut = punchLogs.length > 0 ? punchData.outtime : formatTime(dayData?.check_out || '00:00');
                       const duration = punchLogs.length > 0 ? punchData.duration : formatDuration(dayData?.hours || 0);
-                      const status = punchLogs.length > 0 ? punchData.status : getStatusDisplay(dayData?.status, dayData?.hours);
+                      
+                      // Status priority: Backend special status > Punch log calculated status > Default
+                      let status;
+                      if (isSpecialStatus) {
+                        // Use backend status (Holiday/WO/Leave) - filtered by branch_id
+                        status = backendStatus;
+                      } else if (punchLogs.length > 0) {
+                        // Use punch log calculated status (P/Abs/H/D)
+                        status = punchData.status;
+                      } else {
+                        // Use backend status or calculate from hours
+                        status = getStatusDisplay(dayData?.status, dayData?.hours);
+                      }
                       
                       // Check location and remarks for intime (first record) and outtime (last record)
                       const intimeHasLocation = punchData.intimeHasLocation;
@@ -1275,8 +1294,11 @@ const AttendanceHistory = () => {
                       const outtimeHasLocation = punchData.outtimeHasLocation;
                       const outtimeHasRemarks = punchData.outtimeHasRemarks;
                       
-                      // Check if this is a leave day (status is a leave type)
+                      // Check if this is a leave day (status is a leave type) - leaves show 00:00
                       const isLeaveDay = status && ['SICK', 'CASUAL', 'ANNUAL', 'EMERGENCY', 'OTHER', 'SL', 'CL', 'AL'].includes(status.toUpperCase());
+                      
+                      // Check if this is a holiday or week-off - these show attendance times if available
+                      const isHolidayOrWeekOff = status && ['HOLIDAY', 'WO'].includes(status.toUpperCase());
                       
                       return (
                         <React.Fragment key={idx}>
@@ -1292,6 +1314,7 @@ const AttendanceHistory = () => {
                               cursor: 'pointer'
                             }}
                           >
+                            {/* For leaves: show 00:00. For holidays/week-offs: show attendance times if available */}
                             {isLeaveDay ? '00:00' : (
                               <>
                                 {checkIn}
@@ -1316,6 +1339,7 @@ const AttendanceHistory = () => {
                               cursor: 'pointer'
                             }}
                           >
+                            {/* For leaves: show 00:00. For holidays/week-offs: show attendance times if available */}
                             {isLeaveDay ? '00:00' : (
                               <>
                                 {checkOut}
@@ -1340,6 +1364,7 @@ const AttendanceHistory = () => {
                               cursor: 'pointer'
                             }}
                           >
+                            {/* For leaves: show 00:00. For holidays/week-offs: show duration if available */}
                             {isLeaveDay ? '00:00' : duration}
                           </td>
                           <td 

@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import DatePicker from '../../components/DatePicker';
 import './Employee.css';
 
 const Permission = () => {
@@ -174,6 +175,31 @@ const Permission = () => {
     setFormData(updatedFormData);
   };
 
+  const handleFromDateChange = (date) => {
+    const updatedFormData = { ...formData, from_date: date };
+    
+    // When from_date changes, update to_date if from_time is set
+    if (date && formData.from_time) {
+      const [hours, minutes] = formData.from_time.split(':');
+      let newHours = parseInt(hours) + 2;
+      const newMinutes = minutes;
+      
+      let newDate = date;
+      if (newHours >= 24) {
+        newHours = newHours - 24;
+        const currentDate = new Date(date);
+        currentDate.setDate(currentDate.getDate() + 1);
+        newDate = currentDate.toISOString().split('T')[0];
+      }
+      
+      const newTime = `${String(newHours).padStart(2, '0')}:${newMinutes}`;
+      updatedFormData.to_date = newDate;
+      updatedFormData.to_time = newTime;
+    }
+    
+    setFormData(updatedFormData);
+  };
+
   const handleStatusUpdate = async (permissionId, status) => {
     try {
       await api.put(`/permissions/${permissionId}`, { status });
@@ -258,14 +284,10 @@ const Permission = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>From Date *</label>
-                    <input
-                      type="date"
-                      name="from_date"
+                    <DatePicker
                       value={formData.from_date}
-                      onChange={handleChange}
-                      
-                      className="form-input"
-                      style={{ width: '100%' }}
+                      onChange={handleFromDateChange}
+                      placeholder="Select from date"
                     />
                   </div>
                   <div className="form-group">

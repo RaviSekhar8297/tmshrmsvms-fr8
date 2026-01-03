@@ -355,17 +355,13 @@ def generate_attendance(
         total_days = len(dates_in_cycle)
         month_days = monthrange(year, month)[1]
         
-        # Get all holidays and week-offs in cycle range (once for all employees)
-        all_holiday_dates = set()
+        # Get all holidays in cycle range (will be filtered per employee by branch_id)
         all_holiday_records = db.query(Holiday).filter(
             and_(
                 Holiday.date >= first_date,
                 Holiday.date <= last_date
             )
         ).all()
-        for h in all_holiday_records:
-            h_date = h.date if isinstance(h.date, date) else h.date.date() if hasattr(h.date, 'date') else h.date
-            all_holiday_dates.add(h_date)
         
         all_week_off_dates = set()
         all_week_off_records = db.query(WeekOffDate).filter(
@@ -426,8 +422,37 @@ def generate_attendance(
                 # IMPORTANT: Only count holidays/week-offs from emp_start_date to emp_end_date
                 # Dates before DOJ should NOT count holidays/week-offs
                 # Dates after emp_inactive_date should NOT count holidays/week-offs
+                # Holidays are filtered by employee's branch_id (same logic as punch.jsx)
                 emp_week_off_count = 0
                 emp_holiday_count = 0
+                
+                # Build employee-specific holiday dates set based on branch_id
+                # Logic: If employee's branch_id matches an entry in holiday's holiday_permissions → Count as holiday
+                # If employee's branch_id is null or empty, default to branch_id = 1
+                emp_holiday_dates = set()
+                # Use employee's branch_id, or default to 1 if null/empty
+                employee_branch_id = employee.branch_id if employee.branch_id else 1
+                
+                for holiday in all_holiday_records:
+                    h_date = holiday.date if isinstance(holiday.date, date) else holiday.date.date() if hasattr(holiday.date, 'date') else holiday.date
+                    # Check if holiday is within employee's effective period
+                    if h_date < emp_start_date or h_date > emp_end_date:
+                        continue
+                    
+                    # If holiday has no permissions, don't count it
+                    if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+                        continue
+                    
+                    # Check if employee's branch_id (or default 1) exists in the holiday's holiday_permissions array
+                    # Logic: If employee's branch_id matches any branch_id in holiday_permissions → Show holiday
+                    # Example:
+                    #   - Employee branch_id = 1 (or null/empty, defaulted to 1)
+                    #   - holiday_permissions = [{"branch_id": 1, "branch_name": "CORPORATE OFFICE"}, {"branch_id": 2, "branch_name": "MUMBAI"}]
+                    #   - Since branch_id 1 exists in the array → Count as holiday ✓
+                    #   - If holiday_permissions = [{"branch_id": 2, "branch_name": "MUMBAI"}] → Don't count as holiday ✗
+                    if any(perm.get('branch_id') == employee_branch_id for perm in holiday.holiday_permissions):
+                        emp_holiday_dates.add(h_date)
+                
                 for day in [emp_start_date + timedelta(days=x) for x in range(emp_total_days)]:
                     # Check if it's a week-off (employee-specific or global)
                     is_week_off = False
@@ -444,8 +469,8 @@ def generate_attendance(
                         is_week_off = True
                         emp_week_off_count += 1
                     
-                    # Check if it's a holiday
-                    if day in all_holiday_dates:
+                    # Check if it's a holiday (filtered by employee's branch_id)
+                    if day in emp_holiday_dates:
                         emp_holiday_count += 1
                 
                 # Get approved leaves for this employee in cycle range (ONLY APPROVED)
@@ -491,8 +516,8 @@ def generate_attendance(
                         if week_off_check:
                             is_week_off = True
                         
-                        # Only add to leave dates if not a week-off or holiday
-                        if not is_week_off and current_leave_date not in all_holiday_dates:
+                        # Only add to leave dates if not a week-off or holiday (use employee-specific holiday dates)
+                        if not is_week_off and current_leave_date not in emp_holiday_dates:
                             leave_dates_set.add(current_leave_date)
                             leave_dates_by_type[current_leave_date] = leave.leave_type
                         current_leave_date += timedelta(days=1)
@@ -514,7 +539,7 @@ def generate_attendance(
                         if week_off_check:
                             is_week_off = True
                         
-                        if not is_week_off and temp_date not in all_holiday_dates:
+                        if not is_week_off and temp_date not in emp_holiday_dates:
                             leave_duration += 1
                         temp_date += timedelta(days=1)
                     
@@ -590,7 +615,7 @@ def generate_attendance(
                         print(f"    Skipping attendance for {t_date} - is week-off (punch logs ignored)")
                         continue
                     
-                    if t_date in all_holiday_dates:
+                    if t_date in emp_holiday_dates:
                         # Skip attendance processing - only count as holiday (already counted in emp_holiday_count)
                         print(f"    Skipping attendance for {t_date} - is holiday (punch logs ignored)")
                         continue
@@ -665,7 +690,7 @@ def generate_attendance(
                     # Skip if: processed (has attendance), week-off, holiday, or has leave
                     if (day not in processed_dates and 
                         not is_week_off and 
-                        day not in all_holiday_dates and
+                        day not in emp_holiday_dates and
                         day not in leave_dates_set):  # Exclude leave dates
                         potential_absents += 1
                 
@@ -1088,7 +1113,21 @@ def get_attendance_history_month(
             week_off_map[date_key] = []
         week_off_map[date_key].append(wod.employee_id)
     
-    holiday_dates = {h.date.isoformat() for h in holidays}
+    # Build employee-specific holiday map based on branch_id matching
+    # Logic: If employee's branch_id (or default 1 if null) matches holiday's holiday_permissions → It's a holiday
+    holiday_map = {}  # {empid: {date_key: True}} - per employee holiday dates
+    for emp in employees:
+        emp_branch_id = emp.branch_id if emp.branch_id else 1  # Default to 1 if null/empty
+        emp_holiday_dates = set()
+        for holiday in holidays:
+            # If holiday has no permissions, skip it
+            if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+                continue
+            # Check if employee's branch_id exists in the holiday's holiday_permissions array
+            if any(perm.get('branch_id') == emp_branch_id for perm in holiday.holiday_permissions):
+                date_key = holiday.date.isoformat()
+                emp_holiday_dates.add(date_key)
+        holiday_map[emp.empid] = emp_holiday_dates
     
     leave_map = {}  # {empid: [(from_date, to_date, leave_type)]}
     for leave in leaves:
@@ -1154,9 +1193,11 @@ def get_attendance_history_month(
                         final_status = "WO"
                         special_status_found = True
             
-            # 3. Check holidays (third priority)
+            # 3. Check holidays (third priority) - filtered by employee's branch_id
             if not special_status_found:
-                if date_key in holiday_dates:
+                # Get employee-specific holiday dates (filtered by branch_id)
+                emp_holiday_dates = holiday_map.get(emp.empid, set())
+                if date_key in emp_holiday_dates:
                     final_status = "Holiday"
                     special_status_found = True
             
@@ -1370,7 +1411,18 @@ def get_attendance_history_month_self(
             week_off_map[date_key] = []
         week_off_map[date_key].append(wod.employee_id)
     
-    holiday_dates = {h.date.isoformat() for h in holidays}
+    # Build employee-specific holiday map based on branch_id matching
+    # Logic: If employee's branch_id (or default 1 if null) matches holiday's holiday_permissions → It's a holiday
+    emp_branch_id = current_user.branch_id if current_user.branch_id else 1  # Default to 1 if null/empty
+    holiday_dates = set()
+    for holiday in holidays:
+        # If holiday has no permissions, skip it
+        if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+            continue
+        # Check if employee's branch_id exists in the holiday's holiday_permissions array
+        if any(perm.get('branch_id') == emp_branch_id for perm in holiday.holiday_permissions):
+            date_key = holiday.date.isoformat()
+            holiday_dates.add(date_key)
     
     leave_map = []  # [(from_date, to_date, leave_type)]
     for leave in leaves:
@@ -1795,15 +1847,40 @@ def get_punch_calendar(
         print(f"Error fetching week off dates: {e}")
         wo_dates = {}
     
-    # Get holidays for the month
+    # Get holidays for the month - filter by branch_id for Employee/Manager
     holidays = {}
     try:
-        holiday_records = db.query(Holiday).filter(
+        holiday_query = db.query(Holiday).filter(
             and_(
                 Holiday.date >= start_date,
                 Holiday.date < end_date
             )
-        ).all()
+        )
+        
+        # For ALL roles (including Admin/HR): filter by branch_id for punch calendar
+        # This ensures users only see holidays relevant to their branch on the punch page
+        # If user's branch_id is null or empty, default to branch_id = 1
+        user_branch_id = current_user.branch_id if current_user.branch_id else 1
+        
+        # Filter holidays where user's branch_id (or default 1) matches an entry in holiday_permissions
+        # Example: user.branch_id = 1 (or null/empty, defaulted to 1), holiday_permissions = [{"branch_id": 1, ...}] → Show holiday
+        # Example: user.branch_id = 1 (or null/empty, defaulted to 1), holiday_permissions = [{"branch_id": 2, ...}] → Don't show holiday
+        holiday_records = []
+        all_holidays = holiday_query.all()
+        for holiday in all_holidays:
+            # If holiday has no permissions, don't show it
+            if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+                continue
+            # Check if user's branch_id (or default 1) exists in the holiday's holiday_permissions array
+            # Logic: If logged user's branch_id matches any branch_id in holiday_permissions → Show holiday
+            # Example:
+            #   - User branch_id = 1 (or null/empty, defaulted to 1)
+            #   - holiday_permissions = [{"branch_id": 1, "branch_name": "CORPORATE OFFICE"}, {"branch_id": 2, "branch_name": "MUMBAI"}]
+            #   - Since branch_id 1 exists in the array → Show holiday ✓
+            #   - If holiday_permissions = [{"branch_id": 2, "branch_name": "MUMBAI"}] → Don't show holiday ✗
+            if any(perm.get('branch_id') == user_branch_id for perm in holiday.holiday_permissions):
+                holiday_records.append(holiday)
+        
         for holiday in holiday_records:
             date_str = holiday.date.isoformat()
             holidays[date_str] = holiday.name

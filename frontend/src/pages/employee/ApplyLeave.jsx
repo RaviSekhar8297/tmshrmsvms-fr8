@@ -319,7 +319,7 @@ const ApplyLeave = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>APPLY LEAVE</h1>
+        <h1>APPLY LEAVE!</h1>
         <button 
           className="btn-secondary" 
           onClick={handleRefresh}

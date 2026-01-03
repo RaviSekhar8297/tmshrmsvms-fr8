@@ -1306,7 +1306,7 @@
     padding: 12px;
     margin-bottom: 8px;
   }
-
+  
   .timeline-header,
   .time-row {
     grid-template-columns: 60px repeat(7, minmax(100px, 1fr));

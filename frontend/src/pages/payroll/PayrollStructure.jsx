@@ -54,7 +54,7 @@ const PayrollStructure = () => {
   }, [salaryStructures, searchTerm]);
 
   // Pagination - 20 records per page (matching Users page)
-  const recordsPerPage = 20;
+  const recordsPerPage = 50;
   const totalPages = Math.ceil(filteredData.length / recordsPerPage) || 1;
   const indexOfLastRecord = currentPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
@@ -193,7 +193,7 @@ const PayrollStructure = () => {
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1>Salary Structure</h1>
+          <h1>SALARY STRUCTURE</h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             {user?.role === 'Employee' || user?.role === 'Manager' 
               ? `View your salary structure${filteredData.length > 0 ? ` (${filteredData.length} record${filteredData.length > 1 ? 's' : ''})` : ''}`

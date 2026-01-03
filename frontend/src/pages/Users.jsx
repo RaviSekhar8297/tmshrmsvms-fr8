@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { 
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiMail, 
   FiPhone, FiUser, FiEye, FiGrid, FiList,
-  FiChevronLeft, FiChevronRight
+  FiChevronLeft, FiChevronRight, FiUpload, FiX, FiImage
 } from 'react-icons/fi';
 import api, { usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
+import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
 import './Users.css';
 
@@ -218,12 +219,70 @@ const Users = () => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select an image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+      if (file.size > maxSize) {
+        toast.error('Image size should be less than 5MB');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData({ ...formData, image_base64: reader.result });
       };
+      reader.onerror = () => {
+        toast.error('Error reading image file');
+      };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleImageDrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please drop an image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+      if (file.size > maxSize) {
+        toast.error('Image size should be less than 5MB');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, image_base64: reader.result });
+      };
+      reader.onerror = () => {
+        toast.error('Error reading image file');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setFormData({ ...formData, image_base64: '' });
+    // Reset file input
+    const fileInput = document.getElementById('profile-image-input');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const getRoleBadgeColor = (role) => {
@@ -600,20 +659,18 @@ const Users = () => {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Date of Birth</label>
-              <input
-                type="date"
-                className="form-input"
+              <DatePicker
                 value={formData.dob}
-                onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
+                onChange={(date) => setFormData({ ...formData, dob: date })}
+                placeholder="Select date of birth"
               />
             </div>
             <div className="form-group">
               <label className="form-label">Date of Joining</label>
-              <input
-                type="date"
-                className="form-input"
+              <DatePicker
                 value={formData.doj}
-                onChange={(e) => setFormData({ ...formData, doj: e.target.value })}
+                onChange={(date) => setFormData({ ...formData, doj: date })}
+                placeholder="Select date of joining"
               />
             </div>
           </div>
@@ -769,12 +826,84 @@ const Users = () => {
 
           <div className="form-group">
             <label className="form-label">Profile Image</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="form-input"
-            />
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {formData.image_base64 && (
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <img
+                    src={formData.image_base64}
+                    alt="Profile preview"
+                    style={{
+                      width: '50px',
+                      height: '50px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2px solid var(--primary)',
+                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      background: '#F44336',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '20px',
+                      height: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                      transition: 'all 0.2s ease',
+                      padding: 0
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#D32F2F';
+                      e.currentTarget.style.transform = 'scale(1.1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#F44336';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    <FiX size={12} />
+                  </button>
+                </div>
+              )}
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  id="profile-image-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="form-input"
+                  style={{
+                    paddingRight: '40px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  pointerEvents: 'none',
+                  color: 'var(--text-secondary)'
+                }}>
+                  <FiUpload size={18} />
+                </div>
+              </div>
+            </div>
+            {formData.image_base64 && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Image selected. Click to change.
+              </div>
+            )}
           </div>
 
           <div className="modal-footer">
