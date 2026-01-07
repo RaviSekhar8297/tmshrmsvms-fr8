@@ -428,10 +428,25 @@
 /* Responsive Design */
 @media (max-width: 768px) {
   .payslip-container {
-    padding: 15px;
+    padding: 12px;
+    font-size: 12px;
   }
 
+  .payslip-wrapper {
+    gap: 16px;
+  }
+
+  /* Header - Stack vertically on mobile */
   .payslip-header-table {
+    display: block;
+    margin-bottom: 15px;
+  }
+
+  .payslip-header-table tbody {
+    display: block;
+  }
+
+  .payslip-header-table tr {
     display: block;
   }
 
@@ -440,57 +455,219 @@
     display: block;
     width: 100%;
     text-align: center;
+    padding: 0;
   }
 
   .payslip-title-cell {
     padding-left: 0;
-    margin-top: 15px;
-    font-size: 14px;
+    margin-top: 12px;
+    font-size: 12px;
+    line-height: 1.4;
   }
 
   .payslip-logo {
-    height: 100px;
-    max-width: 150px;
+    height: 80px;
+    max-width: 120px;
+    margin: 0 auto;
   }
 
+  .payslip-spacer {
+    margin-bottom: 12px;
+    height: 8px;
+  }
 
-  /* Make tables scrollable on mobile */
-  .payslip-emp-table,
-  .payslip-data-table,
-  .payslip-total-table,
-  .payslip-words-table {
+  /* Employee Details Table - Convert to card layout on mobile */
+  .payslip-emp-table {
     display: block;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .payslip-emp-table tbody {
+    display: block;
+  }
+
+  .payslip-emp-table tr {
+    display: block;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  .payslip-emp-table tr:last-child {
+    border-bottom: none;
+  }
+
+  .payslip-emp-table td {
+    display: block;
+    width: 100% !important;
+    padding: 10px 12px;
+    border: none;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .payslip-emp-table td:last-child {
+    border-bottom: none;
+  }
+
+  .payslip-emp-label {
+    font-size: 9px;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .payslip-emp-value {
+    font-size: 11px;
+    padding-top: 4px;
+  }
+
+  .payslip-emp-value[colspan="5"] {
+    width: 100% !important;
+  }
+
+  /* Section Headers */
+  .payslip-section-header {
+    font-size: 11px;
+    padding: 8px;
+  }
+
+  /* Earnings/Deductions Tables - Horizontal scroll with better styling */
+  .payslip-section {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    margin: 0 -12px;
+    padding: 0 12px;
   }
 
-  .payslip-emp-table,
-  .payslip-data-table,
-  .payslip-total-table,
-  .payslip-words-table {
+  .payslip-data-table {
     display: table;
-    min-width: 600px;
+    min-width: 800px;
+    width: 100%;
+    border-radius: 8px;
   }
 
   .payslip-data-table th,
   .payslip-data-table td {
-    font-size: 7px;
-    padding: 6px 4px;
+    font-size: 8px;
+    padding: 8px 4px;
     white-space: nowrap;
   }
 
-  .payslip-total-table td {
-    font-size: 9px;
-    padding: 6px;
+  .payslip-data-table th {
+    font-size: 7px;
+    padding: 6px 3px;
   }
 
+  /* Totals Table - Stack on mobile */
+  .payslip-total-table {
+    display: block;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .payslip-total-table tbody {
+    display: block;
+  }
+
+  .payslip-total-table tr {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  .payslip-total-table tr:last-child {
+    border-bottom: none;
+  }
+
+  .payslip-total-table td {
+    display: block;
+    width: 100% !important;
+    padding: 10px 12px;
+    border: none;
+    border-bottom: 1px solid #e9ecef;
+    text-align: left !important;
+  }
+
+  .payslip-total-table td:last-child {
+    border-bottom: none;
+  }
+
+  .payslip-total-label {
+    font-size: 10px;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .payslip-total-value {
+    font-size: 12px;
+    font-weight: 600;
+    padding-top: 4px;
+    text-align: left !important;
+  }
+
+  /* Words Table - Stack on mobile */
+  .payslip-words-table {
+    display: block;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .payslip-words-table tbody {
+    display: block;
+  }
+
+  .payslip-words-table tr {
+    display: block;
+  }
+
+  .payslip-words-table td {
+    display: block;
+    width: 100% !important;
+    padding: 10px 12px;
+    border: none;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .payslip-words-table td:last-child {
+    border-bottom: none;
+  }
+
+  .payslip-words-label {
+    font-size: 10px;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .payslip-words-value {
+    font-size: 10px;
+    padding-top: 4px;
+    line-height: 1.5;
+  }
+
+  /* Footer */
+  .payslip-footer {
+    margin-top: 15px;
+    padding-top: 15px;
+  }
+
+  .payslip-footer p {
+    font-size: 9px;
+  }
+
+  /* Action Buttons - Better mobile layout */
   .payslip-actions {
-    gap: 12px;
+    gap: 10px;
+    padding: 16px;
+    flex-wrap: wrap;
   }
 
   .action-card {
-    min-width: 80px;
-    padding: 12px 16px;
+    min-width: 70px;
+    padding: 12px 14px;
+    flex: 1 1 calc(50% - 5px);
+    max-width: calc(50% - 5px);
   }
 
   .action-icon {
@@ -498,12 +675,36 @@
   }
 
   .action-card span {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
   }
 
+  /* Email Modal */
   .email-modal {
     max-width: 100%;
     margin: 10px;
+    max-height: 95vh;
+  }
+
+  .email-modal-header {
+    padding: 16px;
+  }
+
+  .email-modal-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .email-modal-body {
+    padding: 16px;
+  }
+
+  .email-modal-footer {
+    padding: 16px;
+    flex-direction: column;
+  }
+
+  .email-modal-footer .btn-primary,
+  .email-modal-footer .btn-secondary {
+    width: 100%;
   }
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import api, { attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiClock, FiCamera, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import '../employee/Employee.css';
@@ -33,6 +33,8 @@ const Punch = () => {
   const [punchLogsData, setPunchLogsData] = useState([]);
   const [loadingPunchLogs, setLoadingPunchLogs] = useState(false);
   const [selectedDateForModal, setSelectedDateForModal] = useState(null);
+  const [attendanceCycle, setAttendanceCycle] = useState(null);
+  const [lateLogTime, setLateLogTime] = useState(null);
   
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -44,6 +46,7 @@ const Punch = () => {
     fetchPunchHistory();
     fetchLeaves();
     fetchWeekOffDates();
+    fetchAttendanceCycle();
     const initLocation = async () => {
       await fetchGoogleMapsApiKey();
       getCurrentLocation();
@@ -141,6 +144,20 @@ const Punch = () => {
     } catch (error) {
       console.error('Error fetching week off dates:', error);
       setWeekOffDates([]);
+    }
+  };
+
+  const fetchAttendanceCycle = async () => {
+    try {
+      const response = await attendanceAPI.getCycle();
+      if (response.data) {
+        setAttendanceCycle(response.data);
+        setLateLogTime(response.data.late_log_time || '09:45');
+      }
+    } catch (error) {
+      console.error('Error fetching attendance cycle:', error);
+      // Default to 09:45 if cycle not found
+      setLateLogTime('09:45');
     }
   };
 
@@ -681,6 +698,15 @@ const Punch = () => {
     return new Date(year, month, 1).getDay();
   };
 
+  // Helper function to compare time strings in HH:MM format
+  const compareTimes = (time1, time2) => {
+    if (!time1 || !time2) return false;
+    const [h1, m1] = time1.split(':').map(Number);
+    const [h2, m2] = time2.split(':').map(Number);
+    const total1 = h1 * 60 + m1;
+    const total2 = h2 * 60 + m2;
+    return total1 > total2;
+  };
 
   const renderCalendar = () => {
     const daysInMonth = getDaysInMonth(selectedMonth, selectedYear);
@@ -720,6 +746,10 @@ const Punch = () => {
         outtime = '00:00';
         duration = '00:00';
       }
+      
+      // Check if intime > late_log_time (only for days with intime, not week-off/holiday/leave)
+      const isLateLogin = intime && intime !== '00:00' && lateLogTime && compareTimes(intime, lateLogTime) &&
+                          !status.week_off && !status.holidayName && !status.leaveType;
       
       days.push(
         <div 
@@ -774,7 +804,7 @@ const Punch = () => {
                     e.target.style.display = 'none';
                   }}
                   onLoad={() => {
-                    console.log('GIF loaded successfully');
+                   
                   }}
                 />
               </div>
@@ -826,24 +856,35 @@ const Punch = () => {
             position: 'relative',
             zIndex: 5
           }}>
-            <span>{day}</span>
-            <span style={{ 
-              color: status.color, 
-              fontWeight: 700,
-              fontSize: '1.1rem'
-            }}>
-              {status.status}
-            </span>
+            <span className="calendar-date-number">{day}</span>
+            <div className="calendar-status-mobile" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {isLateLogin && (
+                <span style={{ 
+                  fontSize: '1rem',
+                  color: '#eab308',
+                  fontWeight: 700
+                }}>★</span>
+              )}
+              <span className="calendar-status-text" style={{ 
+                color: status.color, 
+                fontWeight: 700,
+                fontSize: '1.1rem'
+              }}>
+                {status.status}
+              </span>
+            </div>
           </div>
           <div className="calendar-day-info" style={{ width: '100%', gap: '2px', position: 'relative', zIndex: 5 }}>
-            {intime && outtime ? (
-              <div style={{ 
+            {/* Show intime and outtime on desktop, hidden on mobile */}
+            {intime && outtime && (
+              <div className="calendar-time-info" style={{ 
                 fontSize: '0.65rem', 
                 color: 'var(--text-secondary)', 
                 fontWeight: 500,
                 lineHeight: '1.3',
                 textAlign: 'center',
-                width: '100%'
+                width: '100%',
+                marginBottom: '4px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', width: '100%' }}>
                   <span style={{ color: '#10b981', fontWeight: 600, fontSize: '0.7rem' }}>{intime}</span>
@@ -860,41 +901,47 @@ const Punch = () => {
                   </div>
                 )}
               </div>
-            ) : (
-              <div style={{ 
-                fontSize: '0.65rem', 
-                color: 'var(--text-secondary)', 
-                fontWeight: 500,
-                textAlign: 'center'
-              }}>
-                00:00
-              </div>
             )}
-            {status.week_off && (
-              <div style={{ fontSize: '0.65rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
-                {status.label || 'Week-Off'}
-              </div>
-            )}
-            {status.holidayName && (
-              <div style={{ fontSize: '0.65rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
-                {status.holidayName}
-              </div>
-            )}
-            {status.leaveType && (
-              <div style={{ fontSize: '0.65rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
-                {status.leaveType}
-              </div>
-            )}
-            {isAnniversary && (
-              <div style={{ fontSize: '0.65rem', color: '#ff6b6b', fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
-                Anniversary
-              </div>
-            )}
-            {isBirthday && (
-              <div style={{ fontSize: '0.65rem', color: '#4ecdc4', fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
-                Birthday
-              </div>
-            )}
+            {/* Show week off/holiday/leave labels */}
+            <div className="calendar-labels-mobile">
+              {status.week_off && (
+                <div style={{ fontSize: '0.7rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                  {status.label || 'Week-Off'}
+                </div>
+              )}
+              {status.holidayName && (
+                <div style={{ fontSize: '0.7rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                  {status.holidayName}
+                </div>
+              )}
+              {status.leaveType && (
+                <div style={{ fontSize: '0.7rem', color: status.color, fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                  {status.leaveType}
+                </div>
+              )}
+              {/* If no special status and no time, show status */}
+              {!status.week_off && !status.holidayName && !status.leaveType && !intime && !outtime && (
+                <div style={{ 
+                  fontSize: '0.7rem', 
+                  color: status.color, 
+                  fontWeight: 600,
+                  textAlign: 'center',
+                  marginTop: '2px'
+                }}>
+                  {status.status}
+                </div>
+              )}
+              {isAnniversary && (
+                <div style={{ fontSize: '0.65rem', color: '#ff6b6b', fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                  Anniversary
+                </div>
+              )}
+              {isBirthday && (
+                <div style={{ fontSize: '0.65rem', color: '#4ecdc4', fontWeight: 600, marginTop: '2px', textAlign: 'center' }}>
+                  Birthday
+                </div>
+              )}
+            </div>
           </div>
         </div>
       );
@@ -970,34 +1017,65 @@ const Punch = () => {
         {coordinates ? (
           <>
             {locationName ? (
-              <div style={{ 
-                padding: '16px 20px',
-                borderRadius: '10px',
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-hover)',
-                wordBreak: 'break-word',
-                lineHeight: '1.6',
-                transition: 'all 0.2s ease',
-              }}>
+              <>
                 <div style={{ 
-                  fontSize: '0.875rem', 
-                  color: 'var(--text-secondary)', 
-                  fontWeight: 500,
-                  marginBottom: '6px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  fontSize: '0.75rem'
+                  padding: '16px 20px',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-hover)',
+                  wordBreak: 'break-word',
+                  lineHeight: '1.6',
+                  transition: 'all 0.2s ease',
+                  marginBottom: '12px',
                 }}>
-                  Address
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    color: 'var(--text-secondary)', 
+                    fontWeight: 500,
+                    marginBottom: '6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    fontSize: '0.75rem'
+                  }}>
+                    Address
+                  </div>
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 600,
+                  }}>
+                    {locationName}
+                  </div>
                 </div>
-                <div style={{ 
-                  fontSize: '1rem', 
-                  color: 'var(--text-primary)', 
-                  fontWeight: 600,
+                {/* Show coordinates in mobile view */}
+                <div className="location-coordinates-mobile" style={{ 
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-hover)',
+                  display: 'none', // Hidden on desktop, shown on mobile via CSS
                 }}>
-                  {locationName}
+                  <div style={{ 
+                    fontSize: '0.75rem', 
+                    color: 'var(--text-secondary)', 
+                    fontWeight: 500,
+                    marginBottom: '4px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    Coordinates
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.85rem', 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 600, 
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {coordinates}
+                  </div>
                 </div>
-              </div>
+              </>
             ) : (
               <div>
                 <div style={{ 
@@ -1329,30 +1407,168 @@ const Punch = () => {
             {renderCalendar()}
           </div>
         </div>
-        <div className="punch-calendar-legend" style={{ marginTop: '16px', display: 'flex', gap: '16px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '2px' }}></div>
-            <span>Present (≥9H)</span>
+        {/* Legend Card with Late Mark */}
+        <div style={{ 
+          marginTop: '20px', 
+          padding: '20px', 
+          background: 'var(--bg-card)', 
+          border: '1px solid var(--border-color)', 
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
+        }}>
+          {/* Late Mark Indicator */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px',
+            marginBottom: '16px'
+          }}>
+            <span style={{ 
+              fontSize: '1.5rem',
+              color: '#eab308',
+              fontWeight: 700,
+              lineHeight: 1
+            }}>★</span>
+            <span style={{ 
+              fontSize: '0.9rem',
+              color: 'var(--text-primary)',
+              fontWeight: 600
+            }}>Late Mark</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#f59e0b', borderRadius: '2px' }}></div>
-            <span>Half Day (4.5H-8.59H)</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '2px' }}></div>
-            <span>Absent (&lt;4.5H)</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#8b5cf6', borderRadius: '2px' }}></div>
-            <span>Week Off (WO)</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#3b82f6', borderRadius: '2px' }}></div>
-            <span>Leave</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#f59e0b', borderRadius: '2px' }}></div>
-            <span>Holiday</span>
+          
+          {/* Legend Items with same style */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <div style={{ 
+                width: '20px',
+                height: '20px',
+                background: '#10b981',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}></div>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Present (≥9H)</span>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <div style={{ 
+                width: '20px',
+                height: '20px',
+                background: '#f59e0b',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}></div>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Half Day (4.5H-8.59H)</span>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <div style={{ 
+                width: '20px',
+                height: '20px',
+                background: '#ef4444',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}></div>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Absent (&lt;4.5H)</span>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <div style={{ 
+                width: '20px',
+                height: '20px',
+                background: '#8b5cf6',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}></div>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Week Off (WO)</span>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <div style={{ 
+                width: '20px',
+                height: '20px',
+                background: '#3b82f6',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}></div>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Leave</span>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <div style={{ 
+                width: '20px',
+                height: '20px',
+                background: '#f59e0b',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}></div>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Holiday</span>
+            </div>
           </div>
         </div>
       </div>

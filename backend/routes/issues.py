@@ -7,6 +7,7 @@ from models import Issue, User, Activity
 from schemas import IssueCreate, IssueUpdate, IssueResponse
 from routes.auth import get_current_user
 from datetime import datetime, timedelta, timezone
+from utils import get_ist_now
 
 router = APIRouter(prefix="/issues", tags=["Issues"])
 
@@ -24,7 +25,7 @@ def get_issues(
         if status:
             if status == "delayed":
                 # Delayed issues are open or in-progress for more than 7 days
-                cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+                cutoff_date = get_ist_now() - timedelta(days=7)
                 query = query.filter(
                     or_(Issue.status == "open", Issue.status == "in-progress"),
                     Issue.created_at < cutoff_date
@@ -57,7 +58,7 @@ def get_issues(
         issues = query.order_by(Issue.created_at.desc()).all()
         
         # Add delayed flag to issues for frontend
-        now = datetime.now(timezone.utc)
+        now = get_ist_now()
         for issue in issues:
             if issue.status in ["open", "in-progress"] and issue.created_at:
                 # Ensure both datetimes are timezone-aware for comparison
@@ -117,7 +118,7 @@ def get_issue_stats(
         closed = sum(1 for i in issues if i.status == "closed")
         
         # Calculate delayed issues (open or in-progress for more than 7 days)
-        now = datetime.now(timezone.utc)
+        now = get_ist_now()
         delayed_issues = 0
         for i in issues:
             if i.status in ["open", "in-progress"] and i.created_at:
@@ -216,13 +217,13 @@ def update_issue(
     
     # Set resolved_at if status changed to resolved
     if "status" in update_data and update_data["status"] == "resolved":
-        update_data["resolved_at"] = datetime.now(timezone.utc)
+        update_data["resolved_at"] = get_ist_now()
     
     for key, value in update_data.items():
         if value is not None:
             setattr(issue, key, value)
     
-    issue.updated_at = datetime.now(timezone.utc)
+    issue.updated_at = get_ist_now()
     db.commit()
     db.refresh(issue)
     

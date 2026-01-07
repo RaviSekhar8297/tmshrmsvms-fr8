@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiFileText, FiMail, FiTrendingUp, FiSend, FiSearch, FiX, FiImage } from 'react-icons/fi';
+import { FiFileText, FiMail, FiTrendingUp, FiSend, FiSearch, FiX, FiImage, FiAward } from 'react-icons/fi';
 import api, { usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
+import DatePicker from '../../components/DatePicker';
 import './Letters.css';
 
 const Letters = () => {
@@ -45,6 +46,20 @@ const Letters = () => {
     newCTC: '',
     effectiveDate: '',
     designation: ''
+  });
+
+  const [promotionLetterData, setPromotionLetterData] = useState({
+    companyName: '',
+    companyAddress: '',
+    phone: '',
+    email: '',
+    date: '',
+    employeeName: '',
+    employeeId: '',
+    oldDesignation: '',
+    newDesignation: '',
+    effectiveDate: '',
+    ctc: ''
   });
 
   const [offerLetterEmail, setOfferLetterEmail] = useState('');
@@ -110,6 +125,14 @@ const Letters = () => {
       phone: employee.phone || '',
       designation: employee.designation || ''
     }));
+    setPromotionLetterData(prev => ({
+      ...prev,
+      employeeName: employee.name || '',
+      employeeId: employee.empid || '',
+      email: employee.email || '',
+      phone: employee.phone || '',
+      oldDesignation: employee.designation || ''
+    }));
   };
 
   const handleOfferLetterChange = (field, value) => {
@@ -122,6 +145,10 @@ const Letters = () => {
 
   const handleHikeLetterChange = (field, value) => {
     setHikeLetterData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handlePromotionLetterChange = (field, value) => {
+    setPromotionLetterData(prev => ({ ...prev, [field]: value }));
   };
 
   const formatOfferLetter = () => {
@@ -357,12 +384,57 @@ For ${companyName || 'Company Name'}
 BTL`;
   };
 
+  const formatPromotionLetter = () => {
+    const { companyName, companyAddress, phone, email, date, employeeName, oldDesignation, newDesignation, effectiveDate, ctc } = promotionLetterData;
+    const displayPhone = phone || 'pending';
+    const displayEmail = email || 'pending';
+    const phoneEmailLine = displayPhone && displayEmail ? `${displayPhone} | ${displayEmail}` : (displayPhone || displayEmail);
+    
+    return `PROMOTION LETTER – FORMAT
+
+${companyName || 'Company Name'}
+${companyAddress || 'Company Address'}
+${phoneEmailLine ? phoneEmailLine : ''}
+
+Date: ${date || '___ / ___ / _____'}
+
+To,
+Mr./Ms. ${employeeName || '____________________'}
+
+Subject: Promotion Letter
+
+Dear Mr./Ms. ${employeeName || '__________'},
+
+We are pleased to inform you that based on your outstanding performance, dedication, and contribution to ${companyName || 'Company Name'}, you have been promoted to a higher position.
+
+Your promotion details are as follows:
+
+Previous Designation: ${oldDesignation || 'pending'}
+
+New Designation: ${newDesignation || 'pending'}
+
+Effective Date: ${effectiveDate || '__________'}
+
+${ctc ? `CTC: ₹ ${ctc} per annum` : ''}
+
+This promotion reflects our confidence in your abilities and our appreciation for your commitment to the organization. We believe you will continue to excel in your new role and contribute significantly to our growth.
+
+Please sign and return a copy of this letter as acknowledgment.
+
+Congratulations on your well-deserved promotion!
+
+Warm regards,
+
+For ${companyName || 'Company Name'}
+BTL`;
+  };
+
   return (
     <div className="letters-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">EMPLOYEE LETTERS</h1>
-          <p className="page-subtitle">Generate offer, appointment, and hike letters for employees</p>
+          <p className="page-subtitle">Generate offer, appointment, hike, and promotion letters for employees</p>
         </div>
       </div>
 
@@ -385,6 +457,12 @@ BTL`;
           onClick={() => setActiveTab('hike')}
         >
           <FiTrendingUp /> Hike Letter
+        </button>
+        <button
+          className={`letters-tab ${activeTab === 'promotion' ? 'active' : ''}`}
+          onClick={() => setActiveTab('promotion')}
+        >
+          <FiAward /> Promotion Letter
         </button>
       </div>
 
@@ -433,10 +511,10 @@ BTL`;
                 </div>
                 <div className="letter-form-group">
                   <label>Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={offerLetterData.date}
-                    onChange={(e) => handleOfferLetterChange('date', e.target.value)}
+                    onChange={(date) => handleOfferLetterChange('date', date)}
+                    placeholder="Select date"
                   />
                 </div>
                 <div className="letter-form-group">
@@ -468,10 +546,10 @@ BTL`;
                 </div>
                 <div className="letter-form-group">
                   <label>Date of Joining</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={offerLetterData.dateOfJoining}
-                    onChange={(e) => handleOfferLetterChange('dateOfJoining', e.target.value)}
+                    onChange={(date) => handleOfferLetterChange('dateOfJoining', date)}
+                    placeholder="Select date of joining"
                   />
                 </div>
                 <div className="letter-form-group">
@@ -512,6 +590,18 @@ BTL`;
             <div className="letter-display-section">
               <h2 className="letter-display-title">Letter Preview</h2>
               <div className="letter-display-content">
+                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <img 
+                    src="https://www.brihaspathi.com/highbtlogo%20tm%20(1).png" 
+                    alt="Company Logo" 
+                    style={{ maxWidth: '150px', height: 'auto' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>{offerLetterData.location || 'Hyderabad'}</div>
+                    <div style={{ marginTop: '5px', fontSize: '0.9em' }}>{offerLetterData.date || new Date().toLocaleDateString()}</div>
+                  </div>
+                </div>
                 <pre>{formatOfferLetter()}</pre>
               </div>
             </div>
@@ -546,10 +636,10 @@ BTL`;
                 </div>
                 <div className="letter-form-group">
                   <label>Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={appointmentLetterData.date}
-                    onChange={(e) => handleAppointmentLetterChange('date', e.target.value)}
+                    onChange={(date) => handleAppointmentLetterChange('date', date)}
+                    placeholder="Select date"
                   />
                 </div>
                 <div className="letter-form-group">
@@ -572,10 +662,10 @@ BTL`;
                 </div>
                 <div className="letter-form-group">
                   <label>Effective Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={appointmentLetterData.effectiveDate}
-                    onChange={(e) => handleAppointmentLetterChange('effectiveDate', e.target.value)}
+                    onChange={(date) => handleAppointmentLetterChange('effectiveDate', date)}
+                    placeholder="Select effective date"
                   />
                 </div>
                 <div className="letter-form-group">
@@ -677,6 +767,18 @@ BTL`;
             <div className="letter-display-section">
               <h2 className="letter-display-title">Letter Preview</h2>
               <div className="letter-display-content">
+                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <img 
+                    src="https://www.brihaspathi.com/highbtlogo%20tm%20(1).png" 
+                    alt="Company Logo" 
+                    style={{ maxWidth: '150px', height: 'auto' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>{appointmentLetterData.placeOfPosting || 'Hyderabad'}</div>
+                    <div style={{ marginTop: '5px', fontSize: '0.9em' }}>{appointmentLetterData.date || new Date().toLocaleDateString()}</div>
+                  </div>
+                </div>
                 <pre>{formatAppointmentLetter()}</pre>
               </div>
             </div>
@@ -773,10 +875,10 @@ BTL`;
                 </div>
                 <div className="letter-form-group">
                   <label>Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={hikeLetterData.date}
-                    onChange={(e) => handleHikeLetterChange('date', e.target.value)}
+                    onChange={(date) => handleHikeLetterChange('date', date)}
+                    placeholder="Select date"
                   />
                 </div>
                 <div className="letter-form-group">
@@ -799,10 +901,10 @@ BTL`;
                 </div>
                 <div className="letter-form-group">
                   <label>Effective Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={hikeLetterData.effectiveDate}
-                    onChange={(e) => handleHikeLetterChange('effectiveDate', e.target.value)}
+                    onChange={(date) => handleHikeLetterChange('effectiveDate', date)}
+                    placeholder="Select effective date"
                   />
                 </div>
               </div>
@@ -811,7 +913,165 @@ BTL`;
             <div className="letter-display-section">
               <h2 className="letter-display-title">Letter Preview</h2>
               <div className="letter-display-content">
+                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <img 
+                    src="https://www.brihaspathi.com/highbtlogo%20tm%20(1).png" 
+                    alt="Company Logo" 
+                    style={{ maxWidth: '150px', height: 'auto' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>Hyderabad</div>
+                    <div style={{ marginTop: '5px', fontSize: '0.9em' }}>{hikeLetterData.date || new Date().toLocaleDateString()}</div>
+                  </div>
+                </div>
                 <pre>{formatHikeLetter()}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Promotion Letter Tab */}
+      {activeTab === 'promotion' && (
+        <div className="letter-section">
+          <div className="letter-container">
+            <div className="letter-form-section">
+              <h2 className="letter-form-title">Enter Details</h2>
+              <div className="letter-form-grid">
+                <div className="letter-form-group">
+                  <label>Company Name</label>
+                  <input
+                    type="text"
+                    value={promotionLetterData.companyName}
+                    onChange={(e) => handlePromotionLetterChange('companyName', e.target.value)}
+                    placeholder="Enter company name"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>Company Address</label>
+                  <input
+                    type="text"
+                    value={promotionLetterData.companyAddress}
+                    onChange={(e) => handlePromotionLetterChange('companyAddress', e.target.value)}
+                    placeholder="Enter company address"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>Employee Name *</label>
+                  <div className="employee-search-wrapper" ref={employeeDropdownRef}>
+                    <div className="employee-search-input-wrapper">
+                      <FiSearch className="employee-search-icon" />
+                      <input
+                        type="text"
+                        className="employee-search-input"
+                        value={employeeSearch}
+                        onChange={(e) => {
+                          setEmployeeSearch(e.target.value);
+                          setShowEmployeeDropdown(true);
+                        }}
+                        onFocus={() => setShowEmployeeDropdown(true)}
+                        placeholder="Search by Employee ID or Name"
+                      />
+                    </div>
+                    {showEmployeeDropdown && filteredEmployees.length > 0 && (
+                      <div className="employee-dropdown">
+                        {filteredEmployees.map((emp) => (
+                          <div
+                            key={emp.id}
+                            className="employee-dropdown-item"
+                            onClick={() => handleEmployeeSelect(emp)}
+                          >
+                            <div className="employee-dropdown-name">{emp.empid} - {emp.name}</div>
+                            {emp.email && (
+                              <div className="employee-dropdown-email">{emp.email}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="letter-form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    value={promotionLetterData.email || 'pending'}
+                    onChange={(e) => handlePromotionLetterChange('email', e.target.value === 'pending' ? '' : e.target.value)}
+                    placeholder="Enter email address"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>Phone</label>
+                  <input
+                    type="text"
+                    value={promotionLetterData.phone || 'pending'}
+                    onChange={(e) => handlePromotionLetterChange('phone', e.target.value === 'pending' ? '' : e.target.value)}
+                    placeholder="Enter phone number"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>Date</label>
+                  <DatePicker
+                    value={promotionLetterData.date}
+                    onChange={(date) => handlePromotionLetterChange('date', date)}
+                    placeholder="Select date"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>Previous Designation</label>
+                  <input
+                    type="text"
+                    value={promotionLetterData.oldDesignation || 'pending'}
+                    onChange={(e) => handlePromotionLetterChange('oldDesignation', e.target.value === 'pending' ? '' : e.target.value)}
+                    placeholder="Enter previous designation"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>New Designation</label>
+                  <input
+                    type="text"
+                    value={promotionLetterData.newDesignation}
+                    onChange={(e) => handlePromotionLetterChange('newDesignation', e.target.value)}
+                    placeholder="Enter new designation"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>Effective Date</label>
+                  <DatePicker
+                    value={promotionLetterData.effectiveDate}
+                    onChange={(date) => handlePromotionLetterChange('effectiveDate', date)}
+                    placeholder="Select effective date"
+                  />
+                </div>
+                <div className="letter-form-group">
+                  <label>CTC (per annum) - Optional</label>
+                  <input
+                    type="text"
+                    value={promotionLetterData.ctc}
+                    onChange={(e) => handlePromotionLetterChange('ctc', e.target.value)}
+                    placeholder="Enter CTC amount"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="letter-display-section">
+              <h2 className="letter-display-title">Letter Preview</h2>
+              <div className="letter-display-content">
+                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <img 
+                    src="https://www.brihaspathi.com/highbtlogo%20tm%20(1).png" 
+                    alt="Company Logo" 
+                    style={{ maxWidth: '150px', height: 'auto' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>Hyderabad</div>
+                    <div style={{ marginTop: '5px', fontSize: '0.9em' }}>{promotionLetterData.date || new Date().toLocaleDateString()}</div>
+                  </div>
+                </div>
+                <pre>{formatPromotionLetter()}</pre>
               </div>
             </div>
           </div>

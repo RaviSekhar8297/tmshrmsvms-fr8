@@ -6,6 +6,17 @@ import uuid
 import secrets
 import string
 
+# IST (Indian Standard Time) is UTC+5:30
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def get_ist_now():
+    """Get current datetime in IST timezone"""
+    return datetime.now(IST)
+
+def get_ist_date():
+    """Get current date in IST timezone"""
+    return datetime.now(IST).date()
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
@@ -17,9 +28,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = get_ist_now() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+        expire = get_ist_now() + timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
     # JWT expects timestamp (seconds since epoch) for 'exp'
     to_encode.update({"exp": int(expire.timestamp())})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

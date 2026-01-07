@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
+from utils import get_ist_now
 from database import get_db
 from models import User, Company, Branch, Department
 from routes.auth import get_current_user
@@ -129,7 +130,7 @@ def update_company(
         if value is not None:
             setattr(company, key, value)
     
-    company.updated_at = datetime.utcnow()
+    company.updated_at = get_ist_now()
     
     db.commit()
     db.refresh(company)
@@ -221,7 +222,7 @@ def update_branch(
         raise HTTPException(status_code=404, detail="Branch not found")
     
     branch.name = branch_data.name
-    branch.updated_at = datetime.utcnow()
+    branch.updated_at = get_ist_now()
     
     db.commit()
     db.refresh(branch)
@@ -341,7 +342,7 @@ def update_department(
         raise HTTPException(status_code=404, detail="Department not found")
     
     department.name = department_data.name
-    department.updated_at = datetime.utcnow()
+    department.updated_at = get_ist_now()
     
     db.commit()
     db.refresh(department)

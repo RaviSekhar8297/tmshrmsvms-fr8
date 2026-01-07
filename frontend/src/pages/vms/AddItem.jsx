@@ -12,19 +12,25 @@ const AddItem = () => {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [visitors, setVisitors] = useState([]);
-  // Set default tab based on route and role - Employee always sees 'list', others see 'add' or 'list' based on route
-  const [activeTab, setActiveTab] = useState(
-    user?.role === 'Employee' 
-      ? 'list' 
-      : (location.pathname.includes('/vms/list') ? 'list' : 'add')
-  );
+  // Set default tab based on route and role
+  // Front Desk and Employee roles have different defaults
+  const [activeTab, setActiveTab] = useState(() => {
+    if (user?.role === 'Employee') {
+      return 'list';
+    } else if (user?.role === 'Front Desk') {
+      // Front Desk always starts with 'add' tab
+      return location.pathname.includes('/vms/list') ? 'list' : 'add';
+    } else {
+      return location.pathname.includes('/vms/list') ? 'list' : 'add';
+    }
+  });
   
-  // Ensure Employee always sees list view
+  // Ensure Employee always sees list view (only run when user role changes, not when tab changes)
   useEffect(() => {
     if (user?.role === 'Employee' && activeTab !== 'list') {
       setActiveTab('list');
     }
-  }, [user?.role, activeTab]);
+  }, [user?.role]); // Removed activeTab from dependencies to prevent interference
   const [users, setUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -226,21 +232,33 @@ const AddItem = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Visitor Management</h1>
+        <h1>Visitor Management!</h1>
       </div>
 
       {/* Tabs - Like Users page - Hide Add Visitor tab for Employee role */}
       {(user?.role !== 'Employee') && (
         <div className="filter-tabs" style={{ marginBottom: '24px' }}>
           <button
+            type="button"
             className={`filter-tab ${activeTab === 'add' ? 'active' : ''}`}
-            onClick={() => setActiveTab('add')}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('Switching to add tab');
+              setActiveTab('add');
+            }}
           >
             Add Visitor
           </button>
           <button
+            type="button"
             className={`filter-tab ${activeTab === 'list' ? 'active' : ''}`}
-            onClick={() => setActiveTab('list')}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('Switching to list tab');
+              setActiveTab('list');
+            }}
           >
             Visitors List
           </button>
@@ -262,6 +280,7 @@ const AddItem = () => {
                   required
                   className="form-input"
                   placeholder="Enter full name"
+                  autoComplete="off"
                 />
               </div>
               <div className="form-group">
@@ -294,6 +313,7 @@ const AddItem = () => {
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="form-input"
                   placeholder="Enter email"
+                  autoComplete="off"
                 />
               </div>
               <div className="form-group">
@@ -305,6 +325,7 @@ const AddItem = () => {
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="form-input"
                   placeholder="Enter phone number"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -319,6 +340,7 @@ const AddItem = () => {
                   rows="3"
                   className="form-input"
                   placeholder="Enter address"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -342,6 +364,7 @@ const AddItem = () => {
                     placeholder="Search employee by name, ID or email..."
                     className="form-input"
                     style={{ paddingLeft: '40px' }}
+                    autoComplete="off"
                   />
                   {showUserDropdown && filteredUsers.length > 0 && (
                     <div style={{
@@ -366,13 +389,50 @@ const AddItem = () => {
                             padding: '12px',
                             cursor: 'pointer',
                             borderBottom: '1px solid var(--border-color)',
-                            transition: 'background 0.2s'
+                            transition: 'background 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
                           }}
                           onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
                           onMouseLeave={(e) => e.target.style.background = 'transparent'}
                         >
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{u.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{u.empid} {u.email ? `• ${u.email}` : ''}</div>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            background: 'var(--bg-hover)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            border: '2px solid var(--border-color)'
+                          }}>
+                            {u.image_base64 ? (
+                              <img 
+                                src={u.image_base64} 
+                                alt={u.name}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover'
+                                }}
+                              />
+                            ) : (
+                              <span style={{
+                                fontSize: '1.2rem',
+                                fontWeight: 600,
+                                color: 'var(--primary)'
+                              }}>
+                                {u.name?.charAt(0).toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>{u.name}</div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{u.empid} {u.email ? `• ${u.email}` : ''}</div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -459,7 +519,7 @@ const AddItem = () => {
               </div>
             </div>
 
-            <div className="modal-footer" style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <div className="modal-footer" style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
               <button type="button" className="btn btn-secondary" onClick={() => {
                 setFormData({
                   fullname: '',
@@ -473,10 +533,10 @@ const AddItem = () => {
                 });
                 setCapturedImage(null);
                 setSearchQuery('');
-              }}>
+              }} style={{ flex: '1 1 auto', minWidth: '120px' }}>
                 Clear
               </button>
-              <button type="submit" className="btn btn-primary" disabled={loading}>
+              <button type="submit" className="btn btn-primary" disabled={loading} style={{ flex: '1 1 auto', minWidth: '120px' }}>
                 {loading ? 'Submitting...' : 'Add Visitor'}
               </button>
             </div>

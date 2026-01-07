@@ -252,8 +252,11 @@ const Dashboard = () => {
     person?.emp_name ||
     'Unknown';
 
-  const getPersonId = (person) =>
-    person?.empid || person?.employee_id || person?.id || person?.code || '-';
+  const getPersonId = (person) => {
+    // Return designation if available, otherwise "pending"
+    const designation = person.designation || person.Designation || person.designation_name;
+    return designation && designation.trim() !== '' ? designation : 'Pending';
+  }
 
   if (loading) {
     return (
@@ -526,7 +529,7 @@ const Dashboard = () => {
           <div className="card-header">
             <h3 className="card-title">🎂 Birthdays</h3>
           </div>
-          <div className="marquee-container">
+          <div className={`marquee-container ${birthdays.length > 6 ? 'has-many-items' : ''}`}>
             {birthdays.length === 0 ? (
               <div className="empty-state full-height-center">
                 <p>No birthdays to show</p>
@@ -534,7 +537,34 @@ const Dashboard = () => {
             ) : (
               <div className="marquee-track">
                 {[...birthdays, ...birthdays].map((person, idx) => (
-                  <div key={`${person.id || person.empid}-${idx}`} className="marquee-card">
+                  <div key={`${person.id || person.empid}-${idx}`} className="marquee-card birthday-card-animated">
+                    {/* Animated GIF Background */}
+                    <div className="celebration-bg">
+                      <img 
+                        src="https://media.tenor.com/eVpv63c7j9oAAAAM/happybirthday-hbd.gif"
+                        alt="Birthday Celebration"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Floating Emoji */}
+                    <div className="floating-emoji birthday-emoji">🎂</div>
+                    
+                    {/* Sparkle Effects */}
+                    {[...Array(6)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="sparkle-dot birthday-sparkle"
+                        style={{
+                          top: `${15 + i * 12}%`,
+                          left: `${10 + i * 15}%`,
+                          animationDelay: `${i * 0.15}s`
+                        }}
+                      />
+                    ))}
+                    
                     <div className="marquee-avatar">
                       {person.image_base64 ? (
                         <img src={person.image_base64} alt={getPersonName(person)} />
@@ -560,7 +590,7 @@ const Dashboard = () => {
           <div className="card-header">
             <h3 className="card-title">🎉 Anniversaries</h3>
           </div>
-          <div className="marquee-container">
+          <div className={`marquee-container ${anniversaries.length > 6 ? 'has-many-items' : ''}`}>
             {anniversaries.length === 0 ? (
               <div className="empty-state full-height-center">
                 <p>No anniversaries to show</p>
@@ -568,7 +598,34 @@ const Dashboard = () => {
             ) : (
               <div className="marquee-track">
                 {[...anniversaries, ...anniversaries].map((person, idx) => (
-                  <div key={`${person.id || person.empid}-${idx}`} className="marquee-card">
+                  <div key={`${person.id || person.empid}-${idx}`} className="marquee-card anniversary-card-animated">
+                    {/* Animated GIF Background */}
+                    <div className="celebration-bg">
+                      <img 
+                        src="https://i.pinimg.com/originals/89/f2/67/89f267bef0f5538b1fbe206b065a6724.gif"
+                        alt="Anniversary Celebration"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Floating Emoji */}
+                    <div className="floating-emoji anniversary-emoji">🎉</div>
+                    
+                    {/* Sparkle Effects */}
+                    {[...Array(6)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="sparkle-dot anniversary-sparkle"
+                        style={{
+                          top: `${15 + i * 12}%`,
+                          left: `${10 + i * 15}%`,
+                          animationDelay: `${i * 0.15}s`
+                        }}
+                      />
+                    ))}
+                    
                     <div className="marquee-avatar">
                       {person.image_base64 ? (
                         <img src={person.image_base64} alt={getPersonName(person)} />

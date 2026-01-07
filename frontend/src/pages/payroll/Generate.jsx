@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiLock, FiUnlock } from 'react-icons/fi';
+import { FiLock, FiUnlock, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import './Payroll.css';
 
 const Generate = () => {
@@ -15,12 +15,20 @@ const Generate = () => {
   const [monthCards, setMonthCards] = useState([]);
   const [loadingMonths, setLoadingMonths] = useState(false);
   const [togglingCard, setTogglingCard] = useState(null); // Track which card is being toggled
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  // Calculate previous month
+  const getPreviousMonth = () => {
+    const today = new Date();
+    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    return prevMonth.toISOString().slice(0, 7);
+  };
+
   const [formData, setFormData] = useState({
     company_id: '',
     branch_id: '',
     department_id: '',
     employee_id: 'all',
-    month: new Date().toISOString().slice(0, 7)
+    month: getPreviousMonth()
   });
 
   // Filter branches by selected company
@@ -171,6 +179,18 @@ const Generate = () => {
       toast.error('Failed to load company data');
     }
   };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMonthPicker && !event.target.closest('.month-picker-wrapper')) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMonthPicker]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -393,36 +413,93 @@ const Generate = () => {
           {/* Month Input */}
           <div className="form-group">
             <label>Month *</label>
-            <input
-              type="month"
-              name="month"
-              value={formData.month}
-              onChange={handleChange}
-              required
-              className="form-input"
-              style={{
-                padding: '12px 16px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                background: 'var(--bg-card)',
-                color: 'var(--text-primary)',
-                fontSize: '1rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                width: '100%'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = 'var(--primary)';
-                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
-                e.target.style.background = 'var(--bg-hover)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = 'var(--border-color)';
-                e.target.style.boxShadow = 'none';
-                e.target.style.background = 'var(--bg-card)';
-              }}
-            />
+            <div className="month-picker-wrapper">
+              <div 
+                className="month-picker-input"
+                onClick={() => setShowMonthPicker(!showMonthPicker)}
+              >
+                <FiCalendar size={18} />
+                <span>
+                  {formData.month 
+                    ? new Date(formData.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                    : 'Select month'}
+                </span>
+                <FiChevronDown size={18} className={showMonthPicker ? 'rotate' : ''} />
+              </div>
+              {showMonthPicker && (
+                <div className="month-picker-dropdown">
+                  <div className="month-picker-header">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const [year, month] = formData.month ? formData.month.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1];
+                        const currentYear = year || new Date().getFullYear();
+                        const newYear = currentYear - 1;
+                        setFormData(prev => ({ ...prev, month: `${newYear}-${String(month || new Date().getMonth() + 1).padStart(2, '0')}` }));
+                      }}
+                      className="month-picker-nav"
+                    >
+                      ←
+                    </button>
+                    <span className="month-picker-year">
+                      {formData.month ? formData.month.split('-')[0] : new Date().getFullYear()}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const [year, month] = formData.month ? formData.month.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1];
+                        const currentYear = year || new Date().getFullYear();
+                        const currentDate = new Date();
+                        const maxYear = currentDate.getFullYear();
+                        // Only allow going forward if the year is less than current year
+                        if (currentYear < maxYear) {
+                          const newYear = currentYear + 1;
+                          setFormData(prev => ({ ...prev, month: `${newYear}-${String(month || new Date().getMonth() + 1).padStart(2, '0')}` }));
+                        }
+                      }}
+                      className="month-picker-nav"
+                      disabled={formData.month ? parseInt(formData.month.split('-')[0]) >= new Date().getFullYear() : true}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div className="month-picker-grid">
+                    {['December', 'November', 'October', 'September', 'August', 'July', 'June', 'May', 'April', 'March', 'February', 'January'].map((month, index) => {
+                      const monthNum = 12 - index; // Reverse order: Dec=12, Nov=11, etc.
+                      const year = formData.month ? parseInt(formData.month.split('-')[0]) : new Date().getFullYear();
+                      const currentDate = new Date();
+                      const currentYear = currentDate.getFullYear();
+                      const currentMonth = currentDate.getMonth() + 1;
+                      const isCurrentMonth = year === currentYear && monthNum === currentMonth;
+                      const isPastMonth = year < currentYear || (year === currentYear && monthNum < currentMonth);
+                      
+                      // Only show past months (not current or future)
+                      if (!isPastMonth) {
+                        return null;
+                      }
+                      
+                      return (
+                        <button
+                          key={month}
+                          type="button"
+                          className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${formData.month === `${year}-${String(monthNum).padStart(2, '0')}` ? 'selected' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const monthValue = `${year}-${String(monthNum).padStart(2, '0')}`;
+                            setFormData(prev => ({ ...prev, month: monthValue }));
+                            setShowMonthPicker(false);
+                          }}
+                        >
+                          {month.substring(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Submit Button */}

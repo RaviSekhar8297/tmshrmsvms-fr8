@@ -260,3 +260,176 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Month Picker */
+.month-picker-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.month-picker-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.month-picker-input:hover {
+  border-color: var(--primary);
+  background: var(--bg-hover);
+}
+
+.month-picker-input svg:last-child {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+}
+
+.month-picker-input svg:last-child.rotate {
+  transform: rotate(180deg);
+}
+
+.month-picker-input span {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.month-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 16px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.month-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.month-picker-year {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.month-picker-nav {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 600;
+  border: none;
+}
+
+.month-picker-nav:hover:not(:disabled) {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.month-picker-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.month-picker-nav-disabled,
+.month-picker-nav-disabled:disabled {
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  border-color: var(--border-color) !important;
+}
+
+.month-picker-nav-disabled:hover {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.month-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.month-picker-option {
+  padding: 12px 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: center;
+  border: none;
+}
+
+.month-picker-option:hover:not(:disabled) {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.month-picker-option.selected {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+.month-picker-option.current {
+  border-color: var(--primary);
+  border-width: 2px;
+}
+
+.month-picker-option.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--bg-primary);
+}
+
+.month-picker-option.past {
+  opacity: 0.6;
+}

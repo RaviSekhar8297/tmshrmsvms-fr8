@@ -4,6 +4,6 @@ Content-Type: application/json
 
 
 ###
-GET http://localhost:8000/api/tasks/
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNSwicm9sZSI6IkFkbWluIiwiZXhwIjoxNzY2NTg2OTE5fQ.-CMSCRBwPqeGGVSd7TGRJhcqkWmU7HE3We1lu2otvz8
+GET https://tmsbackend.brihaspathi.com/api/users/
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyMCwicm9sZSI6IkhSIiwiZXhwIjoxNzY4MDI3MzU1fQ.ksSa5n3DhGCxJEzmkQgW3qDnmOcPGvdwOJb_rpH59OI
 Content-Type: application/json

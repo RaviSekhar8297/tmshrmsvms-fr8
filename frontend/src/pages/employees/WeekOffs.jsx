@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiCalendar, FiX } from 'react-icons/fi';
+import { FiCalendar, FiX, FiSearch } from 'react-icons/fi';
 import '../employee/Employee.css';
 import './WeekOffs.css';
 
@@ -13,6 +13,9 @@ const WeekOffs = () => {
   const [employees, setEmployees] = useState([]);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState('0'); // Default to "All"
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const employeeDropdownRef = useRef(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [selectedDates, setSelectedDates] = useState([]);
@@ -28,6 +31,20 @@ const WeekOffs = () => {
       fetchEmployeeWeekOffDates();
     }
   }, [selectedEmployee, calendarMonth, calendarYear, showCalendarModal]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
+        setShowEmployeeDropdown(false);
+      }
+    };
+    if (showEmployeeDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmployeeDropdown]);
 
   const fetchWeekOffs = async () => {
     setLoading(true);
@@ -206,25 +223,146 @@ const WeekOffs = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>WEEK-OFF'S HISTORY</h1>
+        <h1>WEEK-OFF'S HISTORY!</h1>
         {/* Only HR role can add weekoffs */}
         {user?.role === 'HR' && (
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <select
-              value={selectedEmployee}
-              onChange={(e) => {
-                setSelectedEmployee(e.target.value);
-              }}
-              className="form-select"
-              style={{ minWidth: '200px' }}
-            >
-              <option value="0">All</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.empid}>
-                  {emp.name} ({emp.empid})
-                </option>
-              ))}
-            </select>
+            <div ref={employeeDropdownRef} style={{ position: 'relative', minWidth: '200px' }}>
+              <input
+                type="text"
+                value={
+                  showEmployeeDropdown 
+                    ? employeeSearch 
+                    : (selectedEmployee === '0' 
+                        ? 'All' 
+                        : employees.find(e => e.empid === selectedEmployee)?.name || '')
+                }
+                onChange={(e) => {
+                  const searchValue = e.target.value;
+                  setEmployeeSearch(searchValue);
+                  setShowEmployeeDropdown(true);
+                }}
+                onFocus={() => {
+                  setShowEmployeeDropdown(true);
+                  setEmployeeSearch('');
+                }}
+                onBlur={(e) => {
+                  setTimeout(() => {
+                    if (!employeeDropdownRef.current?.contains(document.activeElement)) {
+                      setShowEmployeeDropdown(false);
+                      setEmployeeSearch('');
+                    }
+                  }, 200);
+                }}
+                placeholder="Search employee or select 'All'..."
+                className="form-input"
+                style={{ width: '100%', paddingRight: '40px' }}
+              />
+              <FiSearch style={{ 
+                position: 'absolute', 
+                right: '12px', 
+                top: '50%', 
+                transform: 'translateY(-50%)', 
+                color: 'var(--text-secondary)', 
+                pointerEvents: 'none',
+                fontSize: '18px'
+              }} />
+              {showEmployeeDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: 'var(--bg-card)',
+                  border: '2px solid var(--border-color)',
+                  borderRadius: '8px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  zIndex: 1000,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                  marginTop: '4px'
+                }}>
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                    }}
+                    onClick={() => {
+                      setSelectedEmployee('0');
+                      setEmployeeSearch('');
+                      setShowEmployeeDropdown(false);
+                    }}
+                    style={{
+                      padding: '14px 16px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--border-color)',
+                      background: selectedEmployee === '0' ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                      fontWeight: selectedEmployee === '0' ? 600 : 400,
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selectedEmployee !== '0') e.currentTarget.style.background = 'var(--bg-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedEmployee !== '0') e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>All</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>All employees</div>
+                  </div>
+                  {employees
+                    .filter(emp => {
+                      if (!employeeSearch) return true;
+                      const search = employeeSearch.toLowerCase();
+                      return emp.name.toLowerCase().includes(search) || 
+                             emp.empid.toLowerCase().includes(search) ||
+                             (emp.email && emp.email.toLowerCase().includes(search));
+                    })
+                    .map((emp) => (
+                      <div
+                        key={emp.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                        }}
+                        onClick={() => {
+                          setSelectedEmployee(emp.empid);
+                          setEmployeeSearch('');
+                          setShowEmployeeDropdown(false);
+                        }}
+                        style={{
+                          padding: '14px 16px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid var(--border-color)',
+                          background: selectedEmployee === emp.empid ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                          fontWeight: selectedEmployee === emp.empid ? 600 : 400,
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedEmployee !== emp.empid) e.currentTarget.style.background = 'var(--bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedEmployee !== emp.empid) e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>{emp.name}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          {emp.empid} {emp.email ? `• ${emp.email}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  {employees.filter(emp => {
+                    if (!employeeSearch) return false;
+                    const search = employeeSearch.toLowerCase();
+                    return emp.name.toLowerCase().includes(search) || 
+                           emp.empid.toLowerCase().includes(search) ||
+                           (emp.email && emp.email.toLowerCase().includes(search));
+                  }).length === 0 && employeeSearch && (
+                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No employees found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <button 
               className="btn-primary" 
               onClick={handleOpenCalendar}

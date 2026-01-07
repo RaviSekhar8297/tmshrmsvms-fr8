@@ -256,29 +256,59 @@
 
 .marquee-card-wrap {
   min-height: 150px;
+  max-height: 450px;
   display: flex;
   flex-direction: column;
   max-width: 100%;
   width: 100%;
   overflow: hidden;
   padding-bottom: 0 !important;
+  position: relative;
+  background: transparent;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.marquee-card-wrap:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
 }
 
 .marquee-card-wrap.card {
   padding: 16px 20px 12px 20px !important;
+  background: transparent !important;
 }
 
 .chart-card.marquee-card-wrap {
   min-height: 150px;
+  background: transparent !important;
 }
 
 .marquee-card-wrap .card-header {
   margin-bottom: 12px !important;
   padding-bottom: 0;
+  background: transparent !important;
+  border-radius: 12px 12px 0 0;
+  padding: 18px 20px 14px !important;
+  border-bottom: none !important;
 }
 
-.marquee-card-wrap.card {
-  padding: 16px 20px 12px 20px !important;
+.marquee-card-wrap .card-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: title-glow 2s ease-in-out infinite;
+}
+
+@keyframes title-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 .chart-card {
@@ -555,21 +585,61 @@
 
 /* Marquee styles for birthdays/anniversaries */
 .marquee-container {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
   flex: 1;
-  display: flex;
+  display: block;
   max-width: 100%;
-  align-items: flex-start;
-  padding-bottom: 0;
+  padding: 20px 0;
   margin-bottom: 0;
+  max-height: 400px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.marquee-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.marquee-container::-webkit-scrollbar-track {
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+
+.marquee-container::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 4px;
+}
+
+.marquee-container::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-dark);
 }
 
 .marquee-track {
-  display: inline-flex;
+  display: flex;
   gap: 16px;
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-start;
+}
+
+/* Only apply marquee animation when there are few cards (single row) */
+.marquee-container:not(.has-many-items) .marquee-track {
   width: max-content;
   animation: marquee 28s linear infinite;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+
+/* When many items, use grid-like layout */
+.marquee-container.has-many-items .marquee-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  width: 100%;
+  animation: none;
 }
 
 .marquee-container:hover .marquee-track {
@@ -582,18 +652,192 @@
 }
 
 .marquee-card {
-  background: var(--bg-hover);
+  background: transparent;
   border: 2px solid var(--primary);
-  border-radius: 12px;
-  padding: 8px 8px 6px 8px;
+  border-radius: 16px;
+  padding: 12px 10px 10px 10px;
   min-width: 180px;
   max-width: 200px;
   flex: 0 0 200px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+  gap: 6px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: visible;
+}
+
+/* Birthday and Anniversary Animated Cards */
+.birthday-card-animated,
+.anniversary-card-animated {
+  animation: celebrate 2s ease-in-out infinite;
+  border-width: 3px;
+  overflow: visible;
+}
+
+.birthday-card-animated {
+  border-color: #4ecdc4;
+  box-shadow: 0 0 20px rgba(78, 205, 196, 0.6), 0 8px 16px rgba(0,0,0,0.12);
+}
+
+.anniversary-card-animated {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.6), 0 8px 16px rgba(0,0,0,0.12);
+}
+
+@keyframes celebrate {
+  0%, 100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.05);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  75% {
+    transform: scale(1.05);
+  }
+}
+
+/* Celebration Background (GIF) */
+.celebration-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.5;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.celebration-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Floating Emoji */
+.floating-emoji {
+  position: absolute;
+  top: -15px;
+  right: -15px;
+  font-size: 2rem;
+  z-index: 15;
+  animation: float 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.9));
+  pointer-events: none;
+}
+
+.birthday-emoji {
+  animation: float 2s ease-in-out infinite, rotate-float 3s ease-in-out infinite;
+}
+
+.anniversary-emoji {
+  animation: float 2s ease-in-out infinite, rotate-float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-10px) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-15px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-10px) rotate(8deg);
+  }
+}
+
+@keyframes rotate-float {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Sparkle Effects */
+.sparkle-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  z-index: 12;
+  pointer-events: none;
+  animation: sparkle 1.8s ease-in-out infinite;
+}
+
+.birthday-sparkle {
+  background: #4ecdc4;
+  box-shadow: 0 0 12px #4ecdc4, 0 0 20px rgba(78, 205, 196, 0.6);
+}
+
+.anniversary-sparkle {
+  background: #ff6b6b;
+  box-shadow: 0 0 12px #ff6b6b, 0 0 20px rgba(255, 107, 107, 0.6);
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.8) rotate(180deg);
+  }
+}
+
+/* Ensure content is above background */
+.marquee-card .marquee-avatar,
+.marquee-card .marquee-info {
+  position: relative;
+  z-index: 10;
+}
+
+.marquee-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  transition: left 0.5s;
+}
+
+.marquee-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.18), 0 4px 8px rgba(0,0,0,0.12);
+  border-color: #3b82f6;
+}
+
+.birthday-card-animated:hover {
+  box-shadow: 0 0 30px rgba(78, 205, 196, 0.8), 0 12px 24px rgba(0,0,0,0.18);
+  border-color: #4ecdc4;
+}
+
+.anniversary-card-animated:hover {
+  box-shadow: 0 0 30px rgba(255, 107, 107, 0.8), 0 12px 24px rgba(0,0,0,0.18);
+  border-color: #ff6b6b;
+}
+
+.marquee-card:hover::before {
+  left: 100%;
 }
 
 .marquee-avatar {
@@ -601,8 +845,64 @@
   height: 95px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid var(--primary);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  border: 3px solid var(--primary);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 10;
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+.birthday-card-animated .marquee-avatar {
+  border-color: #4ecdc4;
+  animation: pulse-border-birthday 2s ease-in-out infinite;
+}
+
+.anniversary-card-animated .marquee-avatar {
+  border-color: #ff6b6b;
+  animation: pulse-border-anniversary 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.3);
+  }
+  50% {
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+  }
+}
+
+@keyframes pulse-border-birthday {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(78, 205, 196, 0.6), 0 6px 12px rgba(0,0,0,0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(78, 205, 196, 0.9), 0 6px 16px rgba(0,0,0,0.3);
+  }
+}
+
+@keyframes pulse-border-anniversary {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(255, 107, 107, 0.6), 0 6px 12px rgba(0,0,0,0.2);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(255, 107, 107, 0.9), 0 6px 16px rgba(0,0,0,0.3);
+  }
+}
+
+.marquee-card:hover .marquee-avatar {
+  transform: scale(1.05) rotate(5deg);
+  border-color: #3b82f6;
+}
+
+.birthday-card-animated:hover .marquee-avatar {
+  transform: scale(1.08) rotate(8deg);
+  border-color: #4ecdc4;
+}
+
+.anniversary-card-animated:hover .marquee-avatar {
+  transform: scale(1.08) rotate(8deg);
+  border-color: #ff6b6b;
 }
 
 .marquee-avatar img {
@@ -618,10 +918,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1e40af 100%);
   color: #fff;
   font-size: 2.4rem;
   font-weight: 800;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  animation: gradient-shift 3s ease infinite;
+  background-size: 200% 200%;
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 .marquee-info {
@@ -629,24 +941,96 @@
 }
 
 .marquee-name {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 0;
+  margin-bottom: 2px;
   max-width: 160px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 0.3s ease;
+  position: relative;
+  z-index: 10;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+}
+
+.marquee-card:hover .marquee-name {
+  color: #2563eb;
+}
+
+.birthday-card-animated .marquee-name {
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(78, 205, 196, 0.6);
+}
+
+.anniversary-card-animated .marquee-name {
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 107, 107, 0.6);
 }
 
 .marquee-id, .marquee-years {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--text-secondary);
   font-weight: 600;
   max-width: 160px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 0.3s ease;
+  position: relative;
+  z-index: 10;
+  text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+}
+
+/* Designation color for birthday cards */
+.birthday-card-animated .marquee-id {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(78, 205, 196, 0.6);
+}
+
+/* Designation color for anniversary cards */
+.anniversary-card-animated .marquee-id {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 107, 107, 0.6);
+}
+
+.marquee-years {
+  color: #3b82f6;
+  font-weight: 700;
+  margin-top: 2px;
+  font-size: 0.75rem;
+}
+
+.anniversary-card-animated .marquee-years {
+  color: #ff6b6b;
+  text-shadow: 0 1px 3px rgba(255, 107, 107, 0.5);
+}
+
+.marquee-card:hover .marquee-id {
+  color: #6b7280;
+}
+
+.birthday-card-animated:hover .marquee-id {
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 12px rgba(78, 205, 196, 0.8);
+}
+
+.anniversary-card-animated:hover .marquee-id {
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 12px rgba(255, 107, 107, 0.8);
+}
+
+.birthday-card-animated:hover .marquee-name {
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 12px rgba(78, 205, 196, 0.8);
+}
+
+.anniversary-card-animated:hover .marquee-name {
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 12px rgba(255, 107, 107, 0.8);
 }
 
 .full-height-center {

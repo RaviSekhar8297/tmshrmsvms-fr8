@@ -250,7 +250,8 @@ def get_birthdays(
             "empid": user.empid,
             "name": user.name,
             "image_base64": user.image_base64,
-            "dob": user.dob.isoformat() if user.dob else None
+            "dob": user.dob.isoformat() if user.dob else None,
+            "designation": user.designation
         }
         for user in users
     ]
@@ -282,7 +283,8 @@ def get_anniversaries(
                 "name": user.name,
                 "image_base64": user.image_base64,
                 "doj": user.doj.isoformat(),
-                "years": years
+                "years": years,
+                "designation": user.designation
             })
     
     return result

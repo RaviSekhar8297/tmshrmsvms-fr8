@@ -90,6 +90,23 @@ const Permission = () => {
       return;
     }
     
+    // Check limit: Maximum 2 permissions per month (except rejected)
+    const fromDate = new Date(formData.from_date);
+    const month = fromDate.getMonth();
+    const year = fromDate.getFullYear();
+    
+    const monthlyPermissions = permissions.filter(perm => {
+      if (perm.status === 'rejected') return false; // Don't count rejected
+      const permDate = new Date(perm.from_datetime);
+      return permDate.getMonth() === month && permDate.getFullYear() === year;
+    });
+    
+    if (monthlyPermissions.length >= 2) {
+      toast.error(`You can apply only 2 permissions per month. You have already applied ${monthlyPermissions.length} permission(s) for ${fromDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.`);
+      setLoading(false);
+      return;
+    }
+    
     try {
       // Combine date and time into datetime strings for API
       const submitData = {
@@ -225,7 +242,7 @@ const Permission = () => {
     <div className="page-container employee-permission-page">
       <div className="page-header stacked">
         <div>
-          <h1>Permission Requests</h1>
+          <h1>Permission Requests!</h1>
           <p className="page-subtitle">View your permission history with quick filters.</p>
         </div>
         <div className="header-actions filters-row toolbar">

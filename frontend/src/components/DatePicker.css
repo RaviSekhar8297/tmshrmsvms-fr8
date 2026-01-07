@@ -55,10 +55,8 @@
 }
 
 .date-picker-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 1000;
+  position: fixed;
+  z-index: 10001;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -66,6 +64,17 @@
   padding: 20px;
   min-width: 320px;
   animation: slideDown 0.2s ease-out;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Ensure date picker works well inside modals */
+.modal .date-picker-wrapper {
+  z-index: auto;
+}
+
+.modal .date-picker-dropdown {
+  z-index: 10001;
 }
 
 @keyframes slideDown {

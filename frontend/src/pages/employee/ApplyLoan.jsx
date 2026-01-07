@@ -492,7 +492,7 @@ const ApplyLoan = () => {
               <FiDollarSign size={32} />
             </div>
             <div>
-              <h1 className="apply-loan-title">Apply for Loan</h1>
+              <h1 className="apply-loan-title">APPLY FOR LOAN!</h1>
               <p className="apply-loan-subtitle">Fill in the details to apply for a loan</p>
             </div>
           </div>

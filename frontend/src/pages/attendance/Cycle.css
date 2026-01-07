@@ -282,3 +282,24 @@
   }
 }
 
+/* Time input wrapper for notification times */
+.time-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.time-input-wrapper .cycle-form-input {
+  padding-right: 44px;
+}
+
+.time-icon {
+  position: absolute;
+  right: 14px;
+  color: #6366f1;
+  font-size: 1.1rem;
+  pointer-events: none;
+  opacity: 0.75;
+}
+

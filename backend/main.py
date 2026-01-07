@@ -5,7 +5,10 @@ from database import engine, Base
 import os
 
 # Import routes
-from routes import auth, users, projects, tasks, meetings, issues, ratings, dashboard, reports, notifications, calendar_auth, conversations, hr, vms, payroll, leaves, permissions, requests, holidays, work_reports, week_offs, company, policies, payslip_calculate, employee_data, letters, chatbot, loans
+from routes import auth, users, projects, tasks, meetings, issues, ratings, dashboard, reports, notifications, calendar_auth, conversations, hr, vms, payroll, leaves, permissions, requests, holidays, work_reports, week_offs, company, policies, payslip_calculate, employee_data, letters, chatbot, loans, resignations
+
+# Import email scheduler
+from utils.email_scheduler import start_email_scheduler
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -60,6 +63,7 @@ app.include_router(employee_data.router, prefix="/api")
 app.include_router(letters.router, prefix="/api")
 app.include_router(chatbot.router, prefix="/api")
 app.include_router(loans.router, prefix="/api")
+app.include_router(resignations.router, prefix="/api")
 
 # Mount static files for uploaded policies
 uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
@@ -77,6 +81,12 @@ def root():
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy"}
+
+# Start email scheduler on application startup
+@app.on_event("startup")
+async def startup_event():
+    start_email_scheduler()
+    print("Application started - Email scheduler is running")
 
 if __name__ == "__main__":
     import uvicorn

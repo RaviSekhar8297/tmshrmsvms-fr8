@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiSearch, FiFilter, FiSave, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import DatePicker from '../../components/DatePicker';
 import './Attendance.css';
 
 const ModifyAttendance = () => {
@@ -137,7 +138,7 @@ const ModifyAttendance = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Modify Attendance</h1>
+        <h1>Modify Attendance!!</h1>
       </div>
 
       {/* Search and Filter Section */}
@@ -173,18 +174,11 @@ const ModifyAttendance = () => {
           />
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <input
-            type="date"
+          <DatePicker
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            style={{
-              padding: '10px 12px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              fontSize: '0.9rem',
-              background: 'var(--bg-card)',
-              color: 'var(--text-primary)'
-            }}
+            onChange={(date) => setSelectedDate(date)}
+            placeholder="Select date"
+            max={new Date(Date.now() - 86400000).toISOString().split('T')[0]}
           />
           <button
             onClick={handleFilter}

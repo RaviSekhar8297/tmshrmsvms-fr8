@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
+from utils import get_ist_now
 from database import get_db
 from models import Permission, User, PunchLog
 from routes.auth import get_current_user
 from typing import Optional
 from pydantic import BaseModel
+from utils.email_service import send_permission_email_to_manager
 
 router = APIRouter()
 
@@ -34,7 +36,7 @@ def create_permission(
     new_permission = Permission(
         empid=current_user.empid,
         name=current_user.name,
-        applied_date=datetime.utcnow(),
+        applied_date=get_ist_now(),
         from_datetime=from_datetime,
         to_datetime=to_datetime,
         type=permission_data.permission_type,
@@ -45,6 +47,25 @@ def create_permission(
     db.add(new_permission)
     db.commit()
     db.refresh(new_permission)
+    
+    # Send email to reporting manager if email_consent is true
+    if current_user.report_to_id:
+        manager = db.query(User).filter(User.empid == current_user.report_to_id).first()
+        if manager and manager.email_consent and manager.email:
+            try:
+                send_permission_email_to_manager(
+                    manager_email=manager.email,
+                    manager_name=manager.name,
+                    employee_name=current_user.name,
+                    employee_empid=current_user.empid,
+                    permission_type=permission_data.permission_type,
+                    from_datetime=from_datetime.isoformat(),
+                    to_datetime=to_datetime.isoformat(),
+                    reason=permission_data.reason
+                )
+            except Exception as e:
+                # Log error but don't fail the request
+                print(f"Error sending permission email: {str(e)}")
     
     return {
         "message": "Permission request submitted successfully",

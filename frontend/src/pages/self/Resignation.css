@@ -1,0 +1,536 @@
+.instructions-card {
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 2px solid rgba(59, 130, 246, 0.2);
+}
+
+.instructions-card .card-header {
+  border-bottom: 2px solid rgba(59, 130, 246, 0.2);
+  margin-bottom: 20px;
+}
+
+.instructions-card .card-header h2 {
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.instructions-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.instruction-section {
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border-left: 4px solid var(--primary);
+}
+
+.instruction-section h3 {
+  color: var(--primary);
+  font-size: 1rem;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.instruction-section ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.instruction-section li {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.instruction-section li strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.resignation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.resignation-form textarea,
+.resignation-textarea {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.resignation-form textarea:focus,
+.resignation-textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  outline: none;
+}
+
+.resignation-form textarea::placeholder,
+.resignation-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.resignation-form select {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.resignation-form select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  outline: none;
+}
+
+.notice-alert {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 2px solid rgba(59, 130, 246, 0.3);
+}
+
+.notice-alert.probation {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.notice-alert svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #3b82f6;
+}
+
+.notice-alert.probation svg {
+  color: #f59e0b;
+}
+
+.notice-alert strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.notice-alert p {
+  margin: 4px 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.notice-alert .info-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.existing-resignation {
+  margin-bottom: 24px;
+}
+
+.resignation-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-row.full-width {
+  grid-column: 1 / -1;
+}
+
+.detail-row .label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.detail-row span:not(.label) {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.approval-status {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 2px solid var(--border-color);
+}
+
+.approval-status h3 {
+  margin-bottom: 24px;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+
+/* Progress Bar Stepper */
+.approval-progress-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  padding: 20px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  position: relative;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  position: relative;
+  z-index: 2;
+}
+
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  background: var(--bg-hover);
+  border: 3px solid var(--border-color);
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.progress-step.completed .step-number {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+}
+
+.progress-step.active .step-number {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: white;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.progress-step.rejected .step-number {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.1);
+  }
+}
+
+.step-label-progress {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.step-date-small {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.progress-connector {
+  flex: 1;
+  height: 3px;
+  background: var(--border-color);
+  margin: 0 8px;
+  position: relative;
+  top: -20px;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+.progress-connector.completed {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.approval-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.approval-step {
+  padding: 20px;
+  background: var(--bg-hover);
+  border-radius: 12px;
+  border-left: 5px solid var(--border-color);
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.approval-step.pending {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.approval-step.approved {
+  border-left-color: #10b981;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.approval-step.rejected {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.step-header {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.step-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex: 1;
+}
+
+.approver-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.approver-name-inline {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.approver-id-inline {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.step-label {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 2px solid;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.step-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.approver-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.approver-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.approver-name {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.approver-id {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.approval-date-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.date-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.date-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.comments-box {
+  margin-top: 4px;
+}
+
+.comments-label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+
+.comments-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  border: 1px solid var(--border-color);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.next-approver {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.next-approver svg {
+  color: #f59e0b;
+}
+
+.helper-text {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.readonly-field {
+  padding: 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .resignation-details {
+    grid-template-columns: 1fr;
+  }
+  
+  .approval-flow {
+    gap: 12px;
+  }
+  
+  .instructions-content {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .instruction-section {
+    padding: 12px;
+  }
+  
+  .approval-progress-bar {
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+  }
+  
+  .progress-connector {
+    width: 3px;
+    height: 40px;
+    margin: 4px 0;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  .step-label-progress {
+    font-size: 0.8rem;
+  }
+  
+  .step-number {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+}
+

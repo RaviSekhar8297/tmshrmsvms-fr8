@@ -9,6 +9,7 @@ from schemas import MeetingCreate, MeetingUpdate, MeetingResponse, MeetingNotesC
 from routes.auth import get_current_user
 from utils import generate_meeting_link
 from datetime import datetime, timedelta
+from utils import get_ist_now
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -824,8 +825,8 @@ def get_meeting_notes(
             meeting_id=meeting_id,
             user_id=current_user.id,
             notes=None,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=get_ist_now(),
+            updated_at=get_ist_now()
         )
     
     return notes
@@ -851,7 +852,7 @@ def create_meeting_notes(
     if existing_notes:
         # Update existing notes
         existing_notes.notes = notes_data.notes
-        existing_notes.updated_at = datetime.utcnow()
+        existing_notes.updated_at = get_ist_now()
         db.commit()
         db.refresh(existing_notes)
         return existing_notes
@@ -894,7 +895,7 @@ def update_meeting_notes(
         db.add(notes)
     else:
         notes.notes = notes_data.notes
-        notes.updated_at = datetime.utcnow()
+        notes.updated_at = get_ist_now()
     
     db.commit()
     db.refresh(notes)

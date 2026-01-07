@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { FiChevronLeft, FiChevronRight, FiSearch, FiDownload, FiUpload } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiSearch, FiDownload, FiUpload, FiChevronDown } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import './Payroll.css';
 
@@ -9,10 +9,14 @@ const Salary = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [salaries, setSalaries] = useState([]);
-  const [monthYear, setMonthYear] = useState(() => {
-    // Initialize with current month and year (Format: "YYYY-MM")
-    return new Date().toISOString().slice(0, 7);
-  });
+  // Calculate previous month
+  const getPreviousMonth = () => {
+    const today = new Date();
+    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    return prevMonth.toISOString().slice(0, 7);
+  };
+
+  const [monthYear, setMonthYear] = useState(getPreviousMonth());
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
@@ -22,6 +26,19 @@ const Salary = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMonthPicker && !event.target.closest('.month-picker-wrapper')) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMonthPicker]);
 
   useEffect(() => {
     fetchSalaries(1);
@@ -152,7 +169,7 @@ const Salary = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>SALARY Management</h1>
+        <h1>SALARY MANAGEMENT</h1>
         <div className="header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
             onClick={handleExportExcel}
@@ -192,13 +209,94 @@ const Salary = () => {
             style={{ paddingLeft: '40px', width: '100%' }}
           />
         </div>
-        <input
-          type="month"
-          value={monthYear}
-          onChange={(e) => setMonthYear(e.target.value)}
-          className="form-input"
-          style={{ width: '150px' }}
-        />
+        <div className="month-picker-wrapper" style={{ width: '180px' }}>
+          <div 
+            className="month-picker-input"
+            onClick={() => setShowMonthPicker(!showMonthPicker)}
+          >
+            <span>
+              {monthYear 
+                ? new Date(monthYear + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                : 'Select month'}
+            </span>
+            <FiChevronDown size={18} className={showMonthPicker ? 'rotate' : ''} />
+          </div>
+          {showMonthPicker && (
+            <div className="month-picker-dropdown">
+              <div className="month-picker-header">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const [year] = monthYear ? monthYear.split('-').map(Number) : [new Date().getFullYear()];
+                    const currentYear = year || new Date().getFullYear();
+                    const newYear = currentYear - 1;
+                    const [_, month] = monthYear ? monthYear.split('-') : [null, String(new Date().getMonth() + 1).padStart(2, '0')];
+                    setMonthYear(`${newYear}-${month}`);
+                  }}
+                  className="month-picker-nav"
+                >
+                  ←
+                </button>
+                <span className="month-picker-year">
+                  {monthYear ? monthYear.split('-')[0] : new Date().getFullYear()}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const [year] = monthYear ? monthYear.split('-').map(Number) : [new Date().getFullYear()];
+                    const currentYear = year || new Date().getFullYear();
+                    const currentDate = new Date();
+                    const maxYear = currentDate.getFullYear();
+                    // Only allow going forward if the year is less than current year
+                    if (currentYear < maxYear) {
+                      const newYear = currentYear + 1;
+                      const [_, month] = monthYear ? monthYear.split('-') : [null, String(new Date().getMonth() + 1).padStart(2, '0')];
+                      setMonthYear(`${newYear}-${month}`);
+                    }
+                  }}
+                  className="month-picker-nav"
+                  disabled={monthYear ? parseInt(monthYear.split('-')[0]) >= new Date().getFullYear() : true}
+                >
+                  →
+                </button>
+              </div>
+              <div className="month-picker-grid">
+                {['December', 'November', 'October', 'September', 'August', 'July', 'June', 'May', 'April', 'March', 'February', 'January'].map((month, index) => {
+                  const monthNum = 12 - index; // Reverse order: Dec=12, Nov=11, etc.
+                  const year = monthYear ? parseInt(monthYear.split('-')[0]) : new Date().getFullYear();
+                  const currentDate = new Date();
+                  const currentYear = currentDate.getFullYear();
+                  const currentMonth = currentDate.getMonth() + 1;
+                  const isCurrentMonth = year === currentYear && monthNum === currentMonth;
+                  const isPastMonth = year < currentYear || (year === currentYear && monthNum < currentMonth);
+                  
+                  // Only show past months (not current or future)
+                  if (!isPastMonth) {
+                    return null;
+                  }
+                  
+                  return (
+                    <button
+                      key={month}
+                      type="button"
+                      className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${monthYear === `${year}-${String(monthNum).padStart(2, '0')}` ? 'selected' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const monthValue = `${year}-${String(monthNum).padStart(2, '0')}`;
+                        setMonthYear(monthValue);
+                        setShowMonthPicker(false);
+                      }}
+                    >
+                      {month.substring(0, 3)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -228,6 +326,7 @@ const Salary = () => {
                   <th>PT</th>
                   <th>LOP</th>
                   <th>TDS</th>
+                  <th>LWF</th>
                   <th>Late Logins</th>
                   <th>L.L.Deductions</th>
                   <th>Earned Gross</th>
@@ -249,7 +348,7 @@ const Salary = () => {
               <tbody>
                 {salaries.length === 0 ? (
                   <tr>
-                    <td colSpan="33" className="text-center">No records</td>
+                    <td colSpan="34" className="text-center">HERE NO SALARY RECORDS </td>
                   </tr>
                 ) : (
                   salaries.map((salary) => (
@@ -270,6 +369,7 @@ const Salary = () => {
                       <td>{formatCurrency(salary.pt || 0)}</td>
                       <td>{formatCurrency(salary.lop || 0)}</td>
                       <td>{formatCurrency(salary.tds || 0)}</td>
+                      <td>{formatCurrency(salary.lwf || 0)}</td>
                       <td>{salary.late_logins || 0}</td>
                       <td>{formatCurrency(salary.late_login_deductions || 0)}</td>
                       <td>{formatCurrency(salary.earned_gross)}</td>

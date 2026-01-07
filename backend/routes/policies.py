@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from datetime import datetime
+from utils import get_ist_now
 from database import get_db
 from models import Policy, User
 from schemas import PolicyCreate, PolicyUpdate, PolicyResponse, MarkAsReadRequest
@@ -231,7 +232,7 @@ async def upload_policy(
             "empid": current_user.empid,
             "name": current_user.name,
             "viewed": True,
-            "viewed_at": datetime.utcnow().isoformat()
+            "viewed_at": get_ist_now().isoformat()
         }
         
         new_policy = Policy(
@@ -344,7 +345,7 @@ def mark_policy_as_read(
             "empid": read_data.empid,
             "name": read_data.name,
             "viewed": True,
-            "viewed_at": datetime.utcnow().isoformat()
+            "viewed_at": get_ist_now().isoformat()
         }
         
         if existing_index is not None:
@@ -472,7 +473,7 @@ def toggle_like(
                 "empid": current_user.empid,
                 "name": current_user.name,
                 "page": int(page),  # Ensure page is stored as integer
-                "liked_at": datetime.utcnow().isoformat()
+                "liked_at": get_ist_now().isoformat()
             }
             likes_list.append(like_entry)
             action = "liked"
@@ -606,7 +607,7 @@ def acknowledge_policy(
             "empid": str(current_user.empid),  # Ensure empid is string
             "name": str(current_user.name),
             "viewed": True,
-            "viewed_at": datetime.utcnow().isoformat()
+            "viewed_at": get_ist_now().isoformat()
         }
         
         if existing_index is not None:

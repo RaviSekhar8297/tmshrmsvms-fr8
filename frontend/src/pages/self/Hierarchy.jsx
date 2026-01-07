@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { usersAPI } from '../../services/api';
+import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiArrowDown, FiUsers, FiZoomIn, FiZoomOut, FiMaximize2, FiDownload } from 'react-icons/fi';
 import './Hierarchy.css';
@@ -20,11 +20,13 @@ const Hierarchy = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await usersAPI.getAll();
+      // Use hierarchy endpoint which is accessible to all roles
+      const response = await api.get('/users/hierarchy');
       const allUsers = response.data || [];
       setUsers(allUsers);
       buildHierarchy(allUsers);
     } catch (error) {
+      console.error('Error fetching hierarchy:', error);
       toast.error('Failed to load hierarchy data');
     } finally {
       setLoading(false);
@@ -286,6 +288,9 @@ const Hierarchy = () => {
             )}
           </div>
           <div className="employee-name">{employee.name || 'N/A'}</div>
+          <div className="employee-role" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: 500 }}>
+            {employee.role || 'N/A'} - {employee.empid || 'N/A'}
+          </div>
         </div>
 
         {hasChildren && (

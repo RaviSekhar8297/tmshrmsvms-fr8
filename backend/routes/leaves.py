@@ -2,11 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, extract
 from datetime import datetime, date, timedelta
+from utils import get_ist_now
 from database import get_db
 from models import Leave, User, LeaveBalanceList, WeekOffDate, Holiday
 from routes.auth import get_current_user
 from typing import Optional
 from pydantic import BaseModel
+from utils.email_service import send_leave_email_to_manager
 
 router = APIRouter()
 
@@ -97,6 +99,12 @@ def validate_leave_dates(
     # Check if it's same date
     is_same_date = (from_date_obj == to_date_obj)
     
+    # Check for cross-day half day scenario (evening to next morning = 1 day)
+    # Example: 2025-01-06 evening to 2025-01-07 morning = 0.5 + 0.5 = 1.0 day
+    is_cross_day_half = (not is_same_date and 
+                         to_date_obj == from_date_obj + timedelta(days=1) and
+                         half_from == 'evening' and half_to == 'morning')
+    
     while current_date <= to_date_obj:
         if current_date not in week_off_dates and current_date not in holiday_dates:
             # Determine day count based on half day logic
@@ -113,25 +121,36 @@ def validate_leave_dates(
                         day_count = 1.0
             else:
                 # Different dates logic
-                if current_date == from_date_obj:
-                    # First day
-                    if half_from:
-                        # Half day from specified = 0.5
-                        day_count = 0.5
+                if is_cross_day_half:
+                    # Cross-day half day: evening to next morning = 1 day total
+                    # Count 0.5 for from_date (evening) and 0.5 for to_date (morning)
+                    if current_date == from_date_obj:
+                        day_count = 0.5  # Evening half day
+                    elif current_date == to_date_obj:
+                        day_count = 0.5  # Morning half day
                     else:
-                        # No half day from = 1.0
-                        day_count = 1.0
-                elif current_date == to_date_obj:
-                    # Last day
-                    if half_to:
-                        # Half day to specified = 0.5
-                        day_count = 0.5
-                    else:
-                        # No half day to = 1.0
-                        day_count = 1.0
+                        day_count = 1.0  # Middle days (shouldn't happen in cross-day scenario)
                 else:
-                    # Middle days = always 1.0
-                    day_count = 1.0
+                    # Normal different dates logic
+                    if current_date == from_date_obj:
+                        # First day
+                        if half_from:
+                            # Half day from specified = 0.5
+                            day_count = 0.5
+                        else:
+                            # No half day from = 1.0
+                            day_count = 1.0
+                    elif current_date == to_date_obj:
+                        # Last day
+                        if half_to:
+                            # Half day to specified = 0.5
+                            day_count = 0.5
+                        else:
+                            # No half day to = 1.0
+                            day_count = 1.0
+                    else:
+                        # Middle days = always 1.0
+                        day_count = 1.0
             
             actual_days += day_count
         else:
@@ -275,7 +294,7 @@ def create_leave(
     new_leave = Leave(
         empid=current_user.empid,
         name=current_user.name,
-        applied_date=datetime.utcnow(),
+        applied_date=get_ist_now(),
         from_date=from_date,
         to_date=to_date,
         duration=duration,
@@ -291,6 +310,26 @@ def create_leave(
     db.add(new_leave)
     db.commit()
     db.refresh(new_leave)
+    
+    # Send email to reporting manager if email_consent is true
+    if report_to:
+        manager = db.query(User).filter(User.empid == report_to).first()
+        if manager and manager.email_consent and manager.email:
+            try:
+                send_leave_email_to_manager(
+                    manager_email=manager.email,
+                    manager_name=manager.name,
+                    employee_name=current_user.name,
+                    employee_empid=current_user.empid,
+                    from_date=from_date.isoformat(),
+                    to_date=to_date.isoformat(),
+                    leave_type=leave_data.leave_type,
+                    reason=leave_data.reason,
+                    duration=duration
+                )
+            except Exception as e:
+                # Log error but don't fail the request
+                print(f"Error sending leave email: {str(e)}")
     
     return {
         "message": "Leave request submitted successfully",
@@ -416,7 +455,7 @@ def update_leave_status(
     
     leave.status = status_data.status
     leave.approved_by = current_user.empid
-    leave.approved_date = datetime.utcnow()
+    leave.approved_date = get_ist_now()
     
     db.commit()
     db.refresh(leave)

@@ -3,8 +3,8 @@ from functools import lru_cache
 import os
 
 class Settings(BaseSettings):
-    ##DATABASE_URL: str = "postgresql://postgres:Ravi%408297@localhost:5432/tms_db"
     DATABASE_URL: str = "postgresql://postgres:Ravi%408297@localhost:5432/tms_db"
+    ##DATABASE_URL: str = "postgresql://postgres:Ravi%408297@localhost:5432/tms_db"
 
     ##DATABASE_URL:str ="postgresql://renewaluser:Renewal%40123@172.30.0.200:5434/tms_db"
 

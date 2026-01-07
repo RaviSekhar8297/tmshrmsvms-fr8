@@ -416,6 +416,15 @@
   .instruction-item {
     padding: 12px;
   }
+  
+  .overtime-filters-row {
+    flex-wrap: wrap !important;
+  }
+  
+  .overtime-filters-row > div:first-child {
+    min-width: 100% !important;
+    margin-bottom: 8px;
+  }
 }
 
 /* Alerts and Overtime Sections */
@@ -1467,8 +1476,92 @@
 }
 
 @media (max-width: 768px) {
+  .data-page {
+    padding: 16px;
+  }
+
+  .table-container {
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    padding: 0 16px;
+    max-height: calc(100vh - 300px);
+  }
+
+  .loans-table-wrapper,
+  .installments-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .data-table,
+  .loans-table,
+  .installments-table {
+    min-width: 600px;
+  }
+
+  .pagination {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .pagination-info {
+    font-size: 0.85rem;
+    text-align: center;
+    word-break: break-word;
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    flex: 1 1 100%;
+    order: 1;
+  }
+
+  .pagination-controls button {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    font-size: 0.85rem;
+  }
+
+  .excel-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .upload-section {
+    padding: 16px;
+  }
+
+  .alerts-section {
+    padding: 16px;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .alerts-search {
+    width: 100%;
+    margin-bottom: 16px;
+  }
+
   .upload-card-body {
     grid-template-columns: 1fr;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   
   .upload-card-left {
@@ -1481,10 +1574,25 @@
   
   .upload-card-right {
     padding-left: 0;
+    max-height: calc(100vh - 400px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .employee-form-container {
+    max-height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 8px;
   }
   
   .form-row {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .form-group {
+    width: 100%;
   }
 }
 

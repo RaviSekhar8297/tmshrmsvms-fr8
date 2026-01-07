@@ -29,8 +29,10 @@ import ApplyLoan from './pages/employee/ApplyLoan';
 // Self Module
 import Punch from './pages/self/Punch';
 import Hierarchy from './pages/self/Hierarchy';
+import Resignation from './pages/self/Resignation';
 // Employees Module
 import WeekOffs from './pages/employees/WeekOffs';
+import ResignedList from './pages/employees/ResignedList';
 // VMS Module
 import AddItem from './pages/vms/AddItem';
 import ItemList from './pages/vms/ItemList';
@@ -40,6 +42,7 @@ import PayrollStructure from './pages/payroll/PayrollStructure';
 import Generate from './pages/payroll/Generate';
 import Payslip from './pages/payroll/Payslip';
 import Salary from './pages/payroll/Salary';
+import Tax from './pages/payroll/Tax';
 // Attendance Module
 import AttendanceCycle from './pages/attendance/Cycle';
 import AttendanceCount from './pages/attendance/Count';
@@ -86,6 +89,11 @@ const DefaultRedirect = () => {
         <p>Loading...</p>
       </div>
     );
+  }
+  
+  // Front Desk users go directly to Add Visitor page
+  if (user?.role === 'Front Desk') {
+    return <Navigate to="/vms/add" replace />;
   }
   
   if (user?.role === 'Manager') {
@@ -170,6 +178,7 @@ const AppRoutes = () => {
         <Route path="self/holidays" element={<Holidays />} />
         <Route path="self/work-report" element={<WorkReport />} />
         <Route path="self/contact-details" element={<ContactDetails />} />
+        <Route path="self/resignation" element={<Resignation />} />
         
         {/* Employees Module Routes (Manager/HR/Admin - managing employees) */}
         <Route path="employees/apply-leave" element={<ApplyLeave />} />
@@ -199,6 +208,11 @@ const AppRoutes = () => {
             <Letters />
           </PrivateRoute>
         } />
+        <Route path="employees/resigned-list" element={
+          <PrivateRoute allowedRoles={['Manager', 'HR', 'Admin']}>
+            <ResignedList />
+          </PrivateRoute>
+        } />
         
         {/* VMS Module Routes */}
         <Route path="vms/add" element={<AddItem />} />
@@ -210,6 +224,7 @@ const AppRoutes = () => {
         <Route path="payroll/generate" element={<Generate />} />
         <Route path="payroll/payslip" element={<Payslip />} />
         <Route path="payroll/salary" element={<Salary />} />
+        <Route path="payroll/tax" element={<Tax />} />
         
         {/* Attendance Module Routes */}
         <Route path="attendance/cycle" element={<AttendanceCycle />} />

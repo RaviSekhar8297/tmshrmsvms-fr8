@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, extract, String, cast
 from datetime import datetime, date, timedelta
+from utils import get_ist_now
 from database import get_db
 from models import Attendance, User, PunchLog, AttendanceList, WeekOffDate, Holiday, Leave, AttendanceCycle, LeaveBalanceList
 from routes.auth import get_current_user
@@ -651,7 +652,7 @@ def generate_attendance(
                     if duration_hours < 0:
                         continue
                     
-                    # Check for late log
+                    # Check for late log (previous code - calculate normally)
                     late_log_time = cycle.late_log_time
                     is_late = in_time > late_log_time
                     
@@ -706,6 +707,13 @@ def generate_attendance(
                 # Calculate working days
                 working_days = emp_total_days - emp_week_off_count - emp_holiday_count
                 
+                # Check if employee has is_late flag set to True
+                # If is_late is False or None, set late_log_count to 0
+                # Employee is already a User object, so we can access is_late directly
+                employee_is_late_enabled = getattr(employee, 'is_late', False) or False
+                if not employee_is_late_enabled:
+                    late_log_count = 0
+                
                 # Calculate late log deduction (every 3 late logs = 0.5 day)
                 late_log_deduction = (late_log_count // 3) * 0.5
                 
@@ -731,18 +739,38 @@ def generate_attendance(
                     final_payable_days = 0.0
                 
                 # Special rounding logic for payble_days
+                # Rounding rules:
+                # - 0.1-0.4 → rounds to 0.5 (e.g., 28.1, 28.2, 28.3, 28.4 → 28.5)
+                # - 0.6-0.9 → rounds to 1.0 (e.g., 28.6, 28.7, 28.8, 28.9 → 29.0)
+                # - 0.5 → stays as is (e.g., 28.5 → 28.5)
+                # - Whole numbers → stay as is (e.g., 28.0 → 28.0)
                 def round_payble_days(value):
+                    # Handle edge cases
+                    if value is None:
+                        return 0.0
+                    if value <= 0:
+                        return 0.0
+                    
+                    # Round to 1 decimal place first to handle floating point precision issues
+                    value = round(value, 1)
+                    
+                    # Check if it's a whole number
                     if value == int(value):
-                        return value
+                        return float(int(value))
+                    
                     integer_part = int(value)
-                    decimal_part = value - integer_part
+                    # Round to 1 decimal to avoid floating point precision issues
+                    decimal_part = round(value - integer_part, 1)
+                    
+                    # Apply rounding rules
                     if 0.1 <= decimal_part <= 0.4:
-                        return integer_part + 0.5
+                        return float(integer_part) + 0.5
                     elif 0.6 <= decimal_part <= 0.9:
-                        return integer_part + 1.0
+                        return float(integer_part) + 1.0
                     elif decimal_part == 0.5:
                         return value
                     else:
+                        # For values outside 0.1-0.9 range (shouldn't happen), return as is
                         return value
                 
                 final_payable_days = round_payble_days(final_payable_days)
@@ -795,7 +823,7 @@ def generate_attendance(
                     'month': str(month),
                     'status': 1,  # Status = 1 (active) like reference code
                     'updated_by': current_user.name or current_user.empid,
-                    'updated_date': datetime.utcnow()
+                    'updated_date': get_ist_now()
                 }
                 
                 if existing:
@@ -2031,6 +2059,9 @@ def get_attendance_cycle(
             "half_day_duration": cycle.half_day_duration.strftime('%H:%M') if cycle.half_day_duration else None,
             "attendance_cycle_start_date": cycle.attendance_cycle_start_date,
             "attendance_cycle_end_date": cycle.attendance_cycle_end_date,
+            "birthdays_send": cycle.birthdays_send if cycle.birthdays_send else {"day": "", "time": ""},
+            "anniversaries_send": cycle.anniversaries_send if cycle.anniversaries_send else {"day": "", "time": ""},
+            "weekly_attendance_send": cycle.weekly_attendance_send if cycle.weekly_attendance_send else {"day": "", "time": ""},
             "created_at": cycle.created_at.isoformat() if cycle.created_at else None
         }
     except HTTPException:
@@ -2060,6 +2091,19 @@ def create_attendance_cycle(
         # Parse time strings to time objects
         from datetime import time as dt_time
         
+        # Parse JSONB notification settings
+        birthdays_send = None
+        if cycle_data.get('birthdays_send'):
+            birthdays_send = cycle_data['birthdays_send']
+        
+        anniversaries_send = None
+        if cycle_data.get('anniversaries_send'):
+            anniversaries_send = cycle_data['anniversaries_send']
+        
+        weekly_attendance_send = None
+        if cycle_data.get('weekly_attendance_send'):
+            weekly_attendance_send = cycle_data['weekly_attendance_send']
+        
         new_cycle = AttendanceCycle(
             id=1,  # Always use id=1
             name=cycle_data.get('name', 'Default Cycle'),
@@ -2069,7 +2113,10 @@ def create_attendance_cycle(
             full_day_duration=dt_time.fromisoformat(cycle_data.get('full_day_duration', '09:00')),
             half_day_duration=dt_time.fromisoformat(cycle_data.get('half_day_duration', '04:30')),
             attendance_cycle_start_date=cycle_data.get('attendance_cycle_start_date', 26),
-            attendance_cycle_end_date=cycle_data.get('attendance_cycle_end_date', 25)
+            attendance_cycle_end_date=cycle_data.get('attendance_cycle_end_date', 25),
+            birthdays_send=birthdays_send,
+            anniversaries_send=anniversaries_send,
+            weekly_attendance_send=weekly_attendance_send
         )
         
         db.add(new_cycle)
@@ -2122,6 +2169,13 @@ def update_attendance_cycle(
             cycle.attendance_cycle_start_date = cycle_data['attendance_cycle_start_date']
         if 'attendance_cycle_end_date' in cycle_data:
             cycle.attendance_cycle_end_date = cycle_data['attendance_cycle_end_date']
+        # Notification settings (JSONB)
+        if 'birthdays_send' in cycle_data:
+            cycle.birthdays_send = cycle_data['birthdays_send'] if cycle_data.get('birthdays_send') else None
+        if 'anniversaries_send' in cycle_data:
+            cycle.anniversaries_send = cycle_data['anniversaries_send'] if cycle_data.get('anniversaries_send') else None
+        if 'weekly_attendance_send' in cycle_data:
+            cycle.weekly_attendance_send = cycle_data['weekly_attendance_send'] if cycle_data.get('weekly_attendance_send') else None
         
         db.commit()
         db.refresh(cycle)
@@ -2310,7 +2364,7 @@ def modify_attendance(
         attendance.check_out = check_out_time
         attendance.status = calculated_status
         attendance.remarks = modify_data.remarks
-        attendance.updated_at = datetime.utcnow()
+        attendance.updated_at = get_ist_now()
         attendance.hours = hours
     else:
         # Create new record
@@ -2471,7 +2525,7 @@ def generate_leave_balance(
                     'balance_comp_off_leaves': balance_comp_off_leaves,
                     'year': year,
                     'updated_by': current_user.name or current_user.empid,
-                    'updated_date': datetime.utcnow()
+                    'updated_date': get_ist_now()
                 }
                 
                 new_record = LeaveBalanceList(**leave_balance_data)
@@ -2727,7 +2781,7 @@ def upload_attendance_list_excel(
                     'month': str(month),
                     'status': 1,
                     'updated_by': current_user.name or current_user.empid,
-                    'updated_date': datetime.utcnow()
+                    'updated_date': get_ist_now()
                 }
                 
                 if existing:
@@ -2967,7 +3021,7 @@ def create_hr_self_leave(
     new_leave = Leave(
         empid=current_user.empid,
         name=current_user.name,
-        applied_date=datetime.utcnow(),
+        applied_date=get_ist_now(),
         from_date=from_date,
         to_date=to_date,
         duration=duration,
@@ -3017,7 +3071,7 @@ def create_hr_leave(
     new_leave = Leave(
         empid=employee_id,
         name=employee.name,
-        applied_date=datetime.utcnow(),
+        applied_date=get_ist_now(),
         from_date=from_date,
         to_date=to_date,
         duration=duration,
@@ -3067,7 +3121,7 @@ def update_hr_leave_status(
     
     leave.status = status
     leave.approved_by = current_user.empid
-    leave.approved_date = datetime.utcnow()
+    leave.approved_date = get_ist_now()
     
     db.commit()
     db.refresh(leave)

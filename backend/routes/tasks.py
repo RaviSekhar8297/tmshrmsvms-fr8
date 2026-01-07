@@ -275,11 +275,12 @@ def get_task_durations(
 ):
     """Get assigned duration and working duration for a task"""
     from datetime import datetime, timezone
+    from utils import get_ist_now
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    now = datetime.now(timezone.utc)
+    now = get_ist_now()
     
     # Assigned Duration: time since task was assigned
     # For newly created tasks, ALWAYS start from created_at to ensure timer starts at 00:00:00
@@ -623,7 +624,7 @@ def update_task(
         if value is not None:
             setattr(task, key, value)
     
-    task.updated_at = datetime.utcnow()
+    task.updated_at = get_ist_now()
     db.commit()
     db.refresh(task)
     

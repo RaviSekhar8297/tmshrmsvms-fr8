@@ -46,7 +46,8 @@ const Data = () => {
   const [overtimeSearch, setOvertimeSearch] = useState('');
   const [alertsCurrentPage, setAlertsCurrentPage] = useState(1);
   const [overtimeCurrentPage, setOvertimeCurrentPage] = useState(1);
-  const recordsPerPage = 25;
+  const [overtimeYear, setOvertimeYear] = useState(new Date().getFullYear());
+  const recordsPerPage = 50;
   const [loanInstallments, setLoanInstallments] = useState([]);
   const [loadingInstallments, setLoadingInstallments] = useState(false);
   const [selectedLoanId, setSelectedLoanId] = useState(null);
@@ -87,7 +88,8 @@ const Data = () => {
     department_id: '',
     department_name: '',
     salaryper_annum: '',
-    emp_inactive_date: null
+    emp_inactive_date: null,
+    is_late: false
   });
   const [uploadReportToSearch, setUploadReportToSearch] = useState('');
   const [showReportToDropdown, setShowReportToDropdown] = useState(false);
@@ -195,7 +197,7 @@ const Data = () => {
       fetchUploadEmployees();
       fetchCompanies();
     }
-  }, [activeTab]);
+  }, [activeTab, overtimeYear]);
 
   // Handle click outside for upload employee dropdown
   useEffect(() => {
@@ -368,6 +370,7 @@ const Data = () => {
           email: employee.email || '',
           phone: employee.phone || '',
           role: employee.role || '',
+          is_late: employee.is_late || false,
           sms_consent: employee.sms_consent || false,
           email_consent: employee.email_consent || false,
           whatsapp_consent: employee.whatsapp_consent || false,
@@ -384,7 +387,8 @@ const Data = () => {
           department_id: departmentId || '',
           department_name: employee.department_name || '',
           salaryper_annum: salaryPerAnnum,
-          emp_inactive_date: empInactiveDate
+          emp_inactive_date: empInactiveDate,
+          is_late: employee.is_late || false
         });
         
         // Initialize tempInactiveDate for editing
@@ -425,6 +429,11 @@ const Data = () => {
                                      ? null 
                                      : uploadEmployeeFormData.emp_inactive_date;
       
+      // Determine is_active based on emp_inactive_date
+      // If emp_inactive_date is null/empty, employee is active (is_active = true)
+      // If emp_inactive_date has a date, employee is inactive (is_active = false)
+      const isActive = empInactiveDateValue === null || empInactiveDateValue === '' || empInactiveDateValue === undefined;
+      
       const userUpdateData = {
         name: uploadEmployeeFormData.name || null,
         doj: uploadEmployeeFormData.doj || null,
@@ -442,7 +451,9 @@ const Data = () => {
         branch_name: selectedBranch?.name || null,
         department_id: uploadEmployeeFormData.department_id || null,
         department_name: selectedDepartment?.name || null,
-        emp_inactive_date: empInactiveDateValue
+        emp_inactive_date: empInactiveDateValue,
+        is_active: isActive,
+        is_late: uploadEmployeeFormData.is_late || false
       };
 
       await usersAPI.update(employee.id, userUpdateData);
@@ -664,10 +675,9 @@ const Data = () => {
         usersAPI.getAll()
       ]);
 
-      // Fetch punch logs separately with date range
-      const today = new Date();
-      const startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      // Fetch punch logs separately with date range based on selected year
+      const startDate = new Date(overtimeYear, 0, 1); // January 1st of selected year
+      const endDate = new Date(overtimeYear, 11, 31); // December 31st of selected year
       const punchLogsRes = await api.get('/attendance/punch-logs', {
         params: {
           start_date: startDate.toISOString().split('T')[0],
@@ -1714,7 +1724,31 @@ const Data = () => {
                               </span>
                             </label>
                           </div>
-                          {uploadEmployeeFormData.emp_inactive_date && (
+                        </div>
+                        <div className="form-group">
+                          <label>Is Late</label>
+                          <div className="toggle-switch">
+                            <input
+                              type="checkbox"
+                              id="is-late-toggle"
+                              checked={uploadEmployeeFormData.is_late || false}
+                              onChange={(e) => {
+                                setUploadEmployeeFormData({ 
+                                  ...uploadEmployeeFormData, 
+                                  is_late: e.target.checked 
+                                });
+                              }}
+                              className="toggle-input"
+                            />
+                            <label htmlFor="is-late-toggle" className="toggle-label">
+                              <span className="toggle-slider"></span>
+                              <span className="toggle-text">
+                                {uploadEmployeeFormData.is_late ? 'True' : 'False'}
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                        {uploadEmployeeFormData.emp_inactive_date && (
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {editingInactiveDate ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
@@ -1816,7 +1850,6 @@ const Data = () => {
                               )}
                             </div>
                           )}
-                        </div>
                       </div>
                       <div className="form-actions">
                         <button
@@ -1983,8 +2016,8 @@ const Data = () => {
 
                 return (
                   <>
-                    <div className="table-container">
-                      <table className="data-table">
+                    <div className="table-container" style={{ maxHeight: 'calc(100vh - 300px)', overflowY: 'auto', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table className="data-table" style={{ minWidth: '800px' }}>
                         <thead>
                           <tr>
                             <th>Image</th>
@@ -2117,11 +2150,11 @@ const Data = () => {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="pagination-info" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div className="pagination-info" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', flex: '1 1 100%', textAlign: 'center', order: 2 }}>
                   Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, filteredAlerts.length)} of {filteredAlerts.length} records
                 </div>
-                <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '1 1 100%', justifyContent: 'center', order: 1 }}>
                   <button 
                     onClick={() => setAlertsCurrentPage(prev => Math.max(1, prev - 1))}
                     disabled={alertsCurrentPage === 1}
@@ -2183,10 +2216,10 @@ const Data = () => {
       {/* OverTime Tab */}
       {activeTab === 'overtime' && (
         <div className="overtime-section">
-          {/* Search */}
-          <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-              <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+          {/* Search, Year Filter, and Excel in single row */}
+          <div className="overtime-filters-row" style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'nowrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+              <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }} />
               <input
                 type="text"
                 placeholder="Search by Emp ID, Name, Date..."
@@ -2206,10 +2239,23 @@ const Data = () => {
                 }}
               />
             </div>
+            <select
+              value={overtimeYear}
+              onChange={(e) => {
+                setOvertimeYear(parseInt(e.target.value));
+                setOvertimeCurrentPage(1);
+              }}
+              className="form-select"
+              style={{ width: '80px', flexShrink: 0, padding: '10px 8px' }}
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
             <button
               onClick={handleOvertimeExport}
               className="btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap', flexShrink: 0 }}
             >
               <FiDownload /> Excel
             </button>
@@ -2239,8 +2285,8 @@ const Data = () => {
 
                 return (
                   <>
-                    <div className="table-container">
-                      <table className="data-table">
+                    <div className="table-container" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table className="data-table" style={{ minWidth: '700px' }}>
                         <thead>
                           <tr>
                             <th>Image</th>
@@ -2329,11 +2375,11 @@ const Data = () => {
 
                     {/* Pagination */}
                     {totalPages > 1 && (
-                      <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div className="pagination-info" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                      <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                        <div className="pagination-info" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', flex: '1 1 100%', textAlign: 'center', order: 2 }}>
                           Showing {indexOfFirstRecord + 1} to {Math.min(indexOfLastRecord, filteredOvertime.length)} of {filteredOvertime.length} records
                         </div>
-                        <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '1 1 100%', justifyContent: 'center', order: 1 }}>
                           <button 
                             onClick={() => setOvertimeCurrentPage(prev => Math.max(1, prev - 1))}
                             disabled={overtimeCurrentPage === 1}
@@ -2449,8 +2495,8 @@ const Data = () => {
                   <p>Loading loans...</p>
                 </div>
               ) : (
-                <div className="loans-table-wrapper">
-                  <table className="loans-table">
+                <div className="loans-table-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <table className="loans-table" style={{ minWidth: '900px' }}>
                     <thead>
                       <tr>
                         <th>Name (Emp ID)</th>
@@ -2656,8 +2702,8 @@ const Data = () => {
                   </div>
                 </div>
               ) : (
-                <div className="installments-table-wrapper">
-                  <table className="installments-table">
+                <div className="installments-table-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <table className="installments-table" style={{ minWidth: '600px' }}>
                     <thead>
                       <tr>
                         <th>Details</th>

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FiSearch, FiBell, FiMenu, FiSun, FiMoon } from 'react-icons/fi';
+import { FiRefreshCw, FiBell, FiMenu, FiSun, FiMoon } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
-import { notificationsAPI, tasksAPI, projectsAPI, issuesAPI } from '../services/api';
+import { notificationsAPI } from '../services/api';
 import './Header.css';
 
 const Header = ({ onMenuClick }) => {
@@ -13,12 +13,10 @@ const Header = ({ onMenuClick }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [notifCounts, setNotifCounts] = useState({ projects: 0, issues: 0, tasks: 0 });
   const notificationWrapperRef = useRef(null);
 
   useEffect(() => {
     fetchUnreadCount();
-    fetchSummaryCounts();
     // Check saved theme preference
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
@@ -33,23 +31,6 @@ const Header = ({ onMenuClick }) => {
       setUnreadCount(response.data.unread_count);
     } catch (error) {
       console.error('Error fetching notifications:', error);
-    }
-  };
-
-  const fetchSummaryCounts = async () => {
-    try {
-      const [taskStats, projectStats, issueStats] = await Promise.all([
-        tasksAPI.getStats(),
-        projectsAPI.getStats(),
-        issuesAPI.getStats()
-      ]);
-      setNotifCounts({
-        projects: projectStats?.total || 0,
-        issues: issueStats?.open || 0,
-        tasks: taskStats?.total || 0
-      });
-    } catch (error) {
-      console.error('Error fetching notification counts:', error);
     }
   };
 
@@ -117,14 +98,13 @@ const Header = ({ onMenuClick }) => {
       </div>
 
       <div className="header-right">
-        <div className="search-box header-search">
-          <FiSearch className="search-box-icon" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="form-input"
-          />
-        </div>
+        <button 
+          className="theme-toggle-btn refresh-btn" 
+          onClick={() => window.location.reload()} 
+          title="Refresh Page"
+        >
+          <FiRefreshCw />
+        </button>
 
         <button className="theme-toggle-btn" onClick={toggleTheme} title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
           {isDarkMode ? <FiSun /> : <FiMoon />}
@@ -133,9 +113,9 @@ const Header = ({ onMenuClick }) => {
         <div className="notification-wrapper" ref={notificationWrapperRef}>
           <button className="notification-btn" onClick={handleNotificationClick}>
             <FiBell />
-            {(unreadCount + notifCounts.projects + notifCounts.issues + notifCounts.tasks) > 0 && (
+            {unreadCount > 0 && (
               <span className="notification-badge">
-                {unreadCount + notifCounts.projects + notifCounts.issues + notifCounts.tasks}
+                {unreadCount}
               </span>
             )}
           </button>
@@ -155,40 +135,56 @@ const Header = ({ onMenuClick }) => {
                   Mark all read
                 </button>
               </div>
-              <div className="notification-summary">
-                <div className="summary-row">
-                  <span>Projects</span>
-                  <strong>{notifCounts.projects}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Open Issues</span>
-                  <strong>{notifCounts.issues}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Tasks Assigned</span>
-                  <strong>{notifCounts.tasks}</strong>
-                </div>
-              </div>
               <div className="notification-list">
                 {notifications.length === 0 ? (
                   <div className="empty-notifications">
                     <p>No notifications</p>
+                    <small style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: '8px', display: 'block' }}>
+                      You're all caught up!
+                    </small>
                   </div>
                 ) : (
-                  notifications.map((notification) => (
-                    <div 
-                      key={notification.id} 
-                      className={`notification-item ${!notification.is_read ? 'unread' : ''}`}
-                    >
-                      <div className="notification-content">
-                        <h5>{notification.title}</h5>
-                        <p>{notification.message?.substring(0, 60)}...</p>
-                        <span className="notification-time">
-                          {new Date(notification.sent_at).toLocaleDateString()}
-                        </span>
+                  notifications.map((notification) => {
+                    const timeAgo = (() => {
+                      const now = new Date();
+                      const sent = new Date(notification.sent_at);
+                      const diffMs = now - sent;
+                      const diffMins = Math.floor(diffMs / 60000);
+                      const diffHours = Math.floor(diffMs / 3600000);
+                      const diffDays = Math.floor(diffMs / 86400000);
+                      
+                      if (diffMins < 1) return 'Just now';
+                      if (diffMins < 60) return `${diffMins}m ago`;
+                      if (diffHours < 24) return `${diffHours}h ago`;
+                      if (diffDays < 7) return `${diffDays}d ago`;
+                      return sent.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    })();
+
+                    return (
+                      <div 
+                        key={notification.id} 
+                        className={`notification-item ${!notification.is_read ? 'unread' : ''}`}
+                        onClick={() => {
+                          // Navigate to notification or mark as read
+                          if (!notification.is_read) {
+                            notificationsAPI.markAsRead(notification.id);
+                            setNotifications(notifications.map(n => 
+                              n.id === notification.id ? { ...n, is_read: true } : n
+                            ));
+                            setUnreadCount(prev => Math.max(0, prev - 1));
+                          }
+                        }}
+                      >
+                        <div className="notification-content">
+                          <h5>{notification.title}</h5>
+                          <p>{notification.message || 'No message'}</p>
+                          <span className="notification-time">
+                            {timeAgo}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -202,7 +198,9 @@ const Header = ({ onMenuClick }) => {
             style={{ cursor: 'pointer' }}
             title="View Profile"
           >
-            {user?.image_base64 ? (
+            {user?.role === 'Front Desk' ? (
+              user?.name?.charAt(0).toUpperCase()
+            ) : user?.image_base64 ? (
               <img src={user.image_base64} alt={user?.name} />
             ) : (
               user?.name?.charAt(0).toUpperCase()

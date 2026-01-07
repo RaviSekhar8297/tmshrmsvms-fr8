@@ -1,23 +1,41 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { FiPrinter, FiFileText, FiMail, FiMessageCircle, FiDownload, FiX } from 'react-icons/fi';
+import { FiPrinter, FiFileText, FiMail, FiMessageCircle, FiDownload, FiX, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import './Payslip.css';
+import './Payroll.css';
 
 const Payslip = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [payslipData, setPayslipData] = useState(null);
-  const [monthYear, setMonthYear] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  // Calculate previous month
+  const getPreviousMonth = () => {
+    const today = new Date();
+    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    return prevMonth.toISOString().slice(0, 7);
+  };
+
+  const [monthYear, setMonthYear] = useState(getPreviousMonth());
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailData, setEmailData] = useState({ email: '', subject: '', message: '' });
   const [sendingEmail, setSendingEmail] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [logoBase64, setLogoBase64] = useState(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMonthPicker && !event.target.closest('.month-picker-wrapper')) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMonthPicker]);
 
   useEffect(() => {
     if (monthYear) {
@@ -408,7 +426,7 @@ const Payslip = () => {
                     new TableCell({ children: [new Paragraph(formatCurrency(payslipData.pf || 0))] }),
                     new TableCell({ children: [new Paragraph(formatCurrency(payslipData.esi || 0))] }),
                     new TableCell({ children: [new Paragraph(formatCurrency(payslipData.pt || 0))] }),
-                    new TableCell({ children: [new Paragraph("0.00")] }),
+                    new TableCell({ children: [new Paragraph(formatCurrency(payslipData.lwf || 0))] }),
                     new TableCell({ children: [new Paragraph(formatCurrency(payslipData.tds || 0))] }),
                     new TableCell({ children: [new Paragraph("0.00")] }),
                     new TableCell({ children: [new Paragraph(formatCurrency(payslipData.other_deduction || 0))] }),
@@ -482,13 +500,95 @@ const Payslip = () => {
       <div className="page-header">
         <h1>PAYSLIP</h1>
         <div className="header-actions">
-          <input
-            type="month"
-            value={monthYear}
-            onChange={(e) => setMonthYear(e.target.value)}
-            className="form-input"
-            style={{ width: '180px' }}
-          />
+          <div className="month-picker-wrapper" style={{ width: '210px' }}>
+            <div 
+              className="month-picker-input"
+              onClick={() => setShowMonthPicker(!showMonthPicker)}
+            >
+              <FiCalendar size={18} />
+              <span>
+                {monthYear 
+                  ? new Date(monthYear + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                  : 'Select month'}
+              </span>
+              <FiChevronDown size={18} className={showMonthPicker ? 'rotate' : ''} />
+            </div>
+            {showMonthPicker && (
+              <div className="month-picker-dropdown">
+                <div className="month-picker-header">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const [year] = monthYear ? monthYear.split('-').map(Number) : [new Date().getFullYear()];
+                      const currentYear = year || new Date().getFullYear();
+                      const newYear = currentYear - 1;
+                      const [_, month] = monthYear ? monthYear.split('-') : [null, String(new Date().getMonth() + 1).padStart(2, '0')];
+                      setMonthYear(`${newYear}-${month}`);
+                    }}
+                    className="month-picker-nav"
+                  >
+                    ←
+                  </button>
+                  <span className="month-picker-year">
+                    {monthYear ? monthYear.split('-')[0] : new Date().getFullYear()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const [year] = monthYear ? monthYear.split('-').map(Number) : [new Date().getFullYear()];
+                      const currentYear = year || new Date().getFullYear();
+                      const currentDate = new Date();
+                      const maxYear = currentDate.getFullYear();
+                      // Only allow going forward if the year is less than current year
+                      if (currentYear < maxYear) {
+                        const newYear = currentYear + 1;
+                        const [_, month] = monthYear ? monthYear.split('-') : [null, String(new Date().getMonth() + 1).padStart(2, '0')];
+                        setMonthYear(`${newYear}-${month}`);
+                      }
+                    }}
+                    className="month-picker-nav"
+                    disabled={monthYear ? parseInt(monthYear.split('-')[0]) >= new Date().getFullYear() : true}
+                  >
+                    →
+                  </button>
+                </div>
+                <div className="month-picker-grid">
+                  {['December', 'November', 'October', 'September', 'August', 'July', 'June', 'May', 'April', 'March', 'February', 'January'].map((month, index) => {
+                    const monthNum = 12 - index; // Reverse order: Dec=12, Nov=11, etc.
+                    const year = monthYear ? parseInt(monthYear.split('-')[0]) : new Date().getFullYear();
+                    const currentDate = new Date();
+                    const currentYear = currentDate.getFullYear();
+                    const currentMonth = currentDate.getMonth() + 1;
+                    const isCurrentMonth = year === currentYear && monthNum === currentMonth;
+                    const isPastMonth = year < currentYear || (year === currentYear && monthNum < currentMonth);
+                    
+                    // Only show past months (not current or future)
+                    if (!isPastMonth) {
+                      return null;
+                    }
+                    
+                    return (
+                      <button
+                        key={month}
+                        type="button"
+                        className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${monthYear === `${year}-${String(monthNum).padStart(2, '0')}` ? 'selected' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const monthValue = `${year}-${String(monthNum).padStart(2, '0')}`;
+                          setMonthYear(monthValue);
+                          setShowMonthPicker(false);
+                        }}
+                      >
+                        {month.substring(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -619,7 +719,7 @@ const Payslip = () => {
                     <td>{formatCurrency(payslipData.pf || 0)}</td>
                     <td>{formatCurrency(payslipData.esi || 0)}</td>
                     <td>{formatCurrency(payslipData.pt || 0)}</td>
-                    <td>0.00</td>
+                    <td>{formatCurrency(payslipData.lwf || 0)}</td>
                     <td>{formatCurrency(payslipData.tds || 0)}</td>
                     <td>0.00</td>
                     <td>{formatCurrency(payslipData.other_deduction || 0)}</td>

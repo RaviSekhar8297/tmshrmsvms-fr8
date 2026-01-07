@@ -7,7 +7,9 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [selectedDate, setSelectedDate] = useState(value ? new Date(value) : null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const pickerRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     if (value) {
@@ -22,13 +24,48 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+      if (pickerRef.current && !pickerRef.current.contains(event.target) &&
+          dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      // Calculate position when dropdown opens
+      if (pickerRef.current) {
+        const rect = pickerRef.current.getBoundingClientRect();
+        
+        // Position below the input field (using fixed positioning, no scroll offset needed)
+        let top = rect.bottom + 8;
+        let left = rect.left;
+        
+        // Check if dropdown would go off screen and adjust
+        const dropdownHeight = 380; // Approximate height of dropdown
+        const dropdownWidth = 320; // Approximate width of dropdown
+        
+        // Check viewport boundaries (for fixed positioning)
+        if (top + dropdownHeight > window.innerHeight) {
+          // Position above if not enough space below
+          top = rect.top - dropdownHeight - 8;
+          // Ensure it doesn't go above viewport
+          if (top < 8) {
+            top = 8;
+          }
+        }
+        
+        if (left + dropdownWidth > window.innerWidth) {
+          // Adjust left if goes off right edge
+          left = window.innerWidth - dropdownWidth - 16;
+        }
+        
+        if (left < 0) {
+          // Adjust left if goes off left edge
+          left = 16;
+        }
+        
+        setDropdownPosition({ top, left });
+      }
     }
 
     return () => {
@@ -55,7 +92,11 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
 
   const isDateDisabled = (date) => {
     if (!date) return false;
-    const dateStr = date.toISOString().split('T')[0];
+    // Format date as YYYY-MM-DD using local timezone (IST) instead of UTC
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     if (min && dateStr < min) return true;
     if (max && dateStr > max) return true;
     return false;
@@ -76,7 +117,11 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
     const newDate = new Date(currentYear, currentMonth, day);
     if (!isDateDisabled(newDate)) {
       setSelectedDate(newDate);
-      const dateStr = newDate.toISOString().split('T')[0];
+      // Format date as YYYY-MM-DD using local timezone (IST) instead of UTC
+      const year = newDate.getFullYear();
+      const month = String(newDate.getMonth() + 1).padStart(2, '0');
+      const date = String(newDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${date}`;
       onChange(dateStr);
       setIsOpen(false);
     }
@@ -104,7 +149,11 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
     const today = new Date();
     if (!isDateDisabled(today)) {
       setSelectedDate(today);
-      const dateStr = today.toISOString().split('T')[0];
+      // Format date as YYYY-MM-DD using local timezone (IST) instead of UTC
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const date = String(today.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${date}`;
       onChange(dateStr);
       setIsOpen(false);
     }
@@ -152,7 +201,14 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
       </div>
 
       {isOpen && (
-        <div className="date-picker-dropdown">
+        <div 
+          ref={dropdownRef}
+          className="date-picker-dropdown"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`
+          }}
+        >
           <div className="date-picker-header">
             <button 
               type="button" 

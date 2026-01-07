@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiEdit, FiSave, FiX, FiClock, FiCalendar, FiInfo } from 'react-icons/fi';
+import { FiEdit, FiSave, FiX, FiClock, FiCalendar, FiInfo, FiBell } from 'react-icons/fi';
 import '../employee/Employee.css';
 import './Attendance.css';
 import './Cycle.css';
@@ -20,7 +20,10 @@ const AttendanceCycle = () => {
     full_day_duration: '09:00',
     half_day_duration: '04:30',
     attendance_cycle_start_date: 26,
-    attendance_cycle_end_date: 25
+    attendance_cycle_end_date: 25,
+    birthdays_send: { day: '', time: '' },
+    anniversaries_send: { day: '', time: '' },
+    weekly_attendance_send: { day: '', time: '' }
   });
 
   useEffect(() => {
@@ -41,7 +44,10 @@ const AttendanceCycle = () => {
           full_day_duration: response.data.full_day_duration || '09:00',
           half_day_duration: response.data.half_day_duration || '04:30',
           attendance_cycle_start_date: response.data.attendance_cycle_start_date || 26,
-          attendance_cycle_end_date: response.data.attendance_cycle_end_date || 25
+          attendance_cycle_end_date: response.data.attendance_cycle_end_date || 25,
+          birthdays_send: response.data.birthdays_send || { day: '', time: '' },
+          anniversaries_send: response.data.anniversaries_send || { day: '', time: '' },
+          weekly_attendance_send: response.data.weekly_attendance_send || { day: '', time: '' }
         });
       }
     } catch (error) {
@@ -79,6 +85,25 @@ const AttendanceCycle = () => {
       ...prev,
       [name]: name.includes('date') ? parseInt(value) : value
     }));
+  };
+
+  const handleNotificationChange = (field, key, value) => {
+    setFormData(prev => {
+      const updatedField = {
+        ...prev[field],
+        [key]: value
+      };
+      
+      // If day is set to empty/None, clear the time as well
+      if (key === 'day' && (!value || value === '')) {
+        updatedField.time = '';
+      }
+      
+      return {
+        ...prev,
+        [field]: updatedField
+      };
+    });
   };
 
   if (loading && !cycle) {
@@ -139,7 +164,10 @@ const AttendanceCycle = () => {
                       full_day_duration: cycle.full_day_duration || '09:00',
                       half_day_duration: cycle.half_day_duration || '04:30',
                       attendance_cycle_start_date: cycle.attendance_cycle_start_date || 26,
-                      attendance_cycle_end_date: cycle.attendance_cycle_end_date || 25
+                      attendance_cycle_end_date: cycle.attendance_cycle_end_date || 25,
+                      birthdays_send: cycle.birthdays_send || { day: '', time: '' },
+                      anniversaries_send: cycle.anniversaries_send || { day: '', time: '' },
+                      weekly_attendance_send: cycle.weekly_attendance_send || { day: '', time: '' }
                     });
                   }
                 }} 
@@ -323,6 +351,144 @@ const AttendanceCycle = () => {
             />
             <small className="cycle-form-input-small">
               Day of month when cycle ends (1-31). Use cross-month cycle (e.g., 26-25 means Nov 26 to Dec 25)
+            </small>
+          </div>
+        </div>
+
+        <hr className="cycle-section-divider" />
+
+        <div className="cycle-section-title">
+          <FiBell style={{ marginRight: '8px', display: 'inline' }} />
+          Notification Settings
+        </div>
+
+        <div className="cycle-form-grid">
+          <div className="cycle-form-group">
+            <label>Birthdays Send Day</label>
+            <select
+              value={formData.birthdays_send?.day || ''}
+              onChange={(e) => handleNotificationChange('birthdays_send', 'day', e.target.value)}
+              disabled={!editing}
+              className="cycle-form-input"
+            >
+              <option value="">None</option>
+              <option value="Sunday">Sunday</option>
+              <option value="Monday">Monday</option>
+              <option value="Tuesday">Tuesday</option>
+              <option value="Wednesday">Wednesday</option>
+              <option value="Thursday">Thursday</option>
+              <option value="Friday">Friday</option>
+              <option value="Saturday">Saturday</option>
+              <option value="Everyday">Everyday</option>
+            </select>
+            <small className="cycle-form-input-small">
+              Select the day to send birthday notifications
+            </small>
+          </div>
+
+          <div className="cycle-form-group">
+            <label>Birthdays Send Time</label>
+            <div className="time-input-wrapper">
+              <input
+                type="time"
+                value={formData.birthdays_send?.time || ''}
+                onChange={(e) => handleNotificationChange('birthdays_send', 'time', e.target.value)}
+                disabled={!editing || !formData.birthdays_send?.day || formData.birthdays_send?.day === ''}
+                className="cycle-form-input"
+                placeholder="Select time"
+              />
+              <FiClock className="time-icon" />
+            </div>
+            <small className="cycle-form-input-small">
+              {formData.birthdays_send?.day && formData.birthdays_send?.day !== '' 
+                ? 'Time to send birthday notifications (00:00 - 23:59)'
+                : 'Please select a day first to enable time selection'}
+            </small>
+          </div>
+
+          <div className="cycle-form-group">
+            <label>Anniversaries Send Day</label>
+            <select
+              value={formData.anniversaries_send?.day || ''}
+              onChange={(e) => handleNotificationChange('anniversaries_send', 'day', e.target.value)}
+              disabled={!editing}
+              className="cycle-form-input"
+            >
+              <option value="">None</option>
+              <option value="Sunday">Sunday</option>
+              <option value="Monday">Monday</option>
+              <option value="Tuesday">Tuesday</option>
+              <option value="Wednesday">Wednesday</option>
+              <option value="Thursday">Thursday</option>
+              <option value="Friday">Friday</option>
+              <option value="Saturday">Saturday</option>
+              <option value="Everyday">Everyday</option>
+            </select>
+            <small className="cycle-form-input-small">
+              Select the day to send anniversary notifications
+            </small>
+          </div>
+
+          <div className="cycle-form-group">
+            <label>Anniversaries Send Time</label>
+            <div className="time-input-wrapper">
+              <input
+                type="time"
+                value={formData.anniversaries_send?.time || ''}
+                onChange={(e) => handleNotificationChange('anniversaries_send', 'time', e.target.value)}
+                disabled={!editing || !formData.anniversaries_send?.day || formData.anniversaries_send?.day === ''}
+                className="cycle-form-input"
+                placeholder="Select time"
+              />
+              <FiClock className="time-icon" />
+            </div>
+            <small className="cycle-form-input-small">
+              {formData.anniversaries_send?.day && formData.anniversaries_send?.day !== '' 
+                ? 'Time to send anniversary notifications (00:00 - 23:59)'
+                : 'Please select a day first to enable time selection'}
+            </small>
+          </div>
+
+          <div className="cycle-form-group">
+            <label>Weekly Attendance Send Day</label>
+            <select
+              value={formData.weekly_attendance_send?.day || ''}
+              onChange={(e) => handleNotificationChange('weekly_attendance_send', 'day', e.target.value)}
+              disabled={!editing}
+              className="cycle-form-input"
+            >
+              <option value="">None</option>
+              <option value="Sunday">Sunday</option>
+              <option value="Monday">Monday</option>
+              <option value="Tuesday">Tuesday</option>
+              <option value="Wednesday">Wednesday</option>
+              <option value="Thursday">Thursday</option>
+              <option value="Friday">Friday</option>
+              <option value="Saturday">Saturday</option>
+              <option value="Everyday">Everyday</option>
+            </select>
+            <small className="cycle-form-input-small">
+              Select the day to send weekly attendance reports
+            </small>
+          </div>
+
+          <div className="cycle-form-group">
+            <label>Weekly Attendance Send Time</label>
+            <div className="time-input-wrapper">
+              <input
+                type="time"
+                value={formData.weekly_attendance_send?.time || ''}
+                onChange={(e) => handleNotificationChange('weekly_attendance_send', 'time', e.target.value)}
+                disabled={!editing || !formData.weekly_attendance_send?.day || formData.weekly_attendance_send?.day === ''}
+                className="cycle-form-input"
+                placeholder="Select time"
+              />
+              <FiClock className="time-icon" />
+            </div>
+            <small className="cycle-form-input-small">
+              {formData.weekly_attendance_send?.day && formData.weekly_attendance_send?.day !== '' 
+                ? 'Time to send weekly attendance reports (00:00 - 23:59)'
+                : 'Please select a day first to enable time selection'}
             </small>
           </div>
         </div>

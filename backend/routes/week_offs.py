@@ -27,8 +27,13 @@ def get_week_offs(
         raise HTTPException(status_code=403, detail="Access denied")
     
     try:
-        # Get all week off dates
-        query = db.query(WeekOffDate)
+        # Get all week off dates - filter by current year only
+        from datetime import date
+        current_year = date.today().year
+        
+        query = db.query(WeekOffDate).filter(
+            WeekOffDate.year == current_year
+        )
         
         if employee_id:
             query = query.filter(

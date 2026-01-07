@@ -566,6 +566,45 @@
     margin-bottom: 16px;
   }
 
+  /* Show coordinates in mobile view */
+  .location-coordinates-mobile {
+    display: block !important;
+  }
+
+  /* Hide intime/outtime on mobile view */
+  .calendar-time-info {
+    display: none !important;
+  }
+
+  /* Mobile: Show only date number, hide all other info */
+  .calendar-status-mobile,
+  .calendar-status-text,
+  .calendar-labels-mobile {
+    display: none !important;
+  }
+
+  .calendar-date-number {
+    width: 100%;
+    text-align: center;
+    font-size: 1rem !important;
+  }
+
+  .calendar-day {
+    justify-content: center !important;
+  }
+
+  .calendar-day-number {
+    justify-content: center !important;
+  }
+}
+
+/* Show intime/outtime on desktop view (above 768px) */
+@media (min-width: 769px) {
+  .calendar-time-info {
+    display: block !important;
+  }
+}
+
   /* Lists with scroll */
   ul,
   .list-container,

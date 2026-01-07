@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import and_, or_, cast, String
 from datetime import datetime, date
+from utils import get_ist_now
 from decimal import Decimal, ROUND_HALF_UP
 from database import get_db
 from models import (
@@ -184,19 +185,27 @@ def calculate_salary_for_employee(
         late_deduction_total = round_decimal(late_days * per_day_gross_salary, 0)
         lop_deduction = round_decimal(lops * per_day_gross_salary, 0)
         
-        # 11) Totals
+        # 11) Calculate LWF (Labor Welfare Fund): 2 rupees only for December month, 0 for other months
+        lwf_amount = Decimal(2.0) if month == 12 else Decimal(0.0)
+        
+        # 12) Totals
         pf_esi_pt_ll_ld = round_decimal(final_pf + final_esi + final_pt + late_deduction_total + lop_deduction, 0)
         total_earnings = round_decimal(final_basic + final_hra + final_ma + final_ca + final_sa, 0)
         
-        # 12) TDS & Loan
+        # 13) TDS & Loan
         tds_tax_amount = Decimal(0)
-        monthly_tds_amount = Decimal(0)
+        monthly_tds_amount = round_decimal(tds_tax_amount / Decimal(12), 0) if tds_tax_amount > 0 else Decimal(0)
         loan_amount = Decimal(0)
         clear_amount = Decimal(0)
         pay_amount = Decimal(0)
         
-        # Net Salary calculation (matching C# code: NetSalary = totalEarnings - (finalpf + finalesi + finalpt + monthlyTDSAmount) - PayAmount)
-        net_salary = round_decimal(total_earnings - (final_pf + final_esi + final_pt + monthly_tds_amount) - pay_amount, 0)
+        # Net Salary calculation - Match C# code exactly: NetSalary = totalEarnings - (finalpf + finalesi + finalpt + monthlyTDSAmount) - PayAmount
+        # Note: LOP and Late deductions are stored in database but NOT deducted from net salary in C# code
+        # LWF (2 rupees for December) is added to deductions and deducted from net salary
+        net_salary = round_decimal(
+            total_earnings - (final_pf + final_esi + final_pt + monthly_tds_amount + lwf_amount) - pay_amount, 
+            0
+        )
         
         # 13) Loan Installment Deduction
         # Check for loan installments matching the payroll month/year
@@ -275,7 +284,7 @@ def calculate_salary_for_employee(
                                     # Update installment status and paid_date
                                     installment['status'] = 'Success'
                                     # Set paid_date to current date and time (ISO format)
-                                    installment['paid_date'] = datetime.utcnow().isoformat()
+                                    installment['paid_date'] = get_ist_now().isoformat()
                                     installment_updated = True
                                     
                                     print(f"    ✓✓✓ Updated installment #{installment_number}: status=Success, paid_date={installment['paid_date']}")
@@ -364,7 +373,7 @@ def calculate_salary_for_employee(
             "SA": float(final_sa)
         }
         
-        # Prepare deductions JSONB
+        # Prepare deductions JSONB (LWF already calculated above)
         deductions = {
             "PF": float(final_pf),
             "ESI": float(final_esi),
@@ -373,7 +382,8 @@ def calculate_salary_for_employee(
             "LateLogDeduction": float(late_deduction_total),
             "PT": float(final_pt),
             "LOP": float(lop_deduction),
-            "Loan": float(loan_amount)
+            "Loan": float(loan_amount),
+            "LWF": float(lwf_amount) if month == 12 else 0.0
         }
         
         # Calculate salary_per_annum (monthly * 12)
@@ -537,6 +547,7 @@ def generate_payslips(
                     continue
                 
                 # Check if payslip already exists (based on emp_id, month, year)
+                # This ensures we update existing records instead of creating duplicates
                 existing_payslip = db.query(PayslipData).filter(
                     and_(
                         PayslipData.emp_id == emp_id_int,
@@ -556,7 +567,8 @@ def generate_payslips(
                     payslip_data.emp_id = emp_id_int
                     
                     if existing_payslip:
-                        # Update existing payslip (keep payslip_id, update all other fields)
+                        # UPDATE: Payslip already exists for this employee, month, and year
+                        # Update all fields with new calculated values
                         existing_payslip.full_name = payslip_data.full_name
                         existing_payslip.doj = payslip_data.doj
                         existing_payslip.company_name = payslip_data.company_name
@@ -597,10 +609,11 @@ def generate_payslips(
                         existing_payslip.esi_no = payslip_data.esi_no
                         existing_payslip.earned_gross = payslip_data.earned_gross
                         existing_payslip.other_deduction = payslip_data.other_deduction
-                        existing_payslip.updated_date = datetime.now()
+                        existing_payslip.updated_date = get_ist_now()
                         existing_payslip.updated_by = current_user.name or current_user.empid
+                        # SQLAlchemy automatically tracks changes, no need to call db.add() for updates
                     else:
-                        # Insert new
+                        # INSERT: New payslip record - no existing payslip found for this employee, month, and year
                         db.add(payslip_data)
                     
                     generated += 1

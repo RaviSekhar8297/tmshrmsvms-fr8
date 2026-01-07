@@ -31,7 +31,7 @@ const Requests = () => {
   useEffect(() => {
     fetchRequests();
     // Fetch holidays and week off dates for Over-Time(Comp-off) option
-    if (user?.role === 'Employee') {
+    if (user?.role === 'Employee' || user?.role === 'Manager' || user?.role === 'HR') {
       fetchHolidays();
       fetchWeekOffDates();
     }
@@ -72,22 +72,31 @@ const Requests = () => {
       return;
     }
     
-    // Check for duplicate requests
+    // Check for duplicate requests - check all types (intime, outtime, full-day, overtime) on same date
     if (formData.intime_date && formData.type) {
       const endpoint = (isPrivileged && isEmployeesPage) ? '/requests' : '/requests/self';
       try {
         const response = await api.get(endpoint);
         const existingRequests = response.data || [];
         const duplicate = existingRequests.find(req => {
-          if (req.type !== formData.type) return false;
-          if (req.status === 'rejected') return false;
+          if (req.status === 'rejected') return false; // Allow if rejected
           
           const reqDate = req.intime ? new Date(req.intime).toISOString().split('T')[0] : null;
-          return reqDate === formData.intime_date && (req.status === 'pending' || req.status === 'approved');
+          if (reqDate !== formData.intime_date) return false;
+          
+          // Check if status is pending or approved (for any request type on this date)
+          return req.status === 'pending' || req.status === 'approved';
         });
         
         if (duplicate) {
-          toast.error(`You have already applied for ${formData.type} on ${new Date(formData.intime_date).toLocaleDateString()} with status: ${duplicate.status}`);
+          const statusText = duplicate.status === 'approved' ? 'Approved' : duplicate.status === 'pending' ? 'Pending' : duplicate.status;
+          const typeText = duplicate.type === 'full-day' ? 'Full-Day' : 
+                          duplicate.type === 'in-time' ? 'In-time' : 
+                          duplicate.type === 'out-time' ? 'Out-Time' : 
+                          duplicate.type === 'overtime-comp-off' ? 'Over-Time(Comp-off)' : duplicate.type;
+          toast.error(`This date already applied for ${typeText} on ${new Date(formData.intime_date).toLocaleDateString()}. Status: ${statusText}`, {
+            duration: 5000
+          });
           setLoading(false);
           return;
         }
@@ -159,8 +168,14 @@ const Requests = () => {
 
   const fetchHolidays = async () => {
     try {
+      const currentYear = new Date().getFullYear();
       const response = await api.get('/holidays');
-      setHolidays(response.data || []);
+      // Filter holidays to only current year
+      const filteredHolidays = (response.data || []).filter(holiday => {
+        const holidayDate = new Date(holiday.date);
+        return holidayDate.getFullYear() === currentYear;
+      });
+      setHolidays(filteredHolidays);
     } catch (error) {
       console.error('Error fetching holidays:', error);
     }
@@ -168,8 +183,9 @@ const Requests = () => {
 
   const fetchWeekOffDates = async () => {
     try {
-      // Fetch all week off dates (for Over-Time Comp-off, we need all dates)
-      const response = await api.get('/week-offs/dates');
+      const currentYear = new Date().getFullYear();
+      // Fetch week off dates for current year
+      const response = await api.get(`/week-offs/dates?year=${currentYear}`);
       setWeekOffDates(response.data || []);
     } catch (error) {
       console.error('Error fetching week off dates:', error);
@@ -209,17 +225,27 @@ const Requests = () => {
       const response = await api.get(endpoint);
       const existingRequests = response.data || [];
       
-      // Check if there's a pending or approved request for the same date and type
+      // Check if there's a pending or approved request for the same date (any type: intime, outtime, full-day, overtime)
       const duplicate = existingRequests.find(req => {
-        if (req.type !== type) return false;
         if (req.status === 'rejected') return false; // Allow if rejected
         
         const reqDate = req.intime ? new Date(req.intime).toISOString().split('T')[0] : null;
-        return reqDate === date && (req.status === 'pending' || req.status === 'approved');
+        if (reqDate !== date) return false;
+        
+        // Check if status is pending or approved
+        return req.status === 'pending' || req.status === 'approved';
       });
       
       if (duplicate) {
-        setDuplicateError(`You have already applied for ${type} on ${new Date(date).toLocaleDateString()} with status: ${duplicate.status}`);
+        const statusText = duplicate.status === 'approved' ? 'Approved' : duplicate.status === 'pending' ? 'Pending' : duplicate.status;
+        const typeText = duplicate.type === 'full-day' ? 'Full-Day' : 
+                        duplicate.type === 'in-time' ? 'In-time' : 
+                        duplicate.type === 'out-time' ? 'Out-Time' : 
+                        duplicate.type === 'overtime-comp-off' ? 'Over-Time(Comp-off)' : duplicate.type;
+        setDuplicateError(`This date already applied for ${typeText} on ${new Date(date).toLocaleDateString()}. Status: ${statusText}`);
+        toast.error(`This date already applied for ${typeText} on ${new Date(date).toLocaleDateString()}. Status: ${statusText}`, {
+          duration: 5000
+        });
       } else {
         setDuplicateError('');
       }
@@ -229,14 +255,38 @@ const Requests = () => {
   };
 
   // Combine holidays and week off dates for Over-Time(Comp-off) dropdown options
+  // Only show dates from current year and filter holidays by branch_id matching holiday_permissions
   const getCompOffDates = () => {
     const dateSet = new Set();
     const allDates = [];
+    const currentYear = new Date().getFullYear();
     
-    // Add holidays
+    // Get user's branch_id (default to 1 if null/empty, similar to backend logic)
+    const userBranchId = user?.branch_id || 1;
+    
+    // Add holidays - filter by current year and branch_id matching holiday_permissions
     holidays.forEach(holiday => {
       const dateStr = holiday.date.split('T')[0]; // Get just the date part
-      if (!dateSet.has(dateStr)) {
+      const holidayDate = new Date(dateStr);
+      
+      // Only include if it's from current year
+      if (holidayDate.getFullYear() !== currentYear) {
+        return;
+      }
+      
+      // Filter by branch_id matching holiday_permissions (same logic as punch.jsx and Holidays.jsx)
+      // If holiday has no permissions, don't show it
+      if (!holiday.holiday_permissions || holiday.holiday_permissions.length === 0) {
+        return;
+      }
+      
+      // Check if user's branch_id exists in the holiday's holiday_permissions array
+      // Logic: If logged user's branch_id matches any branch_id in holiday_permissions → Show holiday
+      const branchMatches = holiday.holiday_permissions.some(
+        perm => perm.branch_id === userBranchId
+      );
+      
+      if (branchMatches && !dateSet.has(dateStr)) {
         dateSet.add(dateStr);
         allDates.push({
           date: dateStr,
@@ -246,10 +296,12 @@ const Requests = () => {
       }
     });
     
-    // Add week off dates
+    // Add week off dates - filter by current year
     weekOffDates.forEach(wo => {
       const dateStr = wo.date.split('T')[0]; // Get just the date part
-      if (!dateSet.has(dateStr)) {
+      const woDate = new Date(dateStr);
+      // Only include if it's from current year
+      if (woDate.getFullYear() === currentYear && !dateSet.has(dateStr)) {
         dateSet.add(dateStr);
         allDates.push({
           date: dateStr,
@@ -308,7 +360,7 @@ const Requests = () => {
     <div className="page-container employee-requests-page">
       <div className="page-header stacked">
         <div>
-          <h1>Requests</h1>
+          <h1>REQUESTS</h1>
           <p className="page-subtitle">Submit and track requests across roles.</p>
         </div>
         <div className="header-actions filters-row toolbar">
@@ -359,13 +411,17 @@ const Requests = () => {
                     value={formData.type}
                     onChange={handleChange}
                     className="form-select"
-                    style={{ width: '100%' }}
+                    style={{ 
+                      width: '100%',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
                   >
-                    <option value="">Select Type</option>
-                    <option value="full-day">Full-Day</option>
-                    <option value="in-time">In-time</option>
-                    <option value="out-time">Out-Time</option>
-                    <option value="overtime-comp-off">Over-Time(Comp-off)</option>
+                    <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Type</option>
+                    <option value="full-day" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Full-Day</option>
+                    <option value="in-time" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>In-time</option>
+                    <option value="out-time" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Out-Time</option>
+                    <option value="overtime-comp-off" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Over-Time(Comp-off)</option>
                   </select>
                 </div>
 
@@ -387,24 +443,57 @@ const Requests = () => {
                     <div className="form-row">
                       <div className="form-group">
                         <label>In Time Date {isIntimeEnabled() ? '*' : ''}</label>
-                        <input
-                          type="date"
-                          name="intime_date"
-                          value={formData.intime_date}
-                          onChange={handleChange}
-                          required={isIntimeEnabled()}
-                          className="form-input"
-                          style={{ width: '100%' }}
-                          max={new Date().toISOString().split('T')[0]}
-                        />
+                        {user?.role !== 'Admin' ? (
+                          // For Employee, Manager, and HR: Show dropdown with available dates only
+                          <select
+                            name="intime_date"
+                            value={formData.intime_date}
+                            onChange={(e) => {
+                              const selectedDate = e.target.value;
+                              setFormData(prev => ({
+                                ...prev,
+                                intime_date: selectedDate,
+                                outtime_date: selectedDate
+                              }));
+                              if (selectedDate) {
+                                checkDuplicateRequest(selectedDate, formData.type);
+                              }
+                            }}
+                            required={isIntimeEnabled()}
+                            className="form-select"
+                            style={{ 
+                              width: '100%',
+                              background: 'var(--bg-card)',
+                              color: 'var(--text-primary)'
+                            }}
+                          >
+                            <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Available Date</option>
+                            {getCompOffDates().map((item, idx) => (
+                              <option 
+                                key={idx} 
+                                value={item.date}
+                                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                              >
+                                {new Date(item.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ({item.type === 'holiday' ? 'H' : 'WO'})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          // For Admin: Show regular date input
+                          <input
+                            type="date"
+                            name="intime_date"
+                            value={formData.intime_date}
+                            onChange={handleChange}
+                            required={isIntimeEnabled()}
+                            className="form-input"
+                            style={{ width: '100%' }}
+                            max={new Date().toISOString().split('T')[0]}
+                          />
+                        )}
                         {duplicateError && (
                           <small style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
                             {duplicateError}
-                          </small>
-                        )}
-                        {getCompOffDates().length > 0 && (
-                          <small style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
-                            Available dates: {getCompOffDates().map(item => new Date(item.date).toLocaleDateString()).join(', ')}
                           </small>
                         )}
                       </div>

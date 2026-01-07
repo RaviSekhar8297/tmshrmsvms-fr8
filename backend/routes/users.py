@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import and_, or_
 from typing import List, Dict, Any
 from database import get_db
 from models import User, Activity, Company, Branch, Department
@@ -12,7 +13,7 @@ from datetime import datetime
 router = APIRouter(prefix="/users", tags=["Users"])
 
 def check_admin_or_manager(current_user: User):
-    if current_user.role not in ["Admin", "Manager", "HR"]:
+    if current_user.role not in ["Admin", "Manager", "HR", "Front Desk"]:
         raise HTTPException(status_code=403, detail="Access denied")
 
 @router.get("/contacts", response_model=List[UserResponse])
@@ -40,8 +41,11 @@ def get_users(
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
     
+    # Front Desk can see all active users (for "Whom to Meet" dropdown)
+    if current_user.role == "Front Desk":
+        query = query.filter(User.is_active == True)
     # Manager can only see employees reporting to them, HR and Admin can see all
-    if current_user.role == "Manager" and not is_admin_or_hr(current_user):
+    elif current_user.role == "Manager" and not is_admin_or_hr(current_user):
         query = query.filter(
             (User.report_to_id == current_user.empid) | (User.id == current_user.id)
         )
@@ -74,6 +78,70 @@ def get_managers(
         User.role == "Manager",
         User.is_active == True
     ).order_by(User.name).all()
+
+@router.get("/hierarchy", response_model=List[UserResponse])
+def get_hierarchy(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all users for hierarchy display - accessible to all roles"""
+    try:
+        query = db.query(User).filter(User.is_active == True)
+        
+        # All roles can see hierarchy, but filter based on role
+        if current_user.role == "Manager":
+            # Manager can see their team and up the chain
+            filter_conditions = [
+                User.report_to_id == current_user.empid,
+                User.id == current_user.id,
+                User.empid == '101'  # Always show root
+            ]
+            # Only add report_to_id condition if it exists
+            if current_user.report_to_id:
+                filter_conditions.append(User.empid == current_user.report_to_id)
+            query = query.filter(or_(*filter_conditions))
+        elif current_user.role == "Employee":
+            # Employee can see their manager chain and colleagues
+            # Get their manager and up
+            manager_chain = []
+            current = current_user
+            visited = set()
+            while current and current.report_to_id and current.report_to_id not in visited:
+                visited.add(current.report_to_id)
+                manager = db.query(User).filter(User.empid == current.report_to_id).first()
+                if manager:
+                    manager_chain.append(manager.empid)
+                    current = manager
+                else:
+                    break
+            
+            # Include root, manager chain, and employees under same manager
+            empids_to_show = ['101'] + manager_chain + [current_user.empid]
+            if current_user.report_to_id:
+                # Get colleagues (same manager)
+                colleagues = db.query(User).filter(
+                    and_(
+                        User.report_to_id == current_user.report_to_id,
+                        User.is_active == True
+                    )
+                ).all()
+                empids_to_show.extend([c.empid for c in colleagues if c.empid])
+            
+            # Remove duplicates, filter out None/empty values, and ensure all are strings
+            empids_to_show = [str(eid) for eid in set(empids_to_show) if eid]
+            
+            if empids_to_show:
+                query = query.filter(User.empid.in_(empids_to_show))
+            else:
+                # If no empids to show, return empty list
+                return []
+        # Admin and HR can see all
+        
+        return query.order_by(User.name).all()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching hierarchy: {str(e)}")
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(
@@ -297,8 +365,10 @@ def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Soft delete
+    # Soft delete - update is_active and emp_inactive_date
+    from datetime import date
     user.is_active = False
+    user.emp_inactive_date = date.today()  # Set current date
     db.commit()
     
     return {"message": "User deactivated successfully"}

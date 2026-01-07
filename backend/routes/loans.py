@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from datetime import datetime, date, timedelta
+from utils import get_ist_now
 from database import get_db
 from models import EmployeeLoan, LoanInstallment, User, PayslipData
 from routes.auth import get_current_user
@@ -175,7 +176,7 @@ def apply_for_loan(
             accounts_status={"status": "PENDING", "approved_name": None, "approved_time": None},
             approval_remarks=request.approval_remarks,
             status="APPLIED",
-            created_at=datetime.utcnow()
+            created_at=get_ist_now()
         )
         
         db.add(new_loan)
@@ -214,7 +215,7 @@ def apply_for_loan(
                 loan_id=new_loan.loan_id,
                 empid=current_user.empid,
                 installments=installments_list,
-                created_at=datetime.utcnow()
+                created_at=get_ist_now()
             )
             
             db.add(loan_installment)
@@ -494,7 +495,7 @@ def approve_reject_loan_manager(
     loan.manager_status = {
         "status": approval_data.status,
         "approved_name": current_user.name,
-        "approved_time": datetime.utcnow().isoformat()
+        "approved_time": get_ist_now().isoformat()
     }
     
     if approval_data.remarks:
@@ -538,7 +539,7 @@ def approve_reject_loan_hr(
     loan.hr_status = {
         "status": approval_data.status,
         "approved_name": current_user.name,
-        "approved_time": datetime.utcnow().isoformat()
+        "approved_time": get_ist_now().isoformat()
     }
     
     if approval_data.remarks:

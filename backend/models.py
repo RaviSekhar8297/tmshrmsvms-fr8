@@ -1,8 +1,15 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Date, Time, Numeric, ForeignKey, CheckConstraint, Index, Sequence
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from database import Base
+
+# IST (Indian Standard Time) is UTC+5:30
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def get_ist_now():
+    """Get current datetime in IST timezone (callable for SQLAlchemy defaults)"""
+    return datetime.now(IST)
 
 class User(Base):
     __tablename__ = "users"
@@ -18,6 +25,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     password = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
+    is_late = Column(Boolean, default=False)
     role = Column(String(20), nullable=False)
     image_base64 = Column(Text)
     report_to_id = Column(String(20), ForeignKey('users.empid'), nullable=True)
@@ -31,7 +39,7 @@ class User(Base):
     education_details = Column(JSONB, nullable=True)  # education_name, pass_out_year, percentage
     experience_details = Column(JSONB, nullable=True)  # prev_company_name, year, designation, salary_per_annum
     documents = Column(JSONB, nullable=True)  # name, image
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     designation = Column(String(150), nullable=True)
     company_id = Column(Integer, ForeignKey('company.id'), nullable=True)
@@ -43,7 +51,7 @@ class User(Base):
     salary_per_annum = Column(Numeric(12, 2), nullable=True)  # Salary per annum
     
     __table_args__ = (
-        CheckConstraint(role.in_(['Admin', 'Manager', 'Employee', 'HR']), name='check_role'),
+        CheckConstraint(role.in_(['Admin', 'Manager', 'Employee', 'HR', 'Front Desk']), name='check_role'),
     )
 
 class AuthToken(Base):
@@ -53,10 +61,10 @@ class AuthToken(Base):
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     token = Column(Text, unique=True, nullable=False)
     device_info = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     expires_at = Column(DateTime, nullable=False)
     is_active = Column(Boolean, default=True)
-    last_used_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, default=get_ist_now)
 
 class Project(Base):
     __tablename__ = "projects"
@@ -72,7 +80,7 @@ class Project(Base):
     priority = Column(String(20), default='medium')
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_by_name = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     project_head_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     project_head_name = Column(String(100))
     teams = Column(JSONB, default=lambda: [])
@@ -114,8 +122,8 @@ class Task(Base):
             self.assigned_to_ids = []
         if self.remarks is None:
             self.remarks = []
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
     
     __table_args__ = (
         CheckConstraint('percent_complete >= 0 AND percent_complete <= 100', name='check_task_progress'),
@@ -132,7 +140,7 @@ class Subtask(Base):
     is_completed = Column(Boolean, default=False)
     assigned_to_id = Column(Integer, ForeignKey('users.id'))
     assigned_to_name = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -142,7 +150,7 @@ class Comment(Base):
     author_id = Column(Integer, ForeignKey('users.id'))
     author_name = Column(String(100))
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
 
 class Attachment(Base):
     __tablename__ = "attachments"
@@ -153,7 +161,7 @@ class Attachment(Base):
     file_name = Column(String(300))
     uploaded_by = Column(Integer, ForeignKey('users.id'))
     uploaded_by_name = Column(String(100))
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=get_ist_now)
 
 class TaskRating(Base):
     __tablename__ = "task_ratings"
@@ -166,7 +174,7 @@ class TaskRating(Base):
     ratee_name = Column(String(100))
     score = Column(Integer)
     comments = Column(Text)
-    rated_at = Column(DateTime, default=datetime.utcnow)
+    rated_at = Column(DateTime, default=get_ist_now)
     
     __table_args__ = (
         CheckConstraint('score >= 1 AND score <= 5', name='check_score'),
@@ -187,7 +195,7 @@ class Meeting(Base):
     status = Column(String(20), default='scheduled')
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_by_name = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -201,8 +209,8 @@ class MeetingNotes(Base):
     meeting_id = Column(Integer, ForeignKey('meetings.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
     
     __table_args__ = (
         Index('idx_meeting_user', 'meeting_id', 'user_id', unique=True),
@@ -218,7 +226,7 @@ class ProjectMessage(Base):
     user_image_base64 = Column(Text)
     message = Column(Text, nullable=False)
     image_base64 = Column(Text, nullable=True)  # For image messages
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     
     __table_args__ = (
         Index('idx_project_created', 'project_id', 'created_at'),
@@ -240,8 +248,8 @@ class Issue(Base):
     assigned_to_name = Column(String(100))
     resolved_at = Column(DateTime, nullable=True)
     resolution_notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 class TaskTimer(Base):
     __tablename__ = "task_timers"
@@ -253,7 +261,7 @@ class TaskTimer(Base):
     end_time = Column(DateTime, nullable=True)
     duration_seconds = Column(Integer, default=0)
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
 
 class NotificationLog(Base):
     __tablename__ = "notifications_log"
@@ -264,7 +272,7 @@ class NotificationLog(Base):
     title = Column(String(300))
     message = Column(Text)
     channel = Column(String(15))
-    sent_at = Column(DateTime, default=datetime.utcnow)
+    sent_at = Column(DateTime, default=get_ist_now)
     is_read = Column(Boolean, default=False)
 
 class AuditLog(Base):
@@ -277,7 +285,7 @@ class AuditLog(Base):
     target_id = Column(Integer)
     details = Column(JSONB)
     ip_address = Column(String(45))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
 
 class Activity(Base):
     __tablename__ = "activities"
@@ -290,7 +298,7 @@ class Activity(Base):
     entity_id = Column(Integer)
     entity_name = Column(String(300))
     details = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
 
 # HR Module Models
 class Attendance(Base):
@@ -306,8 +314,8 @@ class Attendance(Base):
     hours = Column(Numeric(5, 2), default=0)
     image = Column(Text, nullable=True)  # Base64 encoded image for punch in/out
     remarks = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
     
     __table_args__ = (
         Index('idx_attendance_employee_date', 'employee_id', 'date', unique=True),
@@ -326,7 +334,7 @@ class PunchLog(Base):
     location = Column(Text, nullable=True)  # Location address
     remarks = Column(Text, nullable=True)  # Remarks/notes
     status = Column(String(20), default='present')  # present, late, etc.
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     
     __table_args__ = (
         Index('idx_punch_log_employee_date', 'employee_id', 'date'),
@@ -347,8 +355,8 @@ class VMSItem(Base):
     notes = Column(Text)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     created_by_name = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 class Visitor(Base):
     __tablename__ = "visitors"
@@ -362,11 +370,11 @@ class Visitor(Base):
     purpose = Column(String(150))
     whometomeet = Column(String(100))
     selfie = Column(Text)  # image path or base64 string
-    checkintime = Column(DateTime, default=datetime.utcnow)
+    checkintime = Column(DateTime, default=get_ist_now)
     checkouttime = Column(DateTime, nullable=True)
     status = Column(String(20), default='IN')  # IN, OUT
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 # Payroll Module Models
 class PayrollStructure(Base):
@@ -382,8 +390,8 @@ class PayrollStructure(Base):
     tax_percentage = Column(Numeric(5, 2), default=0)
     description = Column(Text)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 class Payroll(Base):
     __tablename__ = "payroll"
@@ -409,8 +417,8 @@ class Payroll(Base):
     status = Column(String(20), default='pending')  # pending, approved, paid, rejected
     remarks = Column(Text)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
     
     __table_args__ = (
         Index('idx_payroll_employee_month_year', 'employee_id', 'month', 'year', unique=True),
@@ -423,7 +431,7 @@ class Leave(Base):
     id = Column(Integer, primary_key=True, index=True)
     empid = Column(String(20), ForeignKey('users.empid'), nullable=False)
     name = Column(String(100), nullable=False)
-    applied_date = Column(DateTime, default=datetime.utcnow)
+    applied_date = Column(DateTime, default=get_ist_now)
     from_date = Column(Date, nullable=False)
     to_date = Column(Date, nullable=False)
     duration = Column(Integer, nullable=False)  # Number of days
@@ -436,8 +444,8 @@ class Leave(Base):
     # Temporarily commented out until migration is run
     # half_from = Column(String(20), nullable=True)  # morning, evening, None
     # half_to = Column(String(20), nullable=True)  # morning, evening, None
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 # Permissions Model
 class Permission(Base):
@@ -446,15 +454,15 @@ class Permission(Base):
     id = Column(Integer, primary_key=True, index=True)
     empid = Column(String(20), ForeignKey('users.empid'), nullable=False)
     name = Column(String(100), nullable=False)
-    applied_date = Column(DateTime, default=datetime.utcnow)
+    applied_date = Column(DateTime, default=get_ist_now)
     from_datetime = Column(DateTime, nullable=False)
     to_datetime = Column(DateTime, nullable=False)
     status = Column(String(20), default='pending')  # pending, approved, rejected
     approved_by = Column(String(20), ForeignKey('users.empid'), nullable=True)
     type = Column(String(50), nullable=False)  # late-arrival, early-departure, half-day, short-leave, other
     reason = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 # Requests Model
 class Request(Base):
@@ -463,7 +471,7 @@ class Request(Base):
     id = Column(Integer, primary_key=True, index=True)
     empid = Column(String(20), ForeignKey('users.empid'), nullable=False)
     name = Column(String(100), nullable=False)
-    applied_date = Column(DateTime, default=datetime.utcnow)
+    applied_date = Column(DateTime, default=get_ist_now)
     intime = Column(DateTime, nullable=True)
     outtime = Column(DateTime, nullable=True)
     status = Column(String(20), default='pending')  # pending, approved, rejected, completed
@@ -471,8 +479,8 @@ class Request(Base):
     type = Column(String(50), nullable=False)  # equipment, access, training, other
     subject = Column(String(300), nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 # Holidays Model
 class Holiday(Base):
@@ -484,8 +492,8 @@ class Holiday(Base):
     description = Column(Text, nullable=True)
     holiday_permissions = Column(JSONB, nullable=True)  # Array of {branch_id, branch_name}
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
     
     __table_args__ = (
         Index('idx_holiday_date', 'date'),
@@ -501,8 +509,8 @@ class WeekOff(Base):
     day_of_week = Column(String(20), nullable=False)  # monday, tuesday, etc.
     is_active = Column(Boolean, default=True)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 class WeekOffDate(Base):
     __tablename__ = "week_off_dates"
@@ -515,7 +523,7 @@ class WeekOffDate(Base):
     month = Column(Integer)  # 1-12
     year = Column(Integer)  # 2024, 2025, etc.
     created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     
     __table_args__ = (
         Index('idx_employee_date', 'employee_id', 'date'),
@@ -534,8 +542,8 @@ class Company(Base):
     logo_base64 = Column(Text)
     tax_id = Column(String(50))
     registration_number = Column(String(50))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 class Branch(Base):
     __tablename__ = "branch"
@@ -544,8 +552,8 @@ class Branch(Base):
     name = Column(String(255), nullable=False)
     company_id = Column(Integer, ForeignKey('company.id', ondelete='CASCADE'), nullable=False)
     company_name = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 class Department(Base):
     __tablename__ = "department"
@@ -556,8 +564,8 @@ class Department(Base):
     branch_id = Column(Integer, ForeignKey('branch.id', ondelete='CASCADE'), nullable=False)
     company_name = Column(String(255), nullable=False)
     branch_name = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
 
 # AttendanceList Model
 class AttendanceList(Base):
@@ -601,7 +609,11 @@ class AttendanceCycle(Base):
     half_day_duration = Column(Time, nullable=False)
     attendance_cycle_start_date = Column(Integer, nullable=False)  # 1-31
     attendance_cycle_end_date = Column(Integer, nullable=False)  # 1-31
-    created_at = Column(DateTime, default=datetime.utcnow)
+    # Notification settings (JSONB: {day: "Sunday|Monday|...|Everyday|None", time: "HH:MM"})
+    birthdays_send = Column(JSONB, nullable=True)
+    anniversaries_send = Column(JSONB, nullable=True)
+    weekly_attendance_send = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=get_ist_now)
 
 # SalaryStructure Model
 class SalaryStructure(Base):
@@ -698,7 +710,7 @@ class Policy(Base):
     policy = Column(JSONB, nullable=False)  # {name: string, type: string, pages: integer, file_url?: string}
     readby = Column(JSONB, default=[])  # [{empid: string, name: string, status: "viewed", viewed_at: timestamp}]
     likes = Column(JSONB, default=[])  # [{empid: string, name: string, page: integer, liked_at: timestamp}]
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
 
 class LeaveBalanceList(Base):
     __tablename__ = "leave_balance_list"
@@ -741,7 +753,7 @@ class EmployeeLoan(Base):
     accounts_status = Column(JSONB, nullable=False, default=lambda: {"status": "PENDING", "approved_name": None, "approved_time": None})
     approval_remarks = Column(Text, nullable=True)
     status = Column(String(20), default='APPLIED')
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     
     __table_args__ = (
         Index('idx_employee_loans_empid', 'empid'),
@@ -756,10 +768,60 @@ class LoanInstallment(Base):
     loan_id = Column(Integer, ForeignKey('employee_loans.loan_id', ondelete='CASCADE'), nullable=False)
     empid = Column(String(20), ForeignKey('users.empid'), nullable=False)
     installments = Column(JSONB, nullable=False)  # Array of installment objects
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_ist_now)
     
     __table_args__ = (
         Index('idx_loan_installments_loan_id', 'loan_id'),
         Index('idx_loan_installments_empid', 'empid'),
+    )
+
+# Resignation Model
+class Resignation(Base):
+    __tablename__ = "resignations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    empid = Column(String(100), ForeignKey('users.empid'), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    
+    applied_date = Column(Date, nullable=False)
+    resign_date = Column(Date, nullable=False)
+    requested_date = Column(Date, nullable=True)  # Last working date (requested)
+    last_working_date = Column(Date, nullable=True)
+    notice_period_days = Column(Integer, nullable=True)
+    
+    reason = Column(Text, nullable=True)
+    
+    resignation_type = Column(String(20), default='Voluntary')
+    
+    # Manager Approval
+    manager_status = Column(String(20), default='Pending')
+    manager_approval_date = Column(Date, nullable=True)
+    manager_comments = Column(Text, nullable=True)
+    
+    # HOD Approval (Admin)
+    hod_status = Column(String(20), default='Pending')
+    hod_approval_date = Column(Date, nullable=True)
+    hod_comments = Column(Text, nullable=True)
+    
+    # HR Approval
+    hr_status = Column(String(20), default='Pending')
+    hr_approval_date = Column(Date, nullable=True)
+    hr_comments = Column(Text, nullable=True)
+    
+    department = Column(String(100), nullable=True)
+    position = Column(String(100), nullable=True)
+    
+    withdrawal_date = Column(Date, nullable=True)
+    
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
+    
+    __table_args__ = (
+        CheckConstraint("resignation_type IN ('Voluntary', 'Involuntary')", name='check_resignation_type'),
+        CheckConstraint("manager_status IN ('Pending', 'Approved', 'Rejected')", name='check_manager_status'),
+        CheckConstraint("hod_status IN ('Pending', 'Approved', 'Rejected')", name='check_hod_status'),
+        CheckConstraint("hr_status IN ('Pending', 'Approved', 'Rejected', 'Processed')", name='check_hr_status'),
+        Index('idx_resignations_empid', 'empid'),
+        Index('idx_resignations_status', 'manager_status', 'hr_status', 'hod_status'),
     )
 

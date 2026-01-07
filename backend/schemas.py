@@ -51,6 +51,7 @@ class UserUpdate(BaseModel):
     company_name: Optional[str] = None
     branch_name: Optional[str] = None
     department_name: Optional[str] = None
+    is_late: Optional[bool] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -77,6 +78,7 @@ class UserResponse(BaseModel):
     branch_name: Optional[str]
     department_name: Optional[str]
     salary_per_annum: Optional[Decimal] = None
+    is_late: Optional[bool] = None
     bank_details: Optional[Dict[str, Any]] = None
     family_details: Optional[List[Dict[str, Any]]] = None
     nominee_details: Optional[Dict[str, Any]] = None
@@ -489,3 +491,54 @@ class PolicyResponse(BaseModel):
 class MarkAsReadRequest(BaseModel):
     empid: str
     name: str
+
+# ============ Resignation Schemas ============
+class ResignationCreate(BaseModel):
+    resign_date: date
+    requested_date: Optional[date] = None  # User can manually select requested date
+    reason: Optional[str] = None
+    resignation_type: str = 'Voluntary'
+
+class ResignationUpdate(BaseModel):
+    resign_date: Optional[date] = None
+    reason: Optional[str] = None
+    resignation_type: Optional[str] = None
+
+class ResignationApproval(BaseModel):
+    status: str  # 'Approved' or 'Rejected'
+    comments: Optional[str] = None
+
+class NoticePeriodInfoResponse(BaseModel):
+    notice_period_days: int
+    is_probation: bool
+    doj: Optional[str] = None
+    days_since_joining: Optional[int] = None
+
+class ResignationResponse(BaseModel):
+    id: int
+    empid: str
+    name: str
+    applied_date: date
+    resign_date: date
+    requested_date: Optional[date] = None
+    last_working_date: Optional[date] = None
+    notice_period_days: Optional[int] = None
+    reason: Optional[str] = None
+    resignation_type: str
+    manager_status: str
+    manager_approval_date: Optional[date] = None
+    manager_comments: Optional[str] = None
+    hod_status: str
+    hod_approval_date: Optional[date] = None
+    hod_comments: Optional[str] = None
+    hr_status: str
+    hr_approval_date: Optional[date] = None
+    hr_comments: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+    withdrawal_date: Optional[date] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

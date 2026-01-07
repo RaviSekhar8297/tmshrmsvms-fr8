@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api, { attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiDownload, FiUpload, FiRefreshCw, FiFileText, FiChevronLeft, FiChevronRight, FiSearch } from 'react-icons/fi';
+import { FiDownload, FiUpload, FiRefreshCw, FiFileText, FiChevronLeft, FiChevronRight, FiSearch, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import '../employee/Employee.css';
 import './Attendance.css';
 
@@ -29,9 +29,15 @@ const AttendanceCount = () => {
   const [generateEmployee, setGenerateEmployee] = useState('all');
   const [generateEmployeeSearch, setGenerateEmployeeSearch] = useState('');
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
-  const [generateMonthYear, setGenerateMonthYear] = useState(
-    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-  );
+  // Calculate previous month
+  const getPreviousMonth = () => {
+    const today = new Date();
+    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    return `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const [generateMonthYear, setGenerateMonthYear] = useState(getPreviousMonth());
+  const [showGenerateMonthPicker, setShowGenerateMonthPicker] = useState(false);
   const employeeDropdownRef = useRef(null);
 
   // Initial load - fetch current month/year data on component mount
@@ -52,14 +58,17 @@ const AttendanceCount = () => {
       if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
         setShowEmployeeDropdown(false);
       }
+      if (showGenerateMonthPicker && !event.target.closest('.month-picker-wrapper')) {
+        setShowGenerateMonthPicker(false);
+      }
     };
-    if (showEmployeeDropdown) {
+    if (showEmployeeDropdown || showGenerateMonthPicker) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showEmployeeDropdown]);
+  }, [showEmployeeDropdown, showGenerateMonthPicker]);
 
   const fetchEmployees = async () => {
     try {
@@ -133,10 +142,10 @@ const AttendanceCount = () => {
     const formData = new FormData();
     formData.append('file', uploadFile);
     try {
-      await api.post('/attendance/upload-excel', formData, {
+      const response = await api.post('/attendance/upload-excel-list', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      toast.success('Upload successful');
+      toast.success(`Upload successful! Updated: ${response.data.updated}, Inserted: ${response.data.inserted}`);
       setShowUploadModal(false);
       setUploadFile(null);
       fetchAttendanceData();
@@ -492,14 +501,95 @@ const AttendanceCount = () => {
               </div>
               <div className="form-group" style={{ width: '100%' }}>
                 <label>Month & Year</label>
-                <input
-                  type="month"
-                  value={generateMonthYear}
-                  onChange={(e) => setGenerateMonthYear(e.target.value)}
-                  className="form-input"
-                  style={{ width: '100%' }}
-                  required
-                />
+                <div className="month-picker-wrapper" style={{ width: '100%' }}>
+                  <div 
+                    className="month-picker-input"
+                    onClick={() => setShowGenerateMonthPicker(!showGenerateMonthPicker)}
+                  >
+                    <FiCalendar size={18} />
+                    <span>
+                      {generateMonthYear 
+                        ? new Date(generateMonthYear + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                        : 'Select month'}
+                    </span>
+                    <FiChevronDown size={18} className={showGenerateMonthPicker ? 'rotate' : ''} />
+                  </div>
+                  {showGenerateMonthPicker && (
+                    <div className="month-picker-dropdown">
+                      <div className="month-picker-header">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const [year] = generateMonthYear ? generateMonthYear.split('-').map(Number) : [new Date().getFullYear()];
+                            const currentYear = year || new Date().getFullYear();
+                            const newYear = currentYear - 1;
+                            const [_, month] = generateMonthYear ? generateMonthYear.split('-') : [null, String(new Date().getMonth() + 1).padStart(2, '0')];
+                            setGenerateMonthYear(`${newYear}-${month}`);
+                          }}
+                          className="month-picker-nav"
+                        >
+                          ←
+                        </button>
+                        <span className="month-picker-year">
+                          {generateMonthYear ? generateMonthYear.split('-')[0] : new Date().getFullYear()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const [year] = generateMonthYear ? generateMonthYear.split('-').map(Number) : [new Date().getFullYear()];
+                            const currentYear = year || new Date().getFullYear();
+                            const currentDate = new Date();
+                            const maxYear = currentDate.getFullYear();
+                            // Only allow going forward if the year is less than current year
+                            if (currentYear < maxYear) {
+                              const newYear = currentYear + 1;
+                              const [_, month] = generateMonthYear ? generateMonthYear.split('-') : [null, String(new Date().getMonth() + 1).padStart(2, '0')];
+                              setGenerateMonthYear(`${newYear}-${month}`);
+                            }
+                          }}
+                          className="month-picker-nav"
+                          disabled={generateMonthYear ? parseInt(generateMonthYear.split('-')[0]) >= new Date().getFullYear() : true}
+                        >
+                          →
+                        </button>
+                      </div>
+                      <div className="month-picker-grid">
+                        {['December', 'November', 'October', 'September', 'August', 'July', 'June', 'May', 'April', 'March', 'February', 'January'].map((month, index) => {
+                          const monthNum = 12 - index; // Reverse order: Dec=12, Nov=11, etc.
+                          const year = generateMonthYear ? parseInt(generateMonthYear.split('-')[0]) : new Date().getFullYear();
+                          const currentDate = new Date();
+                          const currentYear = currentDate.getFullYear();
+                          const currentMonth = currentDate.getMonth() + 1;
+                          const isCurrentMonth = year === currentYear && monthNum === currentMonth;
+                          const isPastMonth = year < currentYear || (year === currentYear && monthNum < currentMonth);
+                          
+                          // Only show past months (not current or future)
+                          if (!isPastMonth) {
+                            return null;
+                          }
+                          
+                          return (
+                            <button
+                              key={month}
+                              type="button"
+                              className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${generateMonthYear === `${year}-${String(monthNum).padStart(2, '0')}` ? 'selected' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const monthValue = `${year}-${String(monthNum).padStart(2, '0')}`;
+                                setGenerateMonthYear(monthValue);
+                                setShowGenerateMonthPicker(false);
+                              }}
+                            >
+                              {month.substring(0, 3)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="modal-actions" style={{ marginTop: '20px', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                 <button 

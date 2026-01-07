@@ -8,6 +8,8 @@ from routes.auth import get_current_user
 from typing import Optional
 from pydantic import BaseModel
 from decimal import Decimal
+from utils.email_service import send_request_email_to_manager
+from utils import get_ist_now
 
 router = APIRouter()
 
@@ -62,7 +64,7 @@ def create_request(
     new_request = Request(
         empid=current_user.empid,
         name=current_user.name,
-        applied_date=datetime.utcnow(),
+        applied_date=get_ist_now(),
         type=request_data.type,
         subject=request_data.subject,
         description=request_data.description,
@@ -74,6 +76,28 @@ def create_request(
     db.add(new_request)
     db.commit()
     db.refresh(new_request)
+    
+    # Send email to reporting manager if email_consent is true
+    if current_user.report_to_id:
+        manager = db.query(User).filter(User.empid == current_user.report_to_id).first()
+        if manager and manager.email_consent and manager.email:
+            try:
+                intime_str = intime.isoformat() if intime else None
+                outtime_str = outtime.isoformat() if outtime else None
+                send_request_email_to_manager(
+                    manager_email=manager.email,
+                    manager_name=manager.name,
+                    employee_name=current_user.name,
+                    employee_empid=current_user.empid,
+                    request_type=request_data.type,
+                    subject_text=request_data.subject,
+                    description=request_data.description,
+                    intime=intime_str,
+                    outtime=outtime_str
+                )
+            except Exception as e:
+                # Log error but don't fail the request
+                print(f"Error sending request email: {str(e)}")
     
     return {
         "message": "Request submitted successfully",
@@ -189,7 +213,8 @@ def update_request_status(
                 date=intime_date,
                 punch_type='in',
                 punch_time=request.intime,
-                status='present'
+                status='present',
+                remarks='Request Entry'
             )
             db.add(punch_log_in)
         
@@ -202,7 +227,8 @@ def update_request_status(
                 date=outtime_date,
                 punch_type='out',
                 punch_time=request.outtime,
-                status='present'
+                status='present',
+                remarks='Request Entry'
             )
             db.add(punch_log_out)
         
@@ -225,7 +251,7 @@ def update_request_status(
             if comp_off_value > 0:
                 try:
                     # Get current year
-                    current_year = datetime.utcnow().year
+                    current_year = get_ist_now().year
                     
                     # Try to find existing leave balance record
                     leave_balance = db.query(LeaveBalanceList).filter(
@@ -241,7 +267,7 @@ def update_request_status(
                         leave_balance.total_comp_off_leaves = current_total + comp_off_value
                         leave_balance.balance_comp_off_leaves = current_balance + comp_off_value
                         leave_balance.updated_by = current_user.empid
-                        leave_balance.updated_date = datetime.utcnow()
+                        leave_balance.updated_date = get_ist_now()
                     else:
                         # Create new record if empid exists (check if user exists)
                         user = db.query(User).filter(User.empid == request.empid).first()
@@ -254,7 +280,7 @@ def update_request_status(
                                 used_comp_off_leaves=Decimal('0'),
                                 balance_comp_off_leaves=comp_off_value,
                                 updated_by=current_user.empid,
-                                updated_date=datetime.utcnow()
+                                updated_date=get_ist_now()
                             )
                             db.add(new_leave_balance)
                 except Exception as e:

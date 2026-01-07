@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiPhone, FiMail, FiGrid, FiList, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiPhone, FiMail, FiGrid, FiList, FiChevronLeft, FiChevronRight, FiBriefcase, FiMapPin } from 'react-icons/fi';
 import './Employee.css';
 
 const ContactDetails = () => {
@@ -139,6 +139,16 @@ const ContactDetails = () => {
                           <div className="contact-row">
                             <FiPhone size={14} />
                             <span>{contact.phone || 'Not provided'}</span>
+                          </div>
+                          <div className="contact-row">
+                            <FiBriefcase size={14} />
+                            <span style={{ fontWeight: '500' }}>Designation:</span>
+                            <span>{contact.designation || 'Pending'}</span>
+                          </div>
+                          <div className="contact-row">
+                            <FiMapPin size={14} />
+                            <span style={{ fontWeight: '500' }}>Branch:</span>
+                            <span>{contact.branch_name || 'Pending'}</span>
                           </div>
                         </div>
                       </div>

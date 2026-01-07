@@ -181,15 +181,59 @@ const Users = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to deactivate this user?')) return;
-    
-    try {
-      await usersAPI.delete(id);
-      toast.success('User deactivated successfully');
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to deactivate user');
-    }
+    // Show toast confirmation instead of window.confirm
+    toast((t) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '250px' }}>
+        <span style={{ marginBottom: '4px' }}>Are you sure you want to delete this user?</span>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              try {
+                await usersAPI.delete(id);
+                toast.success('User deactivated successfully');
+                fetchData();
+              } catch (error) {
+                toast.error(error.response?.data?.detail || 'Failed to deactivate user');
+              }
+            }}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--primary-color)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.9rem'
+            }}
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+            }}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--bg-hover)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.9rem'
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 10000,
+      id: `delete-user-${id}`,
+      position: 'top-center'
+    });
   };
 
   const resetForm = () => {
@@ -359,7 +403,7 @@ const Users = () => {
 
         <div className="filter-tabs">
           {['all', 'Admin', 'HR', 'Manager', 'Employee']
-            .filter(role => isAdmin || role !== 'Admin')
+            .filter(role => isAdmin || isHR || role !== 'Admin')
             .map((role) => (
               <button
                 key={role}

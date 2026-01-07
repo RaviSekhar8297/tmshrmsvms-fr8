@@ -254,6 +254,7 @@
   align-items: center;
   justify-content: center;
   transition: all var(--transition-fast);
+  border: 1px solid #ef4444;
 }
 
 .logout-btn:hover {

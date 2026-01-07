@@ -4,10 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { 
   FiGrid, FiFolder, FiCheckSquare, FiCalendar, 
   FiUsers, FiFileText, FiUser, FiAlertCircle, 
-  FiStar, FiVideo, FiLogOut, FiChevronDown, FiChevronRight,
+  FiStar, FiVideo, FiPower, FiChevronDown, FiChevronRight,
   FiClock, FiList, FiEdit, FiPlus, FiTruck, FiDollarSign,
   FiBriefcase, FiSend, FiShield, FiCalendar as FiCalendarIcon,
-  FiTrendingUp, FiPhone, FiMail, FiGift, FiGitBranch
+  FiTrendingUp, FiPhone, FiMail, FiGift, FiGitBranch, FiPercent, FiLogOut
 } from 'react-icons/fi';
 import './Sidebar.css';
 
@@ -19,7 +19,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [expandedSections, setExpandedSections] = useState({
-    tms: true,
+    tms: false,
     employee: false,
     self: false,
     employees: false,
@@ -94,27 +94,31 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/self/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Employee'] },
     { path: '/self/permission', icon: FiShield, label: 'Permission', roles: ['Employee'] },
     { path: '/self/requests', icon: FiSend, label: 'Requests', roles: ['Employee'] },
+    { path: '/self/resignation', icon: FiLogOut, label: 'Resignation', roles: ['Employee'] },
     { path: '/employee/apply-loan', icon: FiDollarSign, label: 'Apply Loan', roles: ['Employee'] },
     { path: '/self/holidays', icon: FiGift, label: 'Holidays', roles: ['Employee'] },
     { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Employee'] },
     { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Employee'] },
     { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Employee'] },
+    { path: '/payroll/tax', icon: FiPercent, label: 'Tax', roles: ['Employee'] },
   ];
 
   // Self Section (for Manager, HR, Admin)
   const selfItems = [
     { path: '/self/punch', icon: FiClock, label: 'Punch', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/hierarchy', icon: FiGitBranch, label: 'Hierarchy', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/self/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Manager', 'HR'] },
     { path: '/self/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/self/permission', icon: FiShield, label: 'Permission', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/self/requests', icon: FiSend, label: 'Requests', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/employee/apply-loan', icon: FiDollarSign, label: 'Apply Loan', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/permission', icon: FiShield, label: 'Permission', roles: ['Manager', 'HR'] },
+    { path: '/self/requests', icon: FiSend, label: 'Requests', roles: ['Manager', 'HR'] },
+    { path: '/self/resignation', icon: FiLogOut, label: 'Resignation', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/employee/apply-loan', icon: FiDollarSign, label: 'Apply Loan', roles: ['Manager', 'HR'] },
     { path: '/self/week-offs', icon: FiCalendar, label: 'Week-Offs', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/holidays', icon: FiGift, label: 'Holidays', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/payroll/tax', icon: FiPercent, label: 'Tax', roles: ['Manager', 'HR'] },
   ];
 
   // Employees Section (for Manager - managing employees)
@@ -123,6 +127,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Manager'] },
     { path: '/employees/permission', icon: FiShield, label: 'Permission', roles: ['Manager'] },
     { path: '/employees/requests', icon: FiSend, label: 'Requests', roles: ['Manager'] },
+    { path: '/employees/resigned-list', icon: FiLogOut, label: 'Resigned List', roles: ['Manager'] },
     { path: '/employees/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Manager'] },
   ];
 
@@ -131,10 +136,11 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/employees/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Admin'] },
     { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'HR'] },
     { path: '/employees/balance-leaves', icon: FiList, label: 'Balance Leaves', roles: ['HR'] },
-    { path: '/employees/data', icon: FiFileText, label: 'Data', roles: ['HR'] },
+    { path: '/employees/data', icon: FiFileText, label: 'Data', roles: ['Admin', 'HR'] },
     { path: '/employees/letters', icon: FiMail, label: 'Letters', roles: ['HR'] },
     { path: '/employees/permission', icon: FiShield, label: 'Permission', roles: ['Admin', 'HR'] },
     { path: '/employees/requests', icon: FiSend, label: 'Requests', roles: ['Admin', 'HR'] },
+    { path: '/employees/resigned-list', icon: FiLogOut, label: 'Resigned List', roles: ['Admin', 'HR'] },
     { path: '/employees/holidays', icon: FiGift, label: 'Holidays', roles: ['Admin'] },
     { path: '/employees/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Admin', 'HR'] },
     { path: '/employees/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Admin'] },
@@ -143,9 +149,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   // Payroll Section (for Employee, Manager, HR, Admin)
   const payrollItems = [
     { path: '/payroll/structure', icon: FiBriefcase, label: 'Structure', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
-    { path: '/payroll/generate', icon: FiPlus, label: 'Generate', roles: ['Admin', 'HR'] },
+    { path: '/payroll/generate', icon: FiPlus, label: 'Generate', roles: ['HR'] },
     { path: '/payroll/payslip', icon: FiFileText, label: 'Payslip', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
     { path: '/payroll/salary', icon: FiDollarSign, label: 'Salary', roles: ['Admin', 'HR'] },
+    { path: '/payroll/tax', icon: FiPercent, label: 'Tax', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
   ];
 
   // Attendance Section (for Employee, Manager, HR, Admin)
@@ -153,16 +160,22 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/attendance/cycle', icon: FiCalendar, label: 'Cycle', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
     { path: '/attendance/count', icon: FiClock, label: 'Count', roles: ['Admin', 'HR'] },
     { path: '/attendance/history', icon: FiList, label: 'History', roles: ['Admin', 'HR', 'Manager', 'Employee'] },
-    { path: '/attendance/modify', icon: FiEdit, label: 'Modify', roles: ['Admin', 'HR'] },
+    { path: '/attendance/modify', icon: FiEdit, label: 'Modify', roles: ['HR'] },
   ];
 
   // VMS Module Items
   const vmsItems = [
-    { path: '/vms/list', icon: FiList, label: 'Visitors', roles: ['Admin', 'Manager', 'Employee', 'HR'] },
-    { path: '/vms/items', icon: FiTruck, label: 'Items', roles: ['Admin', 'Manager', 'Employee', 'HR'] },
+    { path: '/vms/list', icon: FiList, label: 'Visitors', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
+    { path: '/vms/items', icon: FiTruck, label: 'Items', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
   ];
 
-  const filterItems = (items) => items.filter(item => item.roles.includes(user?.role));
+  const filterItems = (items) => {
+    // Front Desk role should only see VMS items
+    if (user?.role === 'Front Desk') {
+      return items.filter(item => item.path?.startsWith('/vms'));
+    }
+    return items.filter(item => item.roles.includes(user?.role));
+  };
 
   const routeTitleMap = {
     '/dashboard': 'Dashboard',
@@ -199,6 +212,13 @@ const Sidebar = ({ isOpen, onClose }) => {
     return routeTitleMap[found] || 'Dashboard';
   };
 
+  const handleNavClick = () => {
+    // Close sidebar on mobile when a menu item is clicked
+    if (window.innerWidth <= 768 && isOpen) {
+      onClose();
+    }
+  };
+
   const renderSection = (sectionKey, title, items) => {
     const filteredItems = filterItems(items);
     if (filteredItems.length === 0) return null;
@@ -222,6 +242,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={handleNavClick}
               >
                 <item.icon className="nav-icon" />
                 <span className="nav-label">{item.label}</span>
@@ -250,50 +271,60 @@ const Sidebar = ({ isOpen, onClose }) => {
       </div>
 
       <nav className="sidebar-nav">
-        {/* Direct items (not in collapsible sections) */}
-        {filterItems(directItems).map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          >
-            <item.icon className="nav-icon" />
-            <span className="nav-label">{item.label}</span>
-          </NavLink>
-        ))}
-        
-        {/* TMS Section - for all roles */}
-        {renderSection('tms', 'TMS', tmsItems)}
-        
-        {/* Self Section - for Employee role */}
-        {user?.role === 'Employee' && renderSection('self', 'Self', employeeSelfItems)}
-        
-        {/* Self Section - for Manager, HR, Admin */}
-        {(user?.role === 'Manager' || user?.role === 'HR' || user?.role === 'Admin') && 
-          renderSection('self', 'Self', selfItems)}
-        
-        {/* Employees Section - for Manager (limited items) */}
-        {user?.role === 'Manager' && 
-          renderSection('employees', 'Employees', managerEmployeesItems)}
-        
-        {/* Employees Section - for HR, Admin */}
-        {(user?.role === 'HR' || user?.role === 'Admin') && 
-          renderSection('employees', 'Employees', employeesItems)}
-        
-        {/* Payroll Section - for Employee, Manager, HR, Admin */}
-        {renderSection('payroll', 'Payroll', payrollItems)}
-        
-        {/* Attendance Section - for Employee, Manager, HR, Admin */}
-        {renderSection('attendance', 'Attendance', attendanceItems)}
-        
-        {/* VMS Section */}
-        {renderSection('vms', 'VMS', vmsItems)}
+        {/* Front Desk role - only show VMS */}
+        {user?.role === 'Front Desk' ? (
+          renderSection('vms', 'VMS', vmsItems)
+        ) : (
+          <>
+            {/* Direct items (not in collapsible sections) */}
+            {filterItems(directItems).map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={handleNavClick}
+              >
+                <item.icon className="nav-icon" />
+                <span className="nav-label">{item.label}</span>
+              </NavLink>
+            ))}
+            
+            {/* TMS Section - for all roles */}
+            {renderSection('tms', 'TMS', tmsItems)}
+            
+            {/* Self Section - for Employee role */}
+            {user?.role === 'Employee' && renderSection('self', 'Self', employeeSelfItems)}
+            
+            {/* Self Section - for Manager, HR, Admin */}
+            {(user?.role === 'Manager' || user?.role === 'HR' || user?.role === 'Admin') && 
+              renderSection('self', 'Self', selfItems)}
+            
+            {/* Employees Section - for Manager (limited items) */}
+            {user?.role === 'Manager' && 
+              renderSection('employees', 'Employees', managerEmployeesItems)}
+            
+            {/* Employees Section - for HR, Admin */}
+            {(user?.role === 'HR' || user?.role === 'Admin') && 
+              renderSection('employees', 'Employees', employeesItems)}
+            
+            {/* Payroll Section - for Employee, Manager, HR, Admin */}
+            {renderSection('payroll', 'Payroll', payrollItems)}
+            
+            {/* Attendance Section - for Employee, Manager, HR, Admin */}
+            {renderSection('attendance', 'Attendance', attendanceItems)}
+            
+            {/* VMS Section */}
+            {renderSection('vms', 'VMS', vmsItems)}
+          </>
+        )}
       </nav>
 
       <div className="sidebar-footer">
         <div className="user-info">
           <div className="avatar">
-            {user?.image_base64 ? (
+            {user?.role === 'Front Desk' ? (
+              user?.name?.charAt(0).toUpperCase()
+            ) : user?.image_base64 ? (
               <img src={user.image_base64} alt={user.name} />
             ) : (
               user?.name?.charAt(0).toUpperCase()
@@ -301,11 +332,11 @@ const Sidebar = ({ isOpen, onClose }) => {
           </div>
           <div className="user-details">
             <p className="user-name">{user?.name.toUpperCase()}</p>
-            <p className="user-role">{user?.role.toUpperCase()}</p>
+            <p className="user-role">{user?.role === 'Front Desk' ? 'FRONT DESK' : user?.role.toUpperCase()}</p>
           </div>
         </div>
         <button className="logout-btn" onClick={logout}>
-          <FiLogOut />
+          <FiPower />
         </button>
       </div>
     </aside>

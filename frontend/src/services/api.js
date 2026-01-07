@@ -214,3 +214,15 @@ export const policiesAPI = {
   getUnread: () => api.get('/policies/unread'),
   acknowledge: (id) => api.post(`/policies/${id}/acknowledge`),
 };
+
+export const resignationsAPI = {
+  create: (data) => api.post('/resignations', data),
+  getSelf: () => api.get('/resignations/self'),
+  getAll: (status) => api.get('/resignations', { params: { status } }),
+  getById: (id) => api.get(`/resignations/${id}`),
+  approveManager: (id, data) => api.post(`/resignations/${id}/approve-manager`, data),
+  approveHR: (id, data) => api.post(`/resignations/${id}/approve-hr`, data),
+  approveHOD: (id, data) => api.post(`/resignations/${id}/approve-hod`, data),
+  withdraw: (id) => api.post(`/resignations/${id}/withdraw`),
+  getNoticePeriodInfo: () => api.get('/resignations/notice-period-info'),
+};

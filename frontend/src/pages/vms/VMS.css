@@ -391,6 +391,21 @@
 }
 
 @media (max-width: 768px) {
+  .modal-footer {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.95rem;
+  }
+
+  .modal-footer .btn-secondary,
+  .modal-footer .btn-primary {
+    margin: 0;
+  }
   .page-container {
     padding: 16px;
   }

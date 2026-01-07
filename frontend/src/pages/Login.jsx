@@ -12,16 +12,20 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, token } = useAuth();
+  const { login, token, user } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if already logged in
   useEffect(() => {
-    if (token) {
-      // Will be handled by App.jsx routing
-      navigate('/dashboard', { replace: true });
+    if (token && user) {
+      // Front Desk users go to VMS add visitor page
+      if (user.role === 'Front Desk') {
+        navigate('/vms/add', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     }
-  }, [token, navigate]);
+  }, [token, user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,8 +46,12 @@ const Login = () => {
         return;
       }
       toast.success('Login successful!');
-      // Redirect all users to Dashboard
-      navigate('/dashboard', { replace: true });
+      // Redirect Front Desk users to Add Visitor page, others to Dashboard
+      if (userData.role === 'Front Desk') {
+        navigate('/vms/add', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.detail || error.message || 'Login failed. Please check your credentials.';
       toast.error(errorMessage);

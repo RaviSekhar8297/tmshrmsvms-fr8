@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
+from utils import get_ist_now
 from database import get_db
 from models import User, AuthToken, SalaryStructure
 from schemas import LoginRequest, TokenResponse, UserResponse, ChangePasswordRequest
@@ -21,9 +22,29 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
     user_id = payload.get("user_id")
-    if not user_id:
+    role = payload.get("role")
+    
+    if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token payload")
     
+    # Handle Front Desk virtual user (user_id = 0)
+    if user_id == 0 and role == "Front Desk":
+        # Create a virtual User object for Front Desk (no database query)
+        virtual_user = User(
+            id=0,
+            empid="99",
+            name="Receptionist",
+            email="receptionist@brihaspathi.com",
+            username="99",
+            password="",  # Not used for Front Desk
+            role="Front Desk",
+            is_active=True,
+            image_base64=None,
+            created_at=get_ist_now()
+        )
+        return virtual_user
+    
+    # Normal user lookup from database
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
@@ -33,6 +54,65 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 @router.post("/login", response_model=TokenResponse)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     try:
+        # Check for default Receptionist credentials (no database check)
+        if request.username == "99" and request.password == "123123":
+            # Create virtual user object for Receptionist
+            from datetime import datetime
+            from decimal import Decimal
+            
+            expires_at = get_ist_now() + timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+            # Use a special user_id for Front Desk (0 or -1) to avoid conflicts
+            token = create_access_token({"user_id": 0, "role": "Front Desk"})
+            
+            # Create virtual user response
+            user_response = UserResponse(
+                id=0,
+                empid="99",
+                name="Receptionist",
+                email="receptionist@brihaspathi.com",
+                phone=None,
+                username="99",
+                role="Front Desk",
+                sms_consent=False,
+                whatsapp_consent=False,
+                email_consent=False,
+                report_to_id=None,
+                image_base64=None,
+                is_active=True,
+                dob=None,
+                doj=None,
+                emp_inactive_date=None,
+                designation=None,
+                company_id=None,
+                branch_id=None,
+                department_id=None,
+                company_name=None,
+                branch_name=None,
+                department_name=None,
+                salary_per_annum=None,
+                is_late=False,
+                bank_details=None,
+                family_details=None,
+                nominee_details=None,
+                education_details=None,
+                experience_details=None,
+                documents=None,
+                created_at=get_ist_now()
+            )
+            
+            response = TokenResponse(
+                access_token=token,
+                user=user_response,
+                expires_at=expires_at
+            )
+            
+            # Add calendar connection status to response
+            response_dict = response.model_dump()
+            response_dict['calendar_connected'] = False
+            
+            return response_dict
+        
+        # Normal database authentication for other users
         user = db.query(User).filter(
             (User.username == request.username) | (User.empid == request.username)
         ).first()
@@ -47,24 +127,25 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=401, detail="Account is deactivated")
         
         # Create token
-        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
+        expires_at = get_ist_now() + timedelta(days=settings.ACCESS_TOKEN_EXPIRE_DAYS)
         token = create_access_token({"user_id": user.id, "role": user.role})
         
-        # Save token (optional - for tracking)
-        try:
-            auth_token = AuthToken(
-                user_id=user.id,
-                token=token,
-                device_info=request.device_info,
-                expires_at=expires_at
-            )
-            db.add(auth_token)
-            db.commit()
-        except Exception as e:
-            # Token tracking is optional, log but don't fail
-            # Rollback the transaction to avoid issues
-            db.rollback()
-            print(f"Warning: Could not save auth token: {e}")
+        # Save token (optional - for tracking) - Skip for Front Desk role
+        if user.role != "Front Desk":
+            try:
+                auth_token = AuthToken(
+                    user_id=user.id,
+                    token=token,
+                    device_info=request.device_info,
+                    expires_at=expires_at
+                )
+                db.add(auth_token)
+                db.commit()
+            except Exception as e:
+                # Token tracking is optional, log but don't fail
+                # Rollback the transaction to avoid issues
+                db.rollback()
+                print(f"Warning: Could not save auth token: {e}")
         
         # Validate user response
         user_response = UserResponse.model_validate(user)
@@ -103,7 +184,45 @@ def logout(request: Request, db: Session = Depends(get_db), current_user: User =
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Fetch salary_per_annum from SalaryStructure
+    # Handle virtual Front Desk user (no database queries needed)
+    if current_user.id == 0 and current_user.role == "Front Desk":
+        user_response = UserResponse(
+            id=0,
+            empid="99",
+            name="Receptionist",
+            email="receptionist@brihaspathi.com",
+            phone=None,
+            username="99",
+            role="Front Desk",
+            sms_consent=False,
+            whatsapp_consent=False,
+            email_consent=False,
+            report_to_id=None,
+            image_base64=None,
+            is_active=True,
+            dob=None,
+            doj=None,
+            emp_inactive_date=None,
+            designation=None,
+            company_id=None,
+            branch_id=None,
+            department_id=None,
+            company_name=None,
+            branch_name=None,
+            department_name=None,
+            salary_per_annum=None,
+            is_late=False,
+            bank_details=None,
+            family_details=None,
+            nominee_details=None,
+            education_details=None,
+            experience_details=None,
+            documents=None,
+            created_at=get_ist_now()
+        )
+        return user_response
+    
+    # Fetch salary_per_annum from SalaryStructure for normal users
     # Query only the columns that exist in the database to avoid errors
     try:
         salary_structure = db.query(

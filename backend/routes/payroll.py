@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, case, or_, cast, String
 from datetime import datetime
+from utils import get_ist_now, get_ist_date
 from decimal import Decimal
 from database import get_db
 from models import PayrollStructure, Payroll, User, SalaryStructure, PayslipData
@@ -478,7 +479,7 @@ def export_salary_structure_excel(
         wb.save(output)
         output.seek(0)
         
-        filename = f"salary_structure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = f"salary_structure_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
         return StreamingResponse(
             io.BytesIO(output.read()),
@@ -531,43 +532,41 @@ def upload_salary_structure_excel(
                         except:
                             pass
                 
-                # Get existing record or create new (using empid only)
+                # Check if empid already exists - skip if exists, insert otherwise
                 if empid:
-                    salary = db.query(SalaryStructure).filter(SalaryStructure.empid == empid).first()
-                    if not salary:
-                        salary = SalaryStructure(empid=empid)
-                        created_count += 1
+                    existing_salary = db.query(SalaryStructure).filter(SalaryStructure.empid == empid).first()
+                    if existing_salary:
+                        # Skip if already exists
+                        continue
+                    
+                    # Create new record
+                    salary = SalaryStructure(empid=empid)
+                    salary.name = name
+                    salary.doj = doj
+                    salary.salary_per_annum = Decimal(str(row[4])) if row[4] else None
+                    salary.salary_per_month = Decimal(str(row[5])) if row[5] else None
+                    salary.basic = Decimal(str(row[6])) if row[6] else None
+                    salary.hra = Decimal(str(row[7])) if row[7] else None
+                    salary.ca = Decimal(str(row[8])) if row[8] else None
+                    salary.ma = Decimal(str(row[9])) if row[9] else None
+                    salary.sa = Decimal(str(row[10])) if row[10] else None
+                    salary.employee_pf = Decimal(str(row[11])) if row[11] else None
+                    salary.employee_esi = Decimal(str(row[12])) if row[12] else None
+                    salary.professional_tax = Decimal(str(row[13])) if row[13] else None
+                    salary.employer_pf = Decimal(str(row[14])) if row[14] else None
+                    salary.employer_esi = Decimal(str(row[15])) if row[15] else None
+                    salary.variable_pay = Decimal(str(row[16])) if row[16] else None
+                    salary.retension_bonus = Decimal(str(row[17])) if row[17] else None
+                    salary.net_salary = Decimal(str(row[18])) if row[18] else None
+                    salary.monthly_ctc = Decimal(str(row[19])) if row[19] else None
+                    salary.pf_check = 1 if str(row[20]).lower() in ['yes', '1', 'true'] else 0
+                    salary.esi_check = 1 if str(row[21]).lower() in ['yes', '1', 'true'] else 0
+                    
+                    db.add(salary)
+                    created_count += 1
                 else:
                     errors.append(f"Row {row_num}: Emp ID is required for new records")
                     continue
-                
-                # Update fields
-                salary.name = name
-                salary.doj = doj
-                salary.salary_per_annum = Decimal(str(row[4])) if row[4] else None
-                salary.salary_per_month = Decimal(str(row[5])) if row[5] else None
-                salary.basic = Decimal(str(row[6])) if row[6] else None
-                salary.hra = Decimal(str(row[7])) if row[7] else None
-                salary.ca = Decimal(str(row[8])) if row[8] else None
-                salary.ma = Decimal(str(row[9])) if row[9] else None
-                salary.sa = Decimal(str(row[10])) if row[10] else None
-                salary.employee_pf = Decimal(str(row[11])) if row[11] else None
-                salary.employee_esi = Decimal(str(row[12])) if row[12] else None
-                salary.professional_tax = Decimal(str(row[13])) if row[13] else None
-                salary.employer_pf = Decimal(str(row[14])) if row[14] else None
-                salary.employer_esi = Decimal(str(row[15])) if row[15] else None
-                salary.variable_pay = Decimal(str(row[16])) if row[16] else None
-                salary.retension_bonus = Decimal(str(row[17])) if row[17] else None
-                salary.net_salary = Decimal(str(row[18])) if row[18] else None
-                salary.monthly_ctc = Decimal(str(row[19])) if row[19] else None
-                salary.pf_check = 1 if str(row[20]).lower() in ['yes', '1', 'true'] else 0
-                salary.esi_check = 1 if str(row[21]).lower() in ['yes', '1', 'true'] else 0
-                
-                if salary.id:
-                    updated_count += 1
-                else:
-                    db.add(salary)
-                    created_count += 1
                 
             except Exception as e:
                 errors.append(f"Row {row_num}: {str(e)}")
@@ -866,7 +865,7 @@ def toggle_payslip_freeze(
     # Update all payslips
     for payslip in payslips:
         payslip.freaze_status = new_status
-        payslip.updated_date = datetime.utcnow().date()
+        payslip.updated_date = get_ist_date()
         payslip.updated_by = current_user.name or current_user.empid
     
     db.commit()
@@ -959,9 +958,10 @@ def get_payslip_list(
                 "pt": float(deductions.get("PT", 0)) if deductions else 0,
                 "lop": float(deductions.get("LOP", 0)) if deductions else 0,
                 "tds": float(deductions.get("TDS", 0)) if deductions else 0,
+                "lwf": float(deductions.get("LWF", 0)) if deductions else 0,
                 "late_logins": float(deductions.get("LateLogins", 0)) if deductions else 0,
                 "late_login_deductions": float(deductions.get("LateLogDeduction", 0)) if deductions else 0,
-                "total_deductions": float((deductions.get("PF", 0) or 0) + (deductions.get("ESI", 0) or 0) + (deductions.get("PT", 0) or 0) + (deductions.get("LateLogDeduction", 0) or 0) + (deductions.get("LOP", 0) or 0)) if deductions else 0,
+                "total_deductions": float((deductions.get("PF", 0) or 0) + (deductions.get("ESI", 0) or 0) + (deductions.get("PT", 0) or 0) + (deductions.get("LateLogDeduction", 0) or 0) + (deductions.get("LOP", 0) or 0) + (deductions.get("LWF", 0) or 0)) if deductions else 0,
                 "present": float(payslip.present) if payslip.present else 0,
                 "absent": float(payslip.absent) if payslip.absent else 0,
                 "half_days": float(payslip.half_days) if payslip.half_days else 0,
@@ -1014,8 +1014,9 @@ def export_payslip_excel(
         # Build query (same logic as get_payslip_list)
         query = db.query(PayslipData)
         
-        # ALL roles can only export frozen payslips
-        query = query.filter(PayslipData.freaze_status == True)
+        # Apply freeze status filter - HR role can see all (frozen and unfrozen), others only frozen
+        if current_user.role != "HR":
+            query = query.filter(PayslipData.freaze_status == True)
         
         if month is not None:
             query = query.filter(PayslipData.month == month)
@@ -1057,6 +1058,10 @@ def export_payslip_excel(
             'Presents', 'Absents', 'Half Days', 'Holidays', 'WO', 'Leaves', 'Payable Days',
             'Arrear Salary', 'Loan Amount', 'Other Deductions', 'Month', 'Year'
         ]
+        
+        # Column indices for Month and Year (0-based index in headers array)
+        month_col_idx = len(headers) - 1  # Second to last column (Month)
+        year_col_idx = len(headers)  # Last column (Year)
         
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
@@ -1100,15 +1105,19 @@ def export_payslip_excel(
                 float(payslip.arrear_salary) if payslip.arrear_salary else 0,
                 float(payslip.loan_amount) if payslip.loan_amount else 0,
                 float(payslip.other_deduction) if payslip.other_deduction else 0,
-                payslip.month or 0,
-                payslip.year or 0
+                int(payslip.month) if payslip.month else 0,
+                int(payslip.year) if payslip.year else 0
             ]
             
             for col, value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col, value=value)
                 cell.border = border
-                if col > 3:  # Number columns
+                # Apply number formatting to numeric columns, but not to Month and Year
+                if col > 3 and col != month_col_idx and col != year_col_idx:
                     cell.number_format = '#,##0.00'
+                elif col == month_col_idx or col == year_col_idx:
+                    # Format Month and Year as integers without decimals
+                    cell.number_format = '0'
         
         # Auto-adjust column widths
         for col in range(1, len(headers) + 1):
@@ -1119,7 +1128,7 @@ def export_payslip_excel(
         wb.save(output)
         output.seek(0)
         
-        filename = f"payslip_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = f"payslip_data_{get_ist_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
         return StreamingResponse(
             output,
@@ -1197,6 +1206,9 @@ def upload_payslip_excel(
                     errors.append(f"Row {row_num}: Missing emp_id, month, or year")
                     continue
                 
+                # Calculate net_salary: (netsalary + Arrear Salary) - Other Deductions
+                net_salary = (net_salary + arrear_salary) - other_deduction
+                
                 # Check if payslip exists (based on emp_id, month, year)
                 existing_payslip = db.query(PayslipData).filter(
                     and_(
@@ -1245,7 +1257,7 @@ def upload_payslip_excel(
                     existing_payslip.arrear_salary = arrear_salary
                     existing_payslip.loan_amount = loan_amount
                     existing_payslip.other_deduction = other_deduction
-                    existing_payslip.updated_date = datetime.now().date()
+                    existing_payslip.updated_date = get_ist_date()
                     existing_payslip.updated_by = current_user.name or current_user.empid
                     updated_count += 1
                 else:
@@ -1273,7 +1285,7 @@ def upload_payslip_excel(
                         month=month,
                         year=year,
                         freaze_status=False,
-                        created_date=datetime.now().date(),
+                        created_date=get_ist_date(),
                         created_by=current_user.name or current_user.empid
                     )
                     db.add(new_payslip)

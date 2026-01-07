@@ -339,7 +339,7 @@ def update_rating(
     rating.score = score
     if comments:
         rating.comments = comments
-    rating.rated_at = datetime.utcnow()
+    rating.rated_at = get_ist_now()
     
     db.commit()
     db.refresh(rating)

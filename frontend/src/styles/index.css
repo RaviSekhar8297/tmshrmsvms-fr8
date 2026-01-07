@@ -627,6 +627,8 @@ input, textarea, select {
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: visible;
+  position: relative;
 }
 
 .modal-header {
@@ -661,6 +663,8 @@ input, textarea, select {
 
 .modal-body {
   padding: 24px;
+  overflow: visible;
+  position: relative;
 }
 
 .modal-footer {

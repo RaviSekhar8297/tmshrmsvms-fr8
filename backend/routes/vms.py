@@ -2,11 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, text
 from datetime import datetime
+from utils import get_ist_now
 from database import get_db
 from models import VMSItem, Visitor, User
 from routes.auth import get_current_user
 from typing import Optional, List
 from pydantic import BaseModel
+import requests
+import smtplib
+import re
+import base64
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+from urllib.parse import urlparse
 # Import notification functions
 try:
     import sys
@@ -16,58 +25,222 @@ try:
     from utils.notifications import send_whatsapp_notification, send_email_notification
 except ImportError:
     # Fallback: define functions inline if module doesn't exist
-    import requests
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    pass
+
+# WhatsApp and Email configuration
+WHATSAPP_API_URL = "https://backend.api-wa.co/campaign/smartping/api/v2"
+WHATSAPP_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0OWMxMDI0YTMzMGUyMGJkYTcwMzMwMyIsIm5hbWUiOiJCUklIQVNQQVRISSBURUNITk9MT0dJRVMgUFJJVkFURSBMSU1JVEVEIiwiYXBwTmFtZSI6IkFpU2Vuc3kiLCJjbGllbnRJZCI6IjY0OWMxMDIzY2FkODQ1MGI0Nzg1YzA1YyIsImFjdGl2ZVBsYW4iOiJOT05FIiwiaWF0IjoxNjg3OTQ5MzQ4fQ.oDl73wKoFu9jj-nKdzsOqaY8InWdw3RIaYy4EUZaEto"
+WHATSAPP_CAMPAIGN = "vms_image"
+DEFAULT_IMAGE_URL = "https://t4.ftcdn.net/jpg/16/44/48/57/360_F_1644485767_kRMUtdpCWAt69j40x7mOkB2peeVkDgsM.jpg"
+EMAIL_FROM = "hrms@brihaspathi.com"
+EMAIL_PASSWORD = "aakbcohigtogpyrl"
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+FRONTEND_URL = "https://tms.brihaspathi.com/"
+
+def is_valid_email(email: str) -> bool:
+    """Validate email format"""
+    if not email:
+        return False
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email))
+
+def is_valid_phone(phone: str) -> bool:
+    """Validate phone number (basic validation)"""
+    if not phone:
+        return False
+    # Remove common characters and check if it's numeric
+    phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    return phone_clean.isdigit() and len(phone_clean) >= 10
+
+def get_image_data(image_data: str) -> tuple:
+    """Get image data from base64 string or URL, return (image_data, is_url)"""
+    if not image_data:
+        return None, False
     
-    WHATSAPP_API_URL = "https://backend.api-wa.co/campaign/smartping/api/v2"
-    WHATSAPP_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0OWMxMDI0YTMzMGUyMGJkYTcwMzMwMyIsIm5hbWUiOiJCUklIQVNQQVRISSBURUNITk9MT0dJRVMgUFJJVkFURSBMSU1JVEVEIiwiYXBwTmFtZSI6IkFpU2Vuc3kiLCJjbGllbnRJZCI6IjY0OWMxMDIzY2FkODQ1MGI0Nzg1YzA1YyIsImFjdGl2ZVBsYW4iOiJOT05FIiwiaWF0IjoxNjg3OTQ5MzQ4fQ.oDl73wKoFu9jj-nKdzsOqaY8InWdw3RIaYy4EUZaEto"
-    WHATSAPP_CAMPAIGN = "vms_emp_notification"
-    EMAIL_FROM = "hrms@brihaspathi.com"
-    EMAIL_PASSWORD = "aakbcohigtogpyrl"
-    SMTP_SERVER = "smtp.gmail.com"
-    SMTP_PORT = 587
-    
-    def send_whatsapp_notification(employee_name: str, visitor_name: str, purpose: str, phone: str):
+    # Check if it's a base64 data URL
+    if image_data.startswith('data:image'):
         try:
-            phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "")
-            payload = {
-                "campaign": WHATSAPP_CAMPAIGN,
-                "phone": phone_clean,
-                "params": [employee_name, visitor_name, purpose]
-            }
-            headers = {
-                "Authorization": f"Bearer {WHATSAPP_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            response = requests.post(WHATSAPP_API_URL, json=payload, headers=headers, timeout=10)
-            if response.status_code == 200:
-                print(f"WhatsApp notification sent to {phone}")
-                return True
-            return False
-        except Exception as e:
-            print(f"WhatsApp error: {str(e)}")
-            return False
+            # Extract base64 data
+            header, encoded = image_data.split(',', 1)
+            decoded = base64.b64decode(encoded)
+            return decoded, False
+        except:
+            return None, False
     
-    def send_email_notification(employee_name: str, employee_email: str, visitor_name: str, purpose: str, visitor_phone: str, visitor_email: str):
-        try:
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_FROM
-            msg['To'] = employee_email
-            msg['Subject'] = f"Visitor Alert: {visitor_name} is here to meet you"
-            body = f"""Dear {employee_name},\n\nYou have a visitor at the reception:\n\nVisitor Details:\n- Name: {visitor_name}\n- Purpose: {purpose}\n- Phone: {visitor_phone}\n- Email: {visitor_email}\n\nPlease proceed to the reception to meet your visitor.\n\nBest regards,\nHRMS System"""
-            msg.attach(MIMEText(body, 'plain'))
-            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-            server.starttls()
-            server.login(EMAIL_FROM, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_FROM, employee_email, msg.as_string())
-            server.quit()
-            print(f"Email sent to {employee_email}")
+    # Check if it's a URL
+    if image_data.startswith('http://') or image_data.startswith('https://'):
+        return image_data, True
+    
+    # Try to decode as base64
+    try:
+        decoded = base64.b64decode(image_data)
+        return decoded, False
+    except:
+        return None, False
+
+def send_whatsapp_notification(employee_name: str, visitor_name: str, visit_purpose: str, address: str, date_of_visit: str, phone: str, image_data: str = None):
+    """Send WhatsApp notification with image"""
+    try:
+        if not is_valid_phone(phone):
+            print(f"Invalid phone number: {phone}")
+            return False
+        
+        phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        
+        # Use default image if provided image is invalid
+        image_to_use = image_data
+        if not image_data:
+            image_to_use = DEFAULT_IMAGE_URL
+        
+        # Get image data
+        img_data, is_url = get_image_data(image_to_use)
+        if not img_data and not is_url:
+            image_to_use = DEFAULT_IMAGE_URL
+            is_url = True
+        
+        # Build payload according to API specification
+        payload = {
+            "campaignName": WHATSAPP_CAMPAIGN,
+            "destination": phone_clean,
+            "userName": "BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED",
+            "templateParams": [employee_name, visitor_name, visit_purpose, address, date_of_visit],
+            "source": "new-landing-page form"
+        }
+        
+        # If image is a URL, add it to payload
+        if is_url:
+            payload["imageUrl"] = image_to_use
+        
+        # Try multiple authentication methods
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        
+        # Method 1: Bearer token in header
+        headers["Authorization"] = f"Bearer {WHATSAPP_API_KEY}"
+        
+        print(f"WhatsApp API Request:")
+        print(f"  URL: {WHATSAPP_API_URL}")
+        print(f"  Campaign: {WHATSAPP_CAMPAIGN}")
+        print(f"  Phone: {phone_clean}")
+        print(f"  Payload: {payload}")
+        
+        # Try with Bearer token
+        response = requests.post(WHATSAPP_API_URL, json=payload, headers=headers, timeout=30)
+        
+        # If 401, try with API key as query parameter
+        if response.status_code == 401:
+            print("Bearer token failed (401), trying with API key as query parameter...")
+            url_with_key = f"{WHATSAPP_API_URL}?apiKey={WHATSAPP_API_KEY}"
+            headers_no_auth = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            response = requests.post(url_with_key, json=payload, headers=headers_no_auth, timeout=30)
+        
+        # If still 401, try with API key in payload
+        if response.status_code == 401:
+            print("Query parameter failed, trying with API key in payload...")
+            payload_with_key = payload.copy()
+            payload_with_key["apiKey"] = WHATSAPP_API_KEY
+            headers_no_auth = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            response = requests.post(WHATSAPP_API_URL, json=payload_with_key, headers=headers_no_auth, timeout=30)
+        if response.status_code == 200:
+            print(f"WhatsApp notification sent to {phone}")
             return True
-        except Exception as e:
-            print(f"Email error: {str(e)}")
+        else:
+            print(f"WhatsApp API error: {response.status_code} - {response.text}")
             return False
+    except Exception as e:
+        print(f"WhatsApp error: {str(e)}")
+        return False
+
+def send_email_notification(employee_name: str, employee_email: str, visitor_name: str, visit_purpose: str, address: str, date_of_visit: str, visitor_phone: str, visitor_email: str, image_data: str = None):
+    """Send email notification with image attachment"""
+    try:
+        if not is_valid_email(employee_email):
+            print(f"Invalid employee email: {employee_email}")
+            return False
+        
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_FROM
+        msg['To'] = employee_email
+        msg['Subject'] = f"Visitor Alert: {visitor_name} is here to meet you"
+        
+        body = f"""Dear {employee_name},
+
+You have a visitor at the reception:
+
+Visitor Details:
+- Name: {visitor_name}
+- Purpose: {visit_purpose}
+- Address: {address}
+- Phone: {visitor_phone or 'Not provided'}
+- Email: {visitor_email or 'Not provided'}
+- Date of Visit: {date_of_visit}
+
+Please proceed to the reception to meet your visitor.
+
+Best regards,
+HRMS System
+BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED"""
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Attach image
+        image_to_use = image_data
+        if not image_data:
+            image_to_use = DEFAULT_IMAGE_URL
+        
+        img_data, is_url = get_image_data(image_to_use)
+        
+        if is_url:
+            # Download image from URL
+            try:
+                img_response = requests.get(image_to_use, timeout=10)
+                if img_response.status_code == 200:
+                    img_data = img_response.content
+                else:
+                    # Use default image
+                    img_response = requests.get(DEFAULT_IMAGE_URL, timeout=10)
+                    if img_response.status_code == 200:
+                        img_data = img_response.content
+                    else:
+                        img_data = None
+            except:
+                # Try default image
+                try:
+                    img_response = requests.get(DEFAULT_IMAGE_URL, timeout=10)
+                    if img_response.status_code == 200:
+                        img_data = img_response.content
+                    else:
+                        img_data = None
+                except:
+                    img_data = None
+        
+        if img_data:
+            try:
+                image_part = MIMEImage(img_data)
+                image_part.add_header('Content-Disposition', 'attachment', filename='visitor_image.jpg')
+                msg.attach(image_part)
+            except Exception as img_error:
+                print(f"Error attaching image to email: {str(img_error)}")
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_FROM, employee_email, msg.as_string())
+        server.quit()
+        print(f"Email sent to {employee_email}")
+        return True
+    except Exception as e:
+        print(f"Email error: {str(e)}")
+        return False
 
 router = APIRouter()
 
@@ -148,34 +321,46 @@ def add_visitor(
                     ).first()
                 
                 if user_to_meet:
-                    # Send WhatsApp notification if consent is given
+                    # Get current date and time in IST
+                    from utils import get_ist_now
+                    date_of_visit = get_ist_now().strftime("%d/%m/%Y %H:%M:%S")
+                    
+                    # Send WhatsApp notification if consent is given and phone is valid
                     if user_to_meet.whatsapp_consent and user_to_meet.phone:
                         try:
                             send_whatsapp_notification(
-                                user_to_meet.name,
-                                visitor_data.fullname,
-                                visitor_data.purpose or 'Not specified',
-                                user_to_meet.phone
+                                employee_name=user_to_meet.name,
+                                visitor_name=visitor_data.fullname,
+                                visit_purpose=visitor_data.purpose or 'Not specified',
+                                address=visitor_data.address or 'Not provided',
+                                date_of_visit=date_of_visit,
+                                phone=user_to_meet.phone,
+                                image_data=visitor_data.selfie
                             )
                         except Exception as wa_error:
                             print(f"WhatsApp notification error: {str(wa_error)}")
                     
-                    # Send Email notification if consent is given
+                    # Send Email notification if consent is given and email is valid
                     if user_to_meet.email_consent and user_to_meet.email:
                         try:
                             send_email_notification(
-                                user_to_meet.name,
-                                user_to_meet.email,
-                                visitor_data.fullname,
-                                visitor_data.purpose or 'Not specified',
-                                visitor_data.phone or 'Not provided',
-                                visitor_data.email or 'Not provided'
+                                employee_name=user_to_meet.name,
+                                employee_email=user_to_meet.email,
+                                visitor_name=visitor_data.fullname,
+                                visit_purpose=visitor_data.purpose or 'Not specified',
+                                address=visitor_data.address or 'Not provided',
+                                date_of_visit=date_of_visit,
+                                visitor_phone=visitor_data.phone or 'Not provided',
+                                visitor_email=visitor_data.email or 'Not provided',
+                                image_data=visitor_data.selfie
                             )
                         except Exception as email_error:
                             print(f"Email notification error: {str(email_error)}")
             except Exception as e:
                 # Log error but don't fail the visitor creation
                 print(f"Error sending notifications: {str(e)}")
+                import traceback
+                traceback.print_exc()
         
         return {
             "message": "Visitor added successfully",
@@ -284,7 +469,7 @@ def checkout_visitor(
     if visitor.status == 'OUT':
         raise HTTPException(status_code=400, detail="Visitor already checked out")
     
-    visitor.checkouttime = datetime.utcnow()
+    visitor.checkouttime = get_ist_now()
     visitor.status = 'OUT'
     
     db.commit()
