@@ -55,7 +55,8 @@ def get_meetings(
             )
         )
     
-    return query.order_by(Meeting.meeting_datetime.desc()).all()
+    # Limit to 500 meetings for performance
+    return query.order_by(Meeting.meeting_datetime.desc()).limit(500).all()
 
 @router.get("/today")
 def get_today_meetings(
@@ -105,7 +106,8 @@ def get_upcoming_meetings(
                 )
             )
         
-        return query.order_by(Meeting.meeting_datetime).all()
+        # Limit to 200 upcoming meetings for performance
+        return query.order_by(Meeting.meeting_datetime).limit(200).all()
     except Exception as e:
         print(f"Error in get_upcoming_meetings: {e}")
         import traceback
@@ -252,25 +254,19 @@ def create_meeting(
                     meeting_link = calendar_result.get('meeting_link')
                     calendar_event_id = calendar_result.get('calendar_event_id')
                     print(f"Successfully created Google Meet link using service account: {meeting_link}")
+                except FileNotFoundError:
+                    # Service account file not found - allow meeting creation without link
+                    print("Service account file not found. Creating meeting without Google Meet link.")
+                    meeting_link = None
                 except Exception as e3:
                     print(f"Service account also failed: {e3}")
                     import traceback
                     traceback.print_exc()
-                    # Raise error - don't use fake link
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            "Failed to create Google Meet link. "
-                            "Please connect your Google Calendar account: "
-                            "1. Go to Meetings page, "
-                            "2. Click 'Connect Google Calendar' button, "
-                            "3. Authorize the app with Google, "
-                            "4. Then create your meeting again. "
-                            "OR select 'Zoom/Custom' platform and provide a meeting link manually."
-                        )
-                    )
+                    # Allow meeting creation without link instead of raising error
+                    print("Creating meeting without Google Meet link. User can add link manually later.")
+                    meeting_link = None
         else:
-            # Try service account if user OAuth not available
+            # No user OAuth credentials - try service account if available, otherwise allow meeting without link
             try:
                 calendar_result = create_calendar_event_with_service_account(
                     title=meeting_data.title,
@@ -282,24 +278,25 @@ def create_meeting(
                 meeting_link = calendar_result.get('meeting_link')
                 calendar_event_id = calendar_result.get('calendar_event_id')
                 print(f"Successfully created Google Meet link using service account: {meeting_link}")
+            except FileNotFoundError:
+                # Service account file not found - allow meeting creation without link
+                print("Service account file not found. Creating meeting without Google Meet link.")
+                print("User can connect Google Calendar or provide a manual link.")
+                meeting_link = None  # Allow meeting to be created without link
             except Exception as e:
                 print(f"Service account failed: {e}")
                 import traceback
                 traceback.print_exc()
-                # Raise error with helpful message
-                error_detail = (
-                    "Failed to create Google Meet link. "
-                    "Please connect your Google Calendar account: "
-                    "1. Go to Meetings page, "
-                    "2. Click 'Connect Google Calendar' button, "
-                    "3. Authorize the app with Google, "
-                    "4. Then create your meeting again. "
-                    "OR select 'Zoom/Custom' platform and provide a meeting link manually."
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail=error_detail
-                )
+                # If it's a credentials/permission error, allow meeting without link
+                error_str = str(e).lower()
+                if 'credentials' in error_str or 'permission' in error_str or 'not found' in error_str:
+                    print("Google Calendar credentials not available. Creating meeting without Google Meet link.")
+                    meeting_link = None  # Allow meeting to be created without link
+                else:
+                    # For other errors, still allow meeting creation but warn user
+                    print(f"Warning: Could not create Google Meet link: {e}")
+                    print("Creating meeting without automatic link. User can add link manually.")
+                    meeting_link = None
     
     meeting = Meeting(
         title=meeting_data.title,

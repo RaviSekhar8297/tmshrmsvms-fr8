@@ -451,6 +451,28 @@
   color: var(--text-muted);
 }
 
+/* White mode visibility fixes for form inputs and dropdowns */
+[data-theme="light"] .form-input,
+[data-theme="light"] .form-select {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-input) !important;
+}
+
+[data-theme="light"] .form-select option {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .form-select:disabled {
+  background-color: var(--bg-hover) !important;
+  color: var(--text-secondary) !important;
+  opacity: 0.6;
+}
+
+[data-theme="light"] .form-input::placeholder {
+  color: var(--text-muted) !important;
+}
+
 @media (max-width: 768px) {
   .page-container {
     padding: 16px;

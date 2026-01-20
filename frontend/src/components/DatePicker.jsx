@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FiChevronLeft, FiChevronRight, FiCalendar, FiX } from 'react-icons/fi';
 import './DatePicker.css';
 
-const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", disabled = false }) => {
+const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", disabled = false, disabledDates = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -53,16 +53,16 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
             top = 8;
           }
         }
-        
+         if (left < 0) {
+          // Adjust left if goes off left edge
+          left = 16;
+        }
         if (left + dropdownWidth > window.innerWidth) {
           // Adjust left if goes off right edge
           left = window.innerWidth - dropdownWidth - 16;
         }
         
-        if (left < 0) {
-          // Adjust left if goes off left edge
-          left = 16;
-        }
+       
         
         setDropdownPosition({ top, left });
       }
@@ -99,6 +99,10 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
     const dateStr = `${year}-${month}-${day}`;
     if (min && dateStr < min) return true;
     if (max && dateStr > max) return true;
+    // Check if date is in disabledDates array
+    if (disabledDates && disabledDates.length > 0) {
+      if (disabledDates.includes(dateStr)) return true;
+    }
     return false;
   };
 
@@ -129,19 +133,31 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
 
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(currentYear - 1);
+      const newYear = currentYear - 1;
+      if (!max || new Date(newYear, 11, 31) <= new Date(max)) {
+        setCurrentMonth(11);
+        setCurrentYear(newYear);
+      }
     } else {
-      setCurrentMonth(currentMonth - 1);
+      const newMonth = currentMonth - 1;
+      if (!max || new Date(currentYear, newMonth, 1) <= new Date(max)) {
+        setCurrentMonth(newMonth);
+      }
     }
   };
 
   const handleNextMonth = () => {
     if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(currentYear + 1);
+      const newYear = currentYear + 1;
+      if (!max || new Date(newYear, 0, 1) <= new Date(max)) {
+        setCurrentMonth(0);
+        setCurrentYear(newYear);
+      }
     } else {
-      setCurrentMonth(currentMonth + 1);
+      const newMonth = currentMonth + 1;
+      if (!max || new Date(currentYear, newMonth, 1) <= new Date(max)) {
+        setCurrentMonth(newMonth);
+      }
     }
   };
 
@@ -214,17 +230,86 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
               type="button" 
               className="date-picker-nav-btn"
               onClick={handlePrevMonth}
+              disabled={(() => {
+                if (!min) return false;
+                const minDate = new Date(min);
+                return currentYear === minDate.getFullYear() && currentMonth === minDate.getMonth();
+              })()}
             >
               <FiChevronLeft />
             </button>
             <div className="date-picker-month-year">
-              <span className="date-picker-month">{monthNames[currentMonth]}</span>
-              <span className="date-picker-year">{currentYear}</span>
+              <select
+                className="date-picker-select"
+                value={currentYear}
+                onChange={(e) => setCurrentYear(Number(e.target.value))}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  background: 'var(--bg-hover)',
+                  color: 'var(--text-primary)'
+                }}
+              >
+                {(() => {
+                  const years = [];
+                  const currentDate = new Date();
+                  const maxYear = max ? new Date(max).getFullYear() : currentDate.getFullYear();
+                  const minYear = min ? new Date(min).getFullYear() : 1900;
+                  for (let year = maxYear; year >= minYear; year--) {
+                    years.push(year);
+                  }
+                  return years;
+                })().map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <select
+                className="date-picker-select"
+                value={currentMonth}
+                onChange={(e) => setCurrentMonth(Number(e.target.value))}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  background: 'var(--bg-hover)',
+                  color: 'var(--text-primary)'
+                }}
+              >
+                {monthNames.map((month, index) => {
+                  // Disable future months if max date is set
+                  if (max) {
+                    const maxDate = new Date(max);
+                    if (currentYear === maxDate.getFullYear() && index > maxDate.getMonth()) {
+                      return null;
+                    }
+                  }
+                  // Disable past months if min date is set
+                  if (min) {
+                    const minDate = new Date(min);
+                    if (currentYear === minDate.getFullYear() && index < minDate.getMonth()) {
+                      return null;
+                    }
+                  }
+                  return <option key={index} value={index}>{month}</option>;
+                })}
+              </select>
             </div>
             <button 
               type="button" 
               className="date-picker-nav-btn"
               onClick={handleNextMonth}
+              disabled={(() => {
+                if (!max) return false;
+                const maxDate = new Date(max);
+                return currentYear === maxDate.getFullYear() && currentMonth === maxDate.getMonth();
+              })()}
             >
               <FiChevronRight />
             </button>

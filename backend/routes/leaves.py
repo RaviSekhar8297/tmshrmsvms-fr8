@@ -157,9 +157,9 @@ def validate_leave_dates(
             excluded_dates.append(current_date.isoformat())
         current_date += timedelta(days=1)
     
-    # Check for existing leave applications
-    # If leave_type is provided, check for same leave_type (excluding rejected)
-    # If leave_type is not provided, check for any overlapping dates
+    # Check for existing leave applications on overlapping dates (excluding rejected)
+    # You cannot have multiple leaves (even different types) on the same date
+    # Only allow if all existing leaves are rejected
     query_filter = [
             Leave.empid == current_user.empid,
             Leave.status != 'rejected',  # Allow re-application if rejected
@@ -168,9 +168,8 @@ def validate_leave_dates(
             )
     ]
     
-    # If leave_type is provided, also check for same leave_type
-    if leave_type:
-        query_filter.append(Leave.leave_type == leave_type)
+    # Note: We check for ANY overlapping leave, not just same leave_type
+    # Because you can't take two different types of leave on the same date
     
     existing_leaves = db.query(Leave).filter(and_(*query_filter)).all()
     
@@ -262,12 +261,12 @@ def create_leave(
             actual_days += 1
         current_date += timedelta(days=1)
     
-    # Check for existing leave applications of the same leave_type (excluding rejected)
-    # If there's a pending or approved leave for the same leave_type, don't allow
+    # Check for existing leave applications on overlapping dates (excluding rejected)
+    # You cannot have multiple leaves (even different types) on the same date
+    # Only allow if all existing leaves are rejected
     existing_leaves = db.query(Leave).filter(
         and_(
             Leave.empid == current_user.empid,
-            Leave.leave_type == leave_data.leave_type,  # Same leave type
             Leave.status != 'rejected',  # Allow re-application if rejected
             or_(
                 and_(Leave.from_date <= to_date, Leave.to_date >= from_date)
@@ -276,12 +275,134 @@ def create_leave(
     ).all()
     
     if existing_leaves:
-        statuses = [leave.status for leave in existing_leaves]
-        if 'pending' in statuses or 'approved' in statuses:
+        # Check if any of the existing leaves are pending or approved
+        pending_or_approved = [leave for leave in existing_leaves if leave.status in ['pending', 'approved']]
+        if pending_or_approved:
+            # Get the conflicting dates
+            conflicting_dates = []
+            for leave in pending_or_approved:
+                conflict_start = max(leave.from_date, from_date)
+                conflict_end = min(leave.to_date, to_date)
+                if conflict_start <= conflict_end:
+                    current_conflict = conflict_start
+                    while current_conflict <= conflict_end:
+                        conflicting_dates.append(current_conflict.isoformat())
+                        current_conflict += timedelta(days=1)
+            
+            conflicting_dates_str = ', '.join(sorted(set(conflicting_dates)))
             raise HTTPException(
                 status_code=400, 
-                detail=f"You already have a {leave_data.leave_type} leave (pending or approved) for some of these dates. Please wait for approval/rejection or select different dates."
+                detail=f"You already have a leave (pending or approved) for date(s): {conflicting_dates_str}. Please wait for approval/rejection or select different dates."
             )
+    
+    # Check if all available balance is already pending (for casual and sick leaves)
+    if leave_data.leave_type in ['casual', 'Casual', 'CASUAL', 'sick', 'Sick', 'SICK']:
+        # Get leave balance to check available balance
+        current_year = date.today().year
+        current_month = date.today().month
+        
+        try:
+            empid_value = int(current_user.empid) if current_user.empid and str(current_user.empid).isdigit() else current_user.id
+        except:
+            empid_value = current_user.id
+        
+        leave_balance = db.query(LeaveBalanceList).filter(
+            LeaveBalanceList.empid == empid_value,
+            LeaveBalanceList.year == current_year
+        ).first()
+        
+        if leave_balance:
+            if leave_data.leave_type in ['casual', 'Casual', 'CASUAL']:
+                # Calculate available casual leave (same logic as balance endpoint)
+                total_casual_per_year = float(leave_balance.total_casual_leaves) if leave_balance.total_casual_leaves else 12
+                casual_per_month = total_casual_per_year / 12.0
+                casual_this_month = casual_per_month
+                
+                # Add unused from previous months
+                all_casual_leaves = db.query(Leave).filter(
+                    Leave.empid == current_user.empid,
+                    Leave.status == 'approved',
+                    extract('year', Leave.from_date) == current_year,
+                    Leave.leave_type.in_(['casual', 'Casual', 'CASUAL'])
+                ).all()
+                
+                for month in range(1, current_month):
+                    month_leaves = [leave for leave in all_casual_leaves 
+                                  if leave.from_date.month == month]
+                    used_in_month = sum((leave.to_date - leave.from_date).days + 1 for leave in month_leaves)
+                    unused_from_month = max(0, casual_per_month - used_in_month)
+                    casual_this_month += unused_from_month
+                
+                # Subtract used in current month
+                current_month_casual_leaves = [leave for leave in all_casual_leaves 
+                                             if leave.from_date.month == current_month]
+                used_in_current_month = sum((leave.to_date - leave.from_date).days + 1 for leave in current_month_casual_leaves)
+                
+                # Get pending casual leaves
+                pending_casual_leaves = db.query(Leave).filter(
+                    Leave.empid == current_user.empid,
+                    Leave.status == 'pending',
+                    extract('year', Leave.from_date) == current_year,
+                    extract('month', Leave.from_date) == current_month,
+                    Leave.leave_type.in_(['casual', 'Casual', 'CASUAL'])
+                ).all()
+                
+                pending_casual_days = sum((leave.to_date - leave.from_date).days + 1 for leave in pending_casual_leaves)
+                
+                available_casual = max(0, casual_this_month - used_in_current_month - pending_casual_days)
+                
+                if actual_days > available_casual:
+                    max_available = casual_this_month - used_in_current_month
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Leave Application Alert: You have already applied for {pending_casual_days} day(s) of casual leave, which is your maximum available balance ({max_available} days). Please wait until the pending leave request is approved or rejected before applying for additional leave."
+                    )
+            
+            elif leave_data.leave_type in ['sick', 'Sick', 'SICK']:
+                # Calculate available sick leave (same logic as casual - monthly credit, carry forward)
+                total_sick_per_year = float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 12
+                sick_per_month = total_sick_per_year / 12.0
+                sick_this_month = sick_per_month
+                
+                # Add unused from previous months
+                all_sick_leaves = db.query(Leave).filter(
+                    Leave.empid == current_user.empid,
+                    Leave.status == 'approved',
+                    extract('year', Leave.from_date) == current_year,
+                    Leave.leave_type.in_(['sick', 'Sick', 'SICK'])
+                ).all()
+                
+                for month in range(1, current_month):
+                    month_leaves = [leave for leave in all_sick_leaves 
+                                  if leave.from_date.month == month]
+                    used_in_month = sum((leave.to_date - leave.from_date).days + 1 for leave in month_leaves)
+                    unused_from_month = max(0, sick_per_month - used_in_month)
+                    sick_this_month += unused_from_month
+                
+                # Subtract used in current month
+                current_month_sick_leaves = [leave for leave in all_sick_leaves 
+                                             if leave.from_date.month == current_month]
+                used_in_current_month = sum((leave.to_date - leave.from_date).days + 1 for leave in current_month_sick_leaves)
+                
+                # Get pending sick leaves
+                pending_sick_leaves = db.query(Leave).filter(
+                    Leave.empid == current_user.empid,
+                    Leave.status == 'pending',
+                    extract('year', Leave.from_date) == current_year,
+                    extract('month', Leave.from_date) == current_month,
+                    Leave.leave_type.in_(['sick', 'Sick', 'SICK'])
+                ).all()
+                
+                pending_sick_days = sum((leave.to_date - leave.from_date).days + 1 for leave in pending_sick_leaves)
+                
+                available_sick = max(0, sick_this_month - used_in_current_month - pending_sick_days)
+                
+                if actual_days > available_sick:
+                    max_available = sick_this_month - used_in_current_month
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Leave Application Alert: You have already applied for {pending_sick_days} day(s) of sick leave, which is your maximum available balance ({max_available} days). Please wait until the pending leave request is approved or rejected before applying for additional leave."
+                    )
     
     # Use calculated duration
     duration = leave_data.duration if leave_data.duration else actual_days
@@ -348,7 +469,8 @@ def get_self_leaves(
     if filter != "all":
         query = query.filter(Leave.status == filter)
     
-    leaves = query.order_by(Leave.applied_date.desc()).all()
+    # Limit to 500 records for performance
+    leaves = query.order_by(Leave.applied_date.desc()).limit(500).all()
     
     result = []
     for leave in leaves:
@@ -403,7 +525,8 @@ def get_all_leaves(
     if filter != "all":
         query = query.filter(Leave.status == filter)
     
-    leaves = query.order_by(Leave.applied_date.desc()).all()
+    # Limit to 500 records for performance
+    leaves = query.order_by(Leave.applied_date.desc()).limit(500).all()
     
     result = []
     for leave in leaves:
@@ -544,8 +667,9 @@ def get_leave_balance(
         casual_this_month = casual_per_month
         
         # Calculate unused casual leaves from previous months (Jan to current_month - 1)
+        # Casual Leave: 12 days/year, credited 1 day/month, carried forward monthly if not used
         for month in range(1, current_month):  # Previous months only (Jan to current_month - 1)
-            # Get casual leaves used in this month
+            # Get casual leaves used in this month (approved only)
             month_leaves = [leave for leave in all_casual_leaves 
                           if leave.from_date.month == month]
             
@@ -561,7 +685,7 @@ def get_leave_balance(
             unused_from_month = max(0, casual_per_month - used_in_month)
             casual_this_month += unused_from_month
         
-        # Subtract used leaves in current month
+        # Subtract used leaves in current month (approved only)
         current_month_casual_leaves = [leave for leave in all_casual_leaves 
                                      if leave.from_date.month == current_month]
         used_in_current_month = 0
@@ -569,27 +693,85 @@ def get_leave_balance(
             days = (leave.to_date - leave.from_date).days + 1
             used_in_current_month += days
         
-        # Final available = (new leave + unused from previous) - used in current month
-        casual_this_month = max(0, casual_this_month - used_in_current_month)
+        # Get pending casual leaves for current month (to subtract from available)
+        pending_casual_leaves = db.query(Leave).filter(
+            Leave.empid == current_user.empid,
+            Leave.status == 'pending',
+            extract('year', Leave.from_date) == current_year,
+            extract('month', Leave.from_date) == current_month,
+            Leave.leave_type.in_(['casual', 'Casual', 'CASUAL'])
+        ).all()
+        
+        pending_casual_days = 0
+        for leave in pending_casual_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            pending_casual_days += days
+        
+        # Final available = (new leave + unused from previous) - used in current month - pending in current month
+        casual_this_month = max(0, casual_this_month - used_in_current_month - pending_casual_days)
         
         # Comp-Off: use balance (can be forwarded from previous months)
         comp_off_this_month = float(leave_balance.balance_comp_off_leaves) if leave_balance.balance_comp_off_leaves else 0
         
-        # Sick: cannot be forwarded, so only current month
-        # Get approved sick leaves for current month
-        current_month_sick_leaves = db.query(Leave).filter(
+        # Sick Leave: 12 days/year, credited 1 day/month, carried forward monthly if not used (same as casual)
+        # Get total sick leaves per year
+        total_sick_per_year = float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 12
+        # Calculate leaves per month (e.g., 12 per year / 12 months = 1 per month)
+        sick_per_month = total_sick_per_year / 12.0
+        
+        # Get all approved sick leaves for the current year
+        all_sick_leaves = db.query(Leave).filter(
             Leave.empid == current_user.empid,
             Leave.status == 'approved',
+            extract('year', Leave.from_date) == current_year,
+            Leave.leave_type.in_(['sick', 'Sick', 'SICK'])
+        ).all()
+        
+        # Start with current month's new leave
+        sick_this_month = sick_per_month
+        
+        # Calculate unused sick leaves from previous months (Jan to current_month - 1)
+        for month in range(1, current_month):  # Previous months only (Jan to current_month - 1)
+            # Get sick leaves used in this month (approved only)
+            month_leaves = [leave for leave in all_sick_leaves 
+                          if leave.from_date.month == month]
+            
+            # Calculate total days used in this month
+            used_in_month = 0
+            for leave in month_leaves:
+                # Calculate actual days (handle half days if needed)
+                days = (leave.to_date - leave.from_date).days + 1
+                used_in_month += days
+            
+            # Unused leaves from this month = sick_per_month - used_in_month
+            # Only add if unused > 0 (if leaves were taken, they don't carry forward)
+            unused_from_month = max(0, sick_per_month - used_in_month)
+            sick_this_month += unused_from_month
+        
+        # Subtract used leaves in current month (approved only)
+        current_month_sick_leaves = [leave for leave in all_sick_leaves 
+                                     if leave.from_date.month == current_month]
+        used_in_current_month = 0
+        for leave in current_month_sick_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            used_in_current_month += days
+        
+        # Get pending sick leaves for current month (to subtract from available)
+        pending_sick_leaves = db.query(Leave).filter(
+            Leave.empid == current_user.empid,
+            Leave.status == 'pending',
             extract('year', Leave.from_date) == current_year,
             extract('month', Leave.from_date) == current_month,
             Leave.leave_type.in_(['sick', 'Sick', 'SICK'])
         ).all()
         
-        # Count days used in current month for sick leaves
-        sick_used_this_month = sum((leave.to_date - leave.from_date).days + 1 for leave in current_month_sick_leaves)
+        pending_sick_days = 0
+        for leave in pending_sick_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            pending_sick_days += days
         
-        # Sick: 1 per month, minus used this month
-        sick_this_month = max(0, 1 - sick_used_this_month)
+        # Final available = (new leave + unused from previous) - used in current month - pending in current month
+        sick_this_month = max(0, sick_this_month - used_in_current_month - pending_sick_days)
     else:
         casual_this_month = 0
         sick_this_month = 0

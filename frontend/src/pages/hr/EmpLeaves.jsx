@@ -3,6 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import api, { usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import DatePicker from '../../components/DatePicker';
+import * as XLSX from 'xlsx';
 import './HR.css';
 
 const EmpLeaves = () => {
@@ -11,6 +13,8 @@ const EmpLeaves = () => {
   const [leaves, setLeaves] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [formData, setFormData] = useState({
     employee_id: '',
     leave_type: '',
@@ -21,7 +25,7 @@ const EmpLeaves = () => {
   });
   const [employees, setEmployees] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const recordsPerPage = 20;
+  const recordsPerPage = 50;
 
   useEffect(() => {
     // Only fetch if user is loaded and has the correct role
@@ -145,15 +149,36 @@ const EmpLeaves = () => {
   };
 
   const filteredLeaves = leaves.filter(leave => {
-    if (!search) return true;
-    const searchLower = search.toLowerCase();
-    return (
-      leave.employee_name?.toLowerCase().includes(searchLower) ||
-      leave.employee_id?.toLowerCase().includes(searchLower) ||
-      leave.leave_type?.toLowerCase().includes(searchLower) ||
-      leave.reason?.toLowerCase().includes(searchLower) ||
-      leave.status?.toLowerCase().includes(searchLower)
-    );
+    // Search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      const matchesSearch = (
+        leave.employee_name?.toLowerCase().includes(searchLower) ||
+        leave.employee_id?.toLowerCase().includes(searchLower) ||
+        leave.leave_type?.toLowerCase().includes(searchLower) ||
+        leave.reason?.toLowerCase().includes(searchLower) ||
+        leave.status?.toLowerCase().includes(searchLower)
+      );
+      if (!matchesSearch) return false;
+    }
+    
+    // Date range filter
+    if (fromDate || toDate) {
+      const leaveStartDate = new Date(leave.start_date);
+      const leaveEndDate = new Date(leave.end_date);
+      
+      if (fromDate) {
+        const from = new Date(fromDate);
+        if (leaveEndDate < from) return false;
+      }
+      
+      if (toDate) {
+        const to = new Date(toDate);
+        if (leaveStartDate > to) return false;
+      }
+    }
+    
+    return true;
   });
 
   // Calculate statistics
@@ -175,8 +200,87 @@ const EmpLeaves = () => {
   };
 
   useEffect(() => {
-    setCurrentPage(1); // Reset to page 1 when search changes
-  }, [search]);
+    setCurrentPage(1); // Reset to page 1 when search or filters change
+  }, [search, fromDate, toDate]);
+
+  const exportToExcel = () => {
+    if (filteredLeaves.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel
+      const data = [];
+      
+      // Header row
+      const headerRow = [
+        'Employee ID',
+        'Employee Name',
+        'Leave Type',
+        'Start Date',
+        'End Date',
+        'Days',
+        'Status',
+        'Reason'
+      ];
+      data.push(headerRow);
+      
+      // Data rows
+      filteredLeaves.forEach((leave) => {
+        const start = new Date(leave.start_date);
+        const end = new Date(leave.end_date);
+        const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        
+        const row = [
+          leave.employee_id || '',
+          leave.employee_name || '',
+          leave.leave_type || '',
+          new Date(leave.start_date).toLocaleDateString(),
+          new Date(leave.end_date).toLocaleDateString(),
+          days,
+          leave.status || '',
+          leave.reason || ''
+        ];
+        data.push(row);
+      });
+      
+      // Create workbook and worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Employee Leaves');
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 15 }, // Employee ID
+        { wch: 25 }, // Employee Name
+        { wch: 15 }, // Leave Type
+        { wch: 12 }, // Start Date
+        { wch: 12 }, // End Date
+        { wch: 8 },  // Days
+        { wch: 12 }, // Status
+        { wch: 40 }  // Reason
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename with date range if filters are applied
+      let filename = 'employee_leaves';
+      if (fromDate || toDate) {
+        const from = fromDate ? new Date(fromDate).toISOString().split('T')[0] : 'all';
+        const to = toDate ? new Date(toDate).toISOString().split('T')[0] : 'all';
+        filename += `_${from}_to_${to}`;
+      } else {
+        filename += `_${new Date().toISOString().split('T')[0]}`;
+      }
+      
+      // Download
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Failed to export Excel file');
+    }
+  };
 
   // Show loading if user is not loaded yet
   if (authLoading || !user) {
@@ -206,7 +310,7 @@ const EmpLeaves = () => {
     <div className="page-container">
       <div className="page-header stacked">
         <div>
-          <h1>Employee Leaves</h1>
+          <h1>EMPLOYEE LEAVES</h1>
           <p className="page-subtitle">
             {user?.role === 'Manager' 
               ? 'Review and manage leave requests from your team members.' 
@@ -214,8 +318,8 @@ const EmpLeaves = () => {
           </p>
         </div>
         <div className="header-actions filters-row toolbar">
-          <div className="toolbar-left" style={{ flex: 1 }}>
-            <div className="filter-field" style={{ flex: 1 }}>
+          <div className="toolbar-left" style={{ flex: 1, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="filter-field" style={{ flex: 1, minWidth: '200px' }}>
               <label className="filter-label">Search</label>
               <input
                 type="text"
@@ -223,19 +327,31 @@ const EmpLeaves = () => {
                 placeholder="Search by employee, leave type, reason, or status..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ marginBottom: 0, minWidth: '280px' }}
+                style={{ marginBottom: 0 }}
+              />
+            </div>
+            <div className="filter-field" style={{ minWidth: '150px' }}>
+              <label className="filter-label">From Date</label>
+              <DatePicker
+                value={fromDate}
+                onChange={(date) => setFromDate(date)}
+                placeholder="Select from date"
+              />
+            </div>
+            <div className="filter-field" style={{ minWidth: '150px' }}>
+              <label className="filter-label">To Date</label>
+              <DatePicker
+                value={toDate}
+                onChange={(date) => setToDate(date)}
+                min={fromDate || undefined}
+                placeholder="Select to date"
               />
             </div>
           </div>
           <div className="toolbar-right">
-            <button className="btn-primary" onClick={() => toast('Excel export coming soon')}>
+            <button className="btn-primary" onClick={exportToExcel} disabled={filteredLeaves.length === 0}>
               Excel
             </button>
-            {user?.role === 'HR' && (
-            <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-              {showForm ? 'Cancel' : '+ Add Leave Request'}
-            </button>
-            )}
           </div>
         </div>
       </div>

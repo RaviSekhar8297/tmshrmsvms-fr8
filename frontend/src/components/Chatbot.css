@@ -2,42 +2,31 @@
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: 3px solid white;
-  color: white;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease;
+  padding: 0;
 }
 
 .chatbot-toggle-btn:hover {
-  transform: scale(1.1);
-  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.7);
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  transform: scale(1.05);
+  box-shadow: none;
+  background: transparent;
 }
 
-.chatbot-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  font-size: 20px;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
+.chatbot-toggle-btn:hover img {
+  transform: scale(1.05);
+  filter: brightness(1.1);
 }
 
 .chatbot-container {
@@ -322,6 +311,25 @@
 }
 
 .chatbot-messages::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* Selection buttons scrollbar */
+.chatbot-selection-buttons::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chatbot-selection-buttons::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.chatbot-selection-buttons::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.chatbot-selection-buttons::-webkit-scrollbar-thumb:hover {
   background: #999;
 }
 

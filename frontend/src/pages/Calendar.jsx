@@ -6,6 +6,7 @@ import {
 import { meetingsAPI, tasksAPI, usersAPI, projectsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
+import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
 import './Calendar.css';
 
@@ -151,6 +152,7 @@ const Calendar = () => {
     due_date: '',
     estimated_days: ''
   });
+  const [estimatedDaysManuallyEdited, setEstimatedDaysManuallyEdited] = useState(false);
 
   useEffect(() => {
     fetchCalendarData();
@@ -297,6 +299,17 @@ const Calendar = () => {
 
   const handleAddClick = (e, dateKey) => {
     e.stopPropagation();
+    // Prevent creating events on past dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selectedDate = new Date(dateKey);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    if (selectedDate < today) {
+      toast.error('Cannot create events for past dates');
+      return;
+    }
+    
     setAddModalDate(dateKey);
     setShowAddModal(true);
   };
@@ -444,6 +457,7 @@ const Calendar = () => {
       due_date: '',
       estimated_days: ''
     });
+    setEstimatedDaysManuallyEdited(false);
     setUseManualProject(false);
     setManualProjectName('');
   };
@@ -1025,13 +1039,10 @@ const Calendar = () => {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Start Date</label>
-                <input
-                  type="date"
-                  className="form-input"
+                <DatePicker
                   value={taskFormData.start_date}
-                  onClick={(e) => e.target.showPicker?.()}
-                  onChange={(e) => {
-                    const newStartDate = e.target.value;
+                  onChange={(date) => {
+                    const newStartDate = date || '';
                     let newEstimatedDays = taskFormData.estimated_days;
                     let newDueDate = taskFormData.due_date;
                     
@@ -1042,8 +1053,8 @@ const Calendar = () => {
                       if (due < start) {
                         toast.error('Due date cannot be before start date');
                         newDueDate = ''; // Clear due date if invalid
-                      } else {
-                        // Auto-calculate estimated days if both dates are valid
+                      } else if (!estimatedDaysManuallyEdited) {
+                        // Auto-calculate estimated days only if user hasn't manually edited it
                         const diffTime = due - start;
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                         if (diffDays > 0) {
@@ -1054,18 +1065,16 @@ const Calendar = () => {
                     
                     setTaskFormData({ ...taskFormData, start_date: newStartDate, due_date: newDueDate, estimated_days: newEstimatedDays });
                   }}
+                  placeholder="Select start date"
+                  min={new Date().toISOString().split('T')[0]}
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">Due Date</label>
-                <input
-                  type="date"
-                  className="form-input"
+                <DatePicker
                   value={taskFormData.due_date}
-                  min={taskFormData.start_date || ''}
-                  onClick={(e) => e.target.showPicker?.()}
-                  onChange={(e) => {
-                    const newDueDate = e.target.value;
+                  onChange={(date) => {
+                    const newDueDate = date || '';
                     let newEstimatedDays = taskFormData.estimated_days;
                     
                     // Validate: due date cannot be before start date
@@ -1077,16 +1086,20 @@ const Calendar = () => {
                         return; // Don't update if invalid
                       }
                       
-                      // Auto-calculate estimated days if both dates are valid
-                      const diffTime = due - start;
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      if (diffDays > 0) {
-                        newEstimatedDays = diffDays.toString();
+                      // Auto-calculate estimated days only if user hasn't manually edited it
+                      if (!estimatedDaysManuallyEdited) {
+                        const diffTime = due - start;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if (diffDays > 0) {
+                          newEstimatedDays = diffDays.toString();
+                        }
                       }
                     }
                     
                     setTaskFormData({ ...taskFormData, due_date: newDueDate, estimated_days: newEstimatedDays });
                   }}
+                  placeholder="Select due date"
+                  min={taskFormData.start_date || new Date().toISOString().split('T')[0]}
                 />
               </div>
             </div>
@@ -1096,12 +1109,21 @@ const Calendar = () => {
                 type="number"
                 className="form-input"
                 value={taskFormData.estimated_days}
-                onChange={(e) => setTaskFormData({ ...taskFormData, estimated_days: e.target.value })}
+                onChange={(e) => {
+                  setEstimatedDaysManuallyEdited(true);
+                  setTaskFormData({ ...taskFormData, estimated_days: e.target.value });
+                }}
+                onKeyDown={(e) => {
+                  // Track manual edits via arrow keys
+                  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    setEstimatedDaysManuallyEdited(true);
+                  }
+                }}
                 placeholder="Auto-calculated from dates or enter manually"
                 min="1"
               />
               <small className="form-hint">
-                {taskFormData.start_date && taskFormData.due_date 
+                {taskFormData.start_date && taskFormData.due_date && !estimatedDaysManuallyEdited
                   ? `Auto-calculated: ${Math.ceil((new Date(taskFormData.due_date) - new Date(taskFormData.start_date)) / (1000 * 60 * 60 * 24))} days`
                   : 'Enter manually or select start and due dates to auto-calculate'}
               </small>

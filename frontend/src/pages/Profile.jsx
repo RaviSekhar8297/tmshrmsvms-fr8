@@ -243,6 +243,13 @@ const Profile = () => {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate file type - only jpg, png, jpeg
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+      if (!allowedTypes.includes(file.type.toLowerCase())) {
+        toast.error('Please select a JPG, PNG, or JPEG image file only');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData({ ...formData, image_base64: reader.result });
@@ -293,6 +300,19 @@ const Profile = () => {
     fetchReportToUser();
   }, [user?.report_to_id]);
 
+  // Format date and time
+  const formatDateTime = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+  };
+
   // Handle detail update
   const handleDetailUpdate = async (detailType, data, action = 'add', index = null) => {
     // Validate based on detail type
@@ -314,25 +334,35 @@ const Profile = () => {
       if (data.aadhar && !validateAadhar(data.aadhar)) return;
       if (data.pf_no && !validatePFNO(data.pf_no)) return;
       if (data.esi_no && !validateESINO(data.esi_no)) return;
+    } else if (detailType === 'education_details') {
+      if (!validateEducationName(data.education_name)) return;
+      if (data.pass_out_year && !validateYear(data.pass_out_year)) return;
+      if (data.percentage && !validatePercentage(data.percentage)) return;
     } else if (detailType === 'experience_details') {
       if (!validateCompany(data.prev_company_name)) return;
       if (data.year && !validateYear(data.year)) return;
       if (data.designation && !validateDesignation(data.designation)) return;
       if (data.salary_per_annum && !validateSalary(data.salary_per_annum)) return;
+    } else if (detailType === 'documents') {
+      if (!validateDocumentName(data.name)) return;
     }
+    
+    // Add current date and time to the data
+    const currentDateTime = new Date().toISOString();
+    const dataWithDate = { ...data, date: currentDateTime };
     
     setLoading(true);
     try {
       let payload;
       if (detailType === 'bank_details' || detailType === 'nominee_details') {
         // Single object types
-        payload = data;
+        payload = dataWithDate;
       } else {
         // Array types - ensure index is a number
         const indexValue = index !== null ? parseInt(index) : null;
         payload = { 
           action, 
-          data: data || {}, 
+          data: dataWithDate || {}, 
           index: indexValue 
         };
       }
@@ -380,8 +410,14 @@ const Profile = () => {
       toast.error('Name is required');
       return false;
     }
-    if (name.length > 25) {
-      toast.error('Name must be below 25 characters');
+    // Check if name contains only letters and spaces
+    const nameRegex = /^[A-Za-z\s]+$/;
+    if (!nameRegex.test(name.trim())) {
+      toast.error('Name must contain only letters and spaces');
+      return false;
+    }
+    if (name.length > 40) {
+      toast.error('Name must be 40 characters or less');
       return false;
     }
     return true;
@@ -392,8 +428,14 @@ const Profile = () => {
       toast.error('Relation is required');
       return false;
     }
-    if (relation.length > 25) {
-      toast.error('Relation must be below 25 characters');
+    // Check if relation contains only letters and spaces
+    const relationRegex = /^[A-Za-z\s]+$/;
+    if (!relationRegex.test(relation.trim())) {
+      toast.error('Relation must contain only letters and spaces');
+      return false;
+    }
+    if (relation.length > 40) {
+      toast.error('Relation must be 40 characters or less');
       return false;
     }
     return true;
@@ -429,8 +471,14 @@ const Profile = () => {
       toast.error('Bank Name is required');
       return false;
     }
-    if (bankName.length > 25) {
-      toast.error('Bank Name must be below 25 characters');
+    // Check if bank name contains only letters and spaces
+    const bankNameRegex = /^[A-Za-z\s]+$/;
+    if (!bankNameRegex.test(bankName.trim())) {
+      toast.error('Bank Name must contain only letters and spaces');
+      return false;
+    }
+    if (bankName.length > 40) {
+      toast.error('Bank Name must be 40 characters or less');
       return false;
     }
     return true;
@@ -503,8 +551,66 @@ const Profile = () => {
       toast.error('Company is required');
       return false;
     }
-    if (company.length > 50) {
-      toast.error('Company must be below 50 characters');
+    // Check if company contains only letters and spaces
+    const companyRegex = /^[A-Za-z\s]+$/;
+    if (!companyRegex.test(company.trim())) {
+      toast.error('Company must contain only letters and spaces');
+      return false;
+    }
+    if (company.length > 40) {
+      toast.error('Company must be 40 characters or less');
+      return false;
+    }
+    return true;
+  };
+
+  const validateEducationName = (educationName) => {
+    if (!educationName || educationName.trim() === '') {
+      toast.error('Education Name is required');
+      return false;
+    }
+    // Check if education name contains only letters and spaces
+    const educationRegex = /^[A-Za-z\s]+$/;
+    if (!educationRegex.test(educationName.trim())) {
+      toast.error('Education Name must contain only letters and spaces');
+      return false;
+    }
+    if (educationName.length > 40) {
+      toast.error('Education Name must be 40 characters or less');
+      return false;
+    }
+    return true;
+  };
+
+  const validateDocumentName = (documentName) => {
+    if (!documentName || documentName.trim() === '') {
+      toast.error('Document Name is required');
+      return false;
+    }
+    // Check if document name contains only letters and spaces
+    const documentRegex = /^[A-Za-z\s]+$/;
+    if (!documentRegex.test(documentName.trim())) {
+      toast.error('Document Name must contain only letters and spaces');
+      return false;
+    }
+    if (documentName.length > 40) {
+      toast.error('Document Name must be 40 characters or less');
+      return false;
+    }
+    return true;
+  };
+
+  const validatePercentage = (percentage) => {
+    if (!percentage || percentage.toString().trim() === '') {
+      return true; // Optional field
+    }
+    const percentageNum = parseFloat(percentage);
+    if (isNaN(percentageNum)) {
+      toast.error('Percentage must be a valid number');
+      return false;
+    }
+    if (percentageNum < 0 || percentageNum > 100) {
+      toast.error('Percentage must be between 0 and 100');
       return false;
     }
     return true;
@@ -658,6 +764,13 @@ const Profile = () => {
   const handleDocumentImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate file type - only jpg, png, jpeg
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+      if (!allowedTypes.includes(file.type.toLowerCase())) {
+        toast.error('Please select a JPG, PNG, or JPEG image file only');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
         setDetailFormData({ ...detailFormData, image: reader.result });
@@ -723,7 +836,7 @@ const Profile = () => {
               )}
               {editing && (
                 <label className="avatar-upload">
-                  <input type="file" accept="image/*" onChange={handleImageChange} />
+                  <input type="file" accept="image/jpeg,image/jpg,image/png" onChange={handleImageChange} />
                   <FiEdit2 />
                 </label>
               )}
@@ -743,8 +856,15 @@ const Profile = () => {
                   type="text"
                   className="form-input"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Only allow letters and spaces
+                    if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                      setFormData({ ...formData, name: value });
+                    }
+                  }}
                   disabled={!editing}
+                  maxLength={40}
                 />
               </div>
 
@@ -1091,48 +1211,50 @@ const Profile = () => {
                       : 'Pending'}
                   </td>
                 </tr>
-                <tr>
-                  <td className="info-label">Report To</td>
-                  <td className="info-value">
-                    {loadingReportTo ? (
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Loading...</span>
-                    ) : reportToUser ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {reportToUser.image_base64 ? (
-                          <img 
-                            src={reportToUser.image_base64} 
-                            alt={reportToUser.name}
-                            style={{
+                {user?.role !== 'Admin' && (
+                  <tr>
+                    <td className="info-label">Report To</td>
+                    <td className="info-value">
+                      {loadingReportTo ? (
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Loading...</span>
+                      ) : reportToUser ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {reportToUser.image_base64 ? (
+                            <img 
+                              src={reportToUser.image_base64} 
+                              alt={reportToUser.name}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                objectFit: 'cover',
+                                border: '1px solid var(--border-color)'
+                              }}
+                            />
+                          ) : (
+                            <div style={{
                               width: '32px',
                               height: '32px',
                               borderRadius: '50%',
-                              objectFit: 'cover',
-                              border: '1px solid var(--border-color)'
-                            }}
-                          />
-                        ) : (
-                          <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '0.875rem',
-                            fontWeight: 600
-                          }}>
-                            {reportToUser.name?.charAt(0).toUpperCase() || '?'}
-                          </div>
-                        )}
-                        <span>{reportToUser.name || 'Unknown'}</span>
-                      </div>
-                    ) : (
-                      <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Not Assigned</span>
-                    )}
-                  </td>
-                </tr>
+                              background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              fontSize: '0.875rem',
+                              fontWeight: 600
+                            }}>
+                              {reportToUser.name?.charAt(0).toUpperCase() || '?'}
+                            </div>
+                          )}
+                          <span>{reportToUser.name || 'Unknown'}</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Not Assigned</span>
+                      )}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1522,8 +1644,14 @@ const Profile = () => {
                           type="text" 
                           className="form-input" 
                           value={detailFormData.bank_name || ''} 
-                          onChange={(e) => setDetailFormData({...detailFormData, bank_name: e.target.value})}
-                          maxLength={25}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Only allow letters and spaces
+                            if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                              setDetailFormData({...detailFormData, bank_name: value});
+                            }
+                          }}
+                          maxLength={40}
                         />
                       </div>
                       <div className="form-group">
@@ -1615,8 +1743,14 @@ const Profile = () => {
                           type="text" 
                           className="form-input" 
                           value={detailFormData.name || ''} 
-                          onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})}
-                          maxLength={25}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Only allow letters and spaces
+                            if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                              setDetailFormData({...detailFormData, name: value});
+                            }
+                          }}
+                          maxLength={40}
                         />
                       </div>
                       <div className="form-group">
@@ -1625,8 +1759,14 @@ const Profile = () => {
                           type="text" 
                           className="form-input" 
                           value={detailFormData.relation || ''} 
-                          onChange={(e) => setDetailFormData({...detailFormData, relation: e.target.value})}
-                          maxLength={25}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Only allow letters and spaces
+                            if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                              setDetailFormData({...detailFormData, relation: value});
+                            }
+                          }}
+                          maxLength={40}
                         />
                       </div>
                     </div>
@@ -1668,8 +1808,14 @@ const Profile = () => {
                           type="text" 
                           className="form-input" 
                           value={detailFormData.name || ''} 
-                          onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})}
-                          maxLength={25}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Only allow letters and spaces
+                            if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                              setDetailFormData({...detailFormData, name: value});
+                            }
+                          }}
+                          maxLength={40}
                         />
                       </div>
                       <div className="form-group">
@@ -1678,8 +1824,14 @@ const Profile = () => {
                           type="text" 
                           className="form-input" 
                           value={detailFormData.relation || ''} 
-                          onChange={(e) => setDetailFormData({...detailFormData, relation: e.target.value})}
-                          maxLength={25}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Only allow letters and spaces
+                            if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                              setDetailFormData({...detailFormData, relation: value});
+                            }
+                          }}
+                          maxLength={40}
                         />
                       </div>
                     </div>
@@ -1739,8 +1891,14 @@ const Profile = () => {
                         type="text" 
                         className="form-input" 
                         value={detailFormData.prev_company_name || ''} 
-                        onChange={(e) => setDetailFormData({...detailFormData, prev_company_name: e.target.value})}
-                        maxLength={50}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Only allow letters and spaces
+                          if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                            setDetailFormData({...detailFormData, prev_company_name: value});
+                          }
+                        }}
+                        maxLength={40}
                       />
                     </div>
                     <div className="form-row">
@@ -1793,12 +1951,19 @@ const Profile = () => {
                         type="text" 
                         className="form-input" 
                         value={detailFormData.name || ''} 
-                        onChange={(e) => setDetailFormData({...detailFormData, name: e.target.value})}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Only allow letters and spaces
+                          if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                            setDetailFormData({...detailFormData, name: value});
+                          }
+                        }}
+                        maxLength={40}
                       />
                     </div>
                     <div className="form-group">
                       <label>Document Image</label>
-                      <input type="file" accept="image/*" className="form-input" onChange={handleDocumentImageChange} />
+                      <input type="file" accept="image/jpeg,image/jpg,image/png" className="form-input" onChange={handleDocumentImageChange} />
                       {detailFormData.image && (
                         <img src={detailFormData.image} alt="Preview" style={{ marginTop: '8px', maxWidth: '200px', borderRadius: '8px' }} />
                       )}

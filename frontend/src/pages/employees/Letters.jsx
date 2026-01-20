@@ -245,16 +245,50 @@ BTL`;
   };
 
   const handleSendOfferLetter = async () => {
-    if (!offerLetterEmail) {
+    // Validate email
+    if (!offerLetterEmail || offerLetterEmail.trim() === '') {
       toast.error('Please enter recipient email address');
       return;
     }
-
-    const requiredFields = ['companyName', 'companyAddress', 'date', 'employeeName', 'designation', 'location', 'dateOfJoining', 'ctc'];
-    const missingFields = requiredFields.filter(field => !offerLetterData[field]);
     
-    if (missingFields.length > 0) {
-      toast.error(`Please fill all required fields: ${missingFields.join(', ')}`);
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(offerLetterEmail)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    // Validate required fields with specific messages
+    if (!offerLetterData.companyName || offerLetterData.companyName.trim() === '') {
+      toast.error('Company Name is required');
+      return;
+    }
+    if (!offerLetterData.companyAddress || offerLetterData.companyAddress.trim() === '') {
+      toast.error('Company Address is required');
+      return;
+    }
+    if (!offerLetterData.date) {
+      toast.error('Date is required');
+      return;
+    }
+    if (!offerLetterData.employeeName || offerLetterData.employeeName.trim() === '') {
+      toast.error('Employee Name is required');
+      return;
+    }
+    if (!offerLetterData.designation || offerLetterData.designation.trim() === '') {
+      toast.error('Designation is required');
+      return;
+    }
+    if (!offerLetterData.location || offerLetterData.location.trim() === '') {
+      toast.error('Location is required');
+      return;
+    }
+    if (!offerLetterData.dateOfJoining) {
+      toast.error('Date of Joining is required');
+      return;
+    }
+    if (!offerLetterData.ctc || offerLetterData.ctc.trim() === '') {
+      toast.error('CTC is required');
       return;
     }
 
@@ -292,16 +326,54 @@ BTL`;
   };
 
   const handleSendAppointmentLetter = async () => {
-    if (!appointmentLetterEmail) {
+    // Validate email
+    if (!appointmentLetterEmail || appointmentLetterEmail.trim() === '') {
       toast.error('Please enter recipient email address');
       return;
     }
-
-    const requiredFields = ['companyName', 'companyAddress', 'date', 'employeeName', 'designation', 'effectiveDate', 'ctc', 'placeOfPosting', 'noticePeriod'];
-    const missingFields = requiredFields.filter(field => !appointmentLetterData[field]);
     
-    if (missingFields.length > 0) {
-      toast.error(`Please fill all required fields: ${missingFields.join(', ')}`);
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(appointmentLetterEmail)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    // Validate required fields with specific messages
+    if (!appointmentLetterData.companyName || appointmentLetterData.companyName.trim() === '') {
+      toast.error('Company Name is required');
+      return;
+    }
+    if (!appointmentLetterData.companyAddress || appointmentLetterData.companyAddress.trim() === '') {
+      toast.error('Company Address is required');
+      return;
+    }
+    if (!appointmentLetterData.date) {
+      toast.error('Date is required');
+      return;
+    }
+    if (!appointmentLetterData.employeeName || appointmentLetterData.employeeName.trim() === '') {
+      toast.error('Employee Name is required');
+      return;
+    }
+    if (!appointmentLetterData.designation || appointmentLetterData.designation.trim() === '') {
+      toast.error('Designation is required');
+      return;
+    }
+    if (!appointmentLetterData.effectiveDate) {
+      toast.error('Effective Date is required');
+      return;
+    }
+    if (!appointmentLetterData.ctc || appointmentLetterData.ctc.trim() === '') {
+      toast.error('CTC is required');
+      return;
+    }
+    if (!appointmentLetterData.placeOfPosting || appointmentLetterData.placeOfPosting.trim() === '') {
+      toast.error('Place of Posting is required');
+      return;
+    }
+    if (!appointmentLetterData.noticePeriod || appointmentLetterData.noticePeriod.trim() === '') {
+      toast.error('Notice Period is required');
       return;
     }
 

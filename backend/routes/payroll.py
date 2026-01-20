@@ -39,7 +39,8 @@ def get_structures(
     db: Session = Depends(get_db)
 ):
     """Get all payroll structures"""
-    structures = db.query(PayrollStructure).all()
+    # Limit to 200 structures for performance
+    structures = db.query(PayrollStructure).limit(200).all()
     return [
         {
             "id": struct.id,
@@ -92,7 +93,8 @@ def get_payroll_list(
     db: Session = Depends(get_db)
 ):
     """Get all payroll records"""
-    payrolls = db.query(Payroll).order_by(Payroll.year.desc(), Payroll.month.desc()).all()
+    # Limit to 500 payrolls for performance
+    payrolls = db.query(Payroll).order_by(Payroll.year.desc(), Payroll.month.desc()).limit(500).all()
     return [
         {
             "id": payroll.id,
@@ -211,7 +213,8 @@ def get_salary(
         except:
             pass
     
-    payrolls = query.all()
+    # Limit to 500 payrolls for performance
+    payrolls = query.order_by(Payroll.year.desc(), Payroll.month.desc()).limit(500).all()
     
     return [
         {
@@ -256,7 +259,8 @@ def get_payslips(
         except:
             pass
     
-    payrolls = query.all()
+    # Limit to 500 payslips for performance
+    payrolls = query.order_by(Payroll.year.desc(), Payroll.month.desc()).limit(500).all()
     
     return [
         {
@@ -316,14 +320,20 @@ def get_salary_structure(
         if current_user.role in ['Employee', 'Manager']:
             query = query.filter(SalaryStructure.empid == current_user.empid)
         
-        salary_structures = query.all()
+        # Limit to 500 salary structures for performance
+        salary_structures = query.limit(500).all()
+        
+        # Batch load users to avoid N+1 queries
+        empids = [salary.empid for salary in salary_structures if salary.empid]
+        users_map = {}
+        if empids:
+            users = db.query(User).filter(User.empid.in_(empids)).all()
+            users_map = {user.empid: user for user in users}
         
         result = []
         for salary in salary_structures:
-            # Get user information using empid
-            user = None
-            if salary.empid:
-                user = db.query(User).filter(User.empid == salary.empid).first()
+            # Get user information from map
+            user = users_map.get(salary.empid) if salary.empid else None
             
             result.append({
                 "id": salary.id,
@@ -331,6 +341,7 @@ def get_salary_structure(
                 "employee_name": user.name if user else (salary.name or "N/A"),
                 "employee_email": user.email if user else None,
                 "employee_image": user.image_base64 if user else None,
+                "employee_designation": getattr(user, 'designation', None) if user else None,
                 "doj": salary.doj.isoformat() if salary.doj else None,
                 "salary_per_annum": float(salary.salary_per_annum) if salary.salary_per_annum else 0,
                 "salary_per_month": float(salary.salary_per_month) if salary.salary_per_month else 0,
@@ -368,7 +379,7 @@ def export_salary_structure_excel(
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         
-        # Get all salary structures
+        # Get all salary structures - limit to 1000 for export performance
         salary_structures = db.query(
             SalaryStructure.id,
             SalaryStructure.empid,
@@ -392,7 +403,14 @@ def export_salary_structure_excel(
             SalaryStructure.monthly_ctc,
             SalaryStructure.pf_check,
             SalaryStructure.esi_check
-        ).all()
+        ).limit(1000).all()
+        
+        # Batch load users to avoid N+1 queries
+        empids = [salary.empid for salary in salary_structures if salary.empid]
+        users_map = {}
+        if empids:
+            users = db.query(User).filter(User.empid.in_(empids)).all()
+            users_map = {user.empid: user for user in users}
         
         # Create workbook
         wb = Workbook()
@@ -426,9 +444,8 @@ def export_salary_structure_excel(
         
         # Data rows
         for row_num, salary in enumerate(salary_structures, 2):
-            user = None
-            if salary.empid:
-                user = db.query(User).filter(User.empid == salary.empid).first()
+            # Get user information from map
+            user = users_map.get(salary.empid) if salary.empid else None
             
             row_data = [
                 salary.empid or "",
@@ -532,38 +549,68 @@ def upload_salary_structure_excel(
                         except:
                             pass
                 
-                # Check if empid already exists - skip if exists, insert otherwise
+                # Check if empid already exists - update if exists, insert otherwise
                 if empid:
                     existing_salary = db.query(SalaryStructure).filter(SalaryStructure.empid == empid).first()
+                    
+                    # Helper function to convert null/empty to 0
+                    def safe_decimal(value):
+                        if value is None or (isinstance(value, str) and not value.strip()):
+                            return Decimal(0)
+                        try:
+                            return Decimal(str(value))
+                        except:
+                            return Decimal(0)
+                    
                     if existing_salary:
-                        # Skip if already exists
-                        continue
-                    
-                    # Create new record
-                    salary = SalaryStructure(empid=empid)
-                    salary.name = name
-                    salary.doj = doj
-                    salary.salary_per_annum = Decimal(str(row[4])) if row[4] else None
-                    salary.salary_per_month = Decimal(str(row[5])) if row[5] else None
-                    salary.basic = Decimal(str(row[6])) if row[6] else None
-                    salary.hra = Decimal(str(row[7])) if row[7] else None
-                    salary.ca = Decimal(str(row[8])) if row[8] else None
-                    salary.ma = Decimal(str(row[9])) if row[9] else None
-                    salary.sa = Decimal(str(row[10])) if row[10] else None
-                    salary.employee_pf = Decimal(str(row[11])) if row[11] else None
-                    salary.employee_esi = Decimal(str(row[12])) if row[12] else None
-                    salary.professional_tax = Decimal(str(row[13])) if row[13] else None
-                    salary.employer_pf = Decimal(str(row[14])) if row[14] else None
-                    salary.employer_esi = Decimal(str(row[15])) if row[15] else None
-                    salary.variable_pay = Decimal(str(row[16])) if row[16] else None
-                    salary.retension_bonus = Decimal(str(row[17])) if row[17] else None
-                    salary.net_salary = Decimal(str(row[18])) if row[18] else None
-                    salary.monthly_ctc = Decimal(str(row[19])) if row[19] else None
-                    salary.pf_check = 1 if str(row[20]).lower() in ['yes', '1', 'true'] else 0
-                    salary.esi_check = 1 if str(row[21]).lower() in ['yes', '1', 'true'] else 0
-                    
-                    db.add(salary)
-                    created_count += 1
+                        # Update existing record
+                        existing_salary.name = name if name else existing_salary.name
+                        existing_salary.doj = doj if doj else existing_salary.doj
+                        existing_salary.salary_per_annum = safe_decimal(row[4])
+                        existing_salary.salary_per_month = safe_decimal(row[5])
+                        existing_salary.basic = safe_decimal(row[6])
+                        existing_salary.hra = safe_decimal(row[7])
+                        existing_salary.ca = safe_decimal(row[8])
+                        existing_salary.ma = safe_decimal(row[9])
+                        existing_salary.sa = safe_decimal(row[10])
+                        existing_salary.employee_pf = safe_decimal(row[11])
+                        existing_salary.employee_esi = safe_decimal(row[12])
+                        existing_salary.professional_tax = safe_decimal(row[13])
+                        existing_salary.employer_pf = safe_decimal(row[14])
+                        existing_salary.employer_esi = safe_decimal(row[15])
+                        existing_salary.variable_pay = safe_decimal(row[16])
+                        existing_salary.retension_bonus = safe_decimal(row[17])
+                        existing_salary.net_salary = safe_decimal(row[18])
+                        existing_salary.monthly_ctc = safe_decimal(row[19])
+                        existing_salary.pf_check = 1 if str(row[20]).lower() in ['yes', '1', 'true'] else 0
+                        existing_salary.esi_check = 1 if str(row[21]).lower() in ['yes', '1', 'true'] else 0
+                        updated_count += 1
+                    else:
+                        # Create new record
+                        salary = SalaryStructure(empid=empid)
+                        salary.name = name
+                        salary.doj = doj
+                        salary.salary_per_annum = safe_decimal(row[4])
+                        salary.salary_per_month = safe_decimal(row[5])
+                        salary.basic = safe_decimal(row[6])
+                        salary.hra = safe_decimal(row[7])
+                        salary.ca = safe_decimal(row[8])
+                        salary.ma = safe_decimal(row[9])
+                        salary.sa = safe_decimal(row[10])
+                        salary.employee_pf = safe_decimal(row[11])
+                        salary.employee_esi = safe_decimal(row[12])
+                        salary.professional_tax = safe_decimal(row[13])
+                        salary.employer_pf = safe_decimal(row[14])
+                        salary.employer_esi = safe_decimal(row[15])
+                        salary.variable_pay = safe_decimal(row[16])
+                        salary.retension_bonus = safe_decimal(row[17])
+                        salary.net_salary = safe_decimal(row[18])
+                        salary.monthly_ctc = safe_decimal(row[19])
+                        salary.pf_check = 1 if str(row[20]).lower() in ['yes', '1', 'true'] else 0
+                        salary.esi_check = 1 if str(row[21]).lower() in ['yes', '1', 'true'] else 0
+                        
+                        db.add(salary)
+                        created_count += 1
                 else:
                     errors.append(f"Row {row_num}: Emp ID is required for new records")
                     continue
@@ -1169,38 +1216,55 @@ def upload_payslip_excel(
                 if not row[0] or not row[1]:  # Skip rows without name and emp_id
                     continue
                 
-                # Parse row data (matching Excel column order)
+                # Helper function to convert null/empty to 0
+                def safe_decimal(value):
+                    if value is None or (isinstance(value, str) and not value.strip()):
+                        return Decimal(0)
+                    try:
+                        return Decimal(str(value))
+                    except:
+                        return Decimal(0)
+                
+                def safe_int(value):
+                    if value is None or (isinstance(value, str) and not value.strip()):
+                        return 0
+                    try:
+                        return int(value)
+                    except:
+                        return 0
+                
+                # Parse row data (matching Excel column order) - null/empty becomes 0
                 full_name = str(row[0]) if row[0] else ""
-                emp_id = int(row[1]) if row[1] else None
+                emp_id = safe_int(row[1]) if row[1] else None
                 designation = str(row[2]) if row[2] else ""
-                salary_per_month = Decimal(str(row[3])) if row[3] else Decimal(0)
-                salary_per_day = Decimal(str(row[4])) if row[4] else Decimal(0)
-                basic = Decimal(str(row[5])) if row[5] else Decimal(0)
-                hra = Decimal(str(row[6])) if row[6] else Decimal(0)
-                ca = Decimal(str(row[7])) if row[7] else Decimal(0)
-                ma = Decimal(str(row[8])) if row[8] else Decimal(0)
-                sa = Decimal(str(row[9])) if row[9] else Decimal(0)
-                gross_salary = Decimal(str(row[10])) if row[10] else Decimal(0)
-                pf = Decimal(str(row[11])) if row[11] else Decimal(0)
-                esi = Decimal(str(row[12])) if row[12] else Decimal(0)
-                lop = Decimal(str(row[13])) if row[13] else Decimal(0)
-                tds = Decimal(str(row[14])) if row[14] else Decimal(0)
-                late_logins = Decimal(str(row[15])) if row[15] else Decimal(0)
-                late_login_deductions = Decimal(str(row[16])) if row[16] else Decimal(0)
-                earned_gross = Decimal(str(row[17])) if row[17] else Decimal(0)
-                net_salary = Decimal(str(row[18])) if row[18] else Decimal(0)
-                presents = Decimal(str(row[19])) if row[19] else Decimal(0)
-                absents = Decimal(str(row[20])) if row[20] else Decimal(0)
-                half_days = Decimal(str(row[21])) if row[21] else Decimal(0)
-                holidays = Decimal(str(row[22])) if row[22] else Decimal(0)
-                wo = Decimal(str(row[23])) if row[23] else Decimal(0)
-                leaves = Decimal(str(row[24])) if row[24] else Decimal(0)
-                payable_days = Decimal(str(row[25])) if row[25] else Decimal(0)
-                arrear_salary = Decimal(str(row[26])) if row[26] else Decimal(0)
-                loan_amount = Decimal(str(row[27])) if row[27] else Decimal(0)
-                other_deduction = Decimal(str(row[28])) if row[28] else Decimal(0)
-                month = int(row[29]) if row[29] else None
-                year = int(row[30]) if row[30] else None
+                salary_per_month = safe_decimal(row[3])
+                salary_per_day = safe_decimal(row[4])
+                basic = safe_decimal(row[5])
+                hra = safe_decimal(row[6])
+                ca = safe_decimal(row[7])
+                ma = safe_decimal(row[8])
+                sa = safe_decimal(row[9])
+                gross_salary = safe_decimal(row[10])
+                pf = safe_decimal(row[11])
+                esi = safe_decimal(row[12])
+                lop = safe_decimal(row[13])
+                tds = safe_decimal(row[14])
+                late_logins = safe_decimal(row[15])
+                late_login_deductions = safe_decimal(row[16])
+                earned_gross = safe_decimal(row[17])
+                net_salary = safe_decimal(row[18])
+                presents = safe_decimal(row[19])
+                absents = safe_decimal(row[20])
+                half_days = safe_decimal(row[21])
+                holidays = safe_decimal(row[22])
+                wo = safe_decimal(row[23])
+                leaves = safe_decimal(row[24])
+                payable_days = safe_decimal(row[25])
+                arrear_salary = safe_decimal(row[26])
+                loan_amount = safe_decimal(row[27])
+                other_deduction = safe_decimal(row[28])
+                month = safe_int(row[29]) if row[29] is not None else None
+                year = safe_int(row[30]) if row[30] is not None else None
                 
                 if not emp_id or not month or not year:
                     errors.append(f"Row {row_num}: Missing emp_id, month, or year")

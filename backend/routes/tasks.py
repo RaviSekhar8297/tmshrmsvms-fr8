@@ -121,7 +121,8 @@ def get_tasks(
             )
         elif current_user.role == "Manager":
             # Manager can see tasks they created or assigned to their team
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
+            # Limit team query for performance
+            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).limit(100).all()]
             team_ids.append(current_user.id)
             query = query.filter(
                 or_(
@@ -130,7 +131,8 @@ def get_tasks(
                 )
             )
         
-        tasks = query.order_by(Task.created_at.desc()).all()
+        # Limit to 500 tasks for performance
+        tasks = query.order_by(Task.created_at.desc()).limit(500).all()
         
         # Add delayed days to each task
         today = datetime.now().date()
@@ -624,26 +626,61 @@ def update_task(
         if value is not None:
             setattr(task, key, value)
     
-    task.updated_at = get_ist_now()
-    db.commit()
-    db.refresh(task)
+    # Get IST time - try utils first, then models
+    try:
+        from utils import get_ist_now
+        task.updated_at = get_ist_now()
+    except ImportError:
+        try:
+            from models import get_ist_now
+            task.updated_at = get_ist_now()
+        except ImportError:
+            from datetime import timezone, timedelta
+            IST = timezone(timedelta(hours=5, minutes=30))
+            task.updated_at = datetime.now(IST)
     
-    # Update project progress if task belongs to a project
+    try:
+        db.commit()
+        db.refresh(task)
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error updating task: {str(e)}")
+    
+    # Update project progress if task belongs to a project (separate transaction - don't fail main update)
     if task.project_id:
-        update_project_progress(db, task.project_id)
+        try:
+            update_project_progress(db, task.project_id)
+        except Exception as e:
+            # Log but don't fail the update if project progress update fails
+            print(f"Error updating project progress: {e}")
+            import traceback
+            traceback.print_exc()
     
-    # Log activity
-    activity = Activity(
-        user_id=current_user.id,
-        user_name=current_user.name,
-        action="updated",
-        entity_type="task",
-        entity_id=task.id,
-        entity_name=task.title,
-        details=f"Updated task: {task.title}"
-    )
-    db.add(activity)
-    db.commit()
+    # Log activity (separate transaction - don't fail main update)
+    try:
+        activity = Activity(
+            user_id=current_user.id,
+            user_name=current_user.name,
+            action="updated",
+            entity_type="task",
+            entity_id=task.id,
+            entity_name=task.title or "Task",
+            details=f"Updated task: {task.title or 'Task'}"
+        )
+        db.add(activity)
+        db.commit()
+    except Exception as e:
+        # Log but don't fail the update if activity logging fails
+        print(f"Error logging activity: {e}")
+        import traceback
+        traceback.print_exc()
+        # Don't rollback - task update is already committed
+        try:
+            db.rollback()
+        except:
+            pass
     
     return task
 

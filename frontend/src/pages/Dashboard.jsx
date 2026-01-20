@@ -18,7 +18,7 @@ const Dashboard = () => {
   const [progress, setProgress] = useState(null);
   const [birthdays, setBirthdays] = useState([]);
   const [anniversaries, setAnniversaries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [unreadPolicies, setUnreadPolicies] = useState([]);
@@ -77,6 +77,7 @@ const Dashboard = () => {
   }, [searchParams, setSearchParams]);
 
   const fetchDashboardData = useCallback(async () => {
+    setLoading(true);
     try {
       const [statsRes, activitiesRes, progressRes] = await Promise.all([
         dashboardAPI.getStats(),
@@ -258,7 +259,7 @@ const Dashboard = () => {
     return designation && designation.trim() !== '' ? designation : 'Pending';
   }
 
-  if (loading) {
+  if (loading && !stats) {
     return (
       <div className="loading-container">
         <div className="spinner"></div>
@@ -283,7 +284,7 @@ const Dashboard = () => {
     <div className="dashboard">
       <div className="dashboard-topline">
         <div className="topline-title">
-          <span className="pill">Dashboard</span>
+          <span className="pill">DASHBOARD</span>
           {/* <h2>Overview</h2> */}
         </div>
         <div className="user-meta-strip">

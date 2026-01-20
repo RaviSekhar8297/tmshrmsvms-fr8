@@ -26,7 +26,8 @@ def get_dashboard_stats(
                 Project.teams.contains([{"empid": current_user.empid}])
             )
         
-        projects = project_query.all()
+        # Limit projects query for performance - we only need counts, not all data
+        projects = project_query.limit(500).all()
         total_projects = len(projects)
         pending_projects = sum(1 for p in projects if p.status == "planning")
         in_progress_projects = sum(1 for p in projects if p.status == "active")
@@ -42,7 +43,8 @@ def get_dashboard_stats(
                 )
             )
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
+            # Limit team query for performance
+            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).limit(100).all()]
             team_ids.append(current_user.id)
             task_query = task_query.filter(
                 or_(
@@ -51,7 +53,8 @@ def get_dashboard_stats(
                 )
             )
         
-        tasks = task_query.all()
+        # Limit tasks query for performance - we only need counts
+        tasks = task_query.limit(500).all()
         total_tasks = len(tasks)
         pending_tasks = sum(1 for t in tasks if t.status == "todo")
         in_progress_tasks = sum(1 for t in tasks if t.status == "in-progress")
@@ -67,7 +70,8 @@ def get_dashboard_stats(
                 )
             )
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
+            # Limit team query for performance
+            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).limit(100).all()]
             team_ids.append(current_user.id)
             issue_query = issue_query.filter(
                 or_(
@@ -76,7 +80,8 @@ def get_dashboard_stats(
                 )
             )
         
-        issues = issue_query.all()
+        # Limit issues query for performance - we only need counts
+        issues = issue_query.limit(500).all()
         total_issues = len(issues)
         pending_issues = sum(1 for i in issues if i.status in ["open", "in-progress"])
         resolved_issues = sum(1 for i in issues if i.status in ["resolved", "closed"])
@@ -144,15 +149,19 @@ def get_recent_activities(
         team_ids.append(current_user.id)
         query = query.filter(Activity.user_id.in_(team_ids))
     
-    activities = query.order_by(Activity.created_at.desc()).limit(limit).all()
+    # Limit to 50 activities max for performance
+    activities = query.order_by(Activity.created_at.desc()).limit(min(limit, 50)).all()
+    
+    # Batch load user images to avoid N+1 queries
+    user_ids = {activity.user_id for activity in activities if activity.user_id}
+    users_map = {}
+    if user_ids:
+        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        users_map = {user.id: user.image_base64 for user in users}
     
     # Enrich activities with user images
     for activity in activities:
-        user = db.query(User).filter(User.id == activity.user_id).first()
-        if user:
-            activity.user_image = user.image_base64
-        else:
-            activity.user_image = None
+        activity.user_image = users_map.get(activity.user_id, None)
     
     return activities
 
@@ -176,7 +185,8 @@ def get_progress_data(
                 )
             )
         
-        projects = project_query.all()
+        # Limit projects query for performance
+        projects = project_query.limit(200).all()
         
         # Tasks by status
         task_query = db.query(Task)
@@ -188,7 +198,8 @@ def get_progress_data(
                 )
             )
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
+            # Limit team query for performance
+            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).limit(100).all()]
             team_ids.append(current_user.id)
             task_query = task_query.filter(
                 or_(
@@ -197,7 +208,8 @@ def get_progress_data(
                 )
             )
         
-        tasks = task_query.all()
+        # Limit tasks query for performance
+        tasks = task_query.limit(500).all()
         
         return {
             "projects": {

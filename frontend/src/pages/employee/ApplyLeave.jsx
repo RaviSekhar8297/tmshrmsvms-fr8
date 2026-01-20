@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import { weekOffsAPI, holidaysAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiRefreshCw } from 'react-icons/fi';
 import DatePicker from '../../components/DatePicker';
 import './Employee.css';
 
@@ -31,6 +31,7 @@ const ApplyLeave = () => {
   const [managerName, setManagerName] = useState('');
   const [contacts, setContacts] = useState([]);
   const [invalidDatesList, setInvalidDatesList] = useState([]);
+  const [disabledDates, setDisabledDates] = useState([]);
   const [formData, setFormData] = useState({
     from_date: '',
     to_date: '',
@@ -44,7 +45,55 @@ const ApplyLeave = () => {
   useEffect(() => {
     // Fetch contacts once
     fetchContacts();
+    // Fetch week off dates and holidays
+    fetchDisabledDates();
   }, []);
+
+  const fetchDisabledDates = async () => {
+    try {
+      if (!user?.empid) {
+        return; // Don't fetch if user is not available
+      }
+      const currentYear = new Date().getFullYear();
+      const [weekOffsRes, holidaysRes] = await Promise.all([
+        weekOffsAPI.getDates(user.empid, null, currentYear).catch(err => {
+          console.error('Error fetching week offs:', err);
+          return { data: [] };
+        }),
+        holidaysAPI.getAll(currentYear).catch(err => {
+          console.error('Error fetching holidays:', err);
+          return { data: [] };
+        })
+      ]);
+      
+      const disabledDatesSet = new Set();
+      
+      // Add week off dates
+      if (weekOffsRes?.data) {
+        weekOffsRes.data.forEach(wo => {
+          if (wo?.date) {
+            const dateStr = wo.date.split('T')[0]; // Get YYYY-MM-DD format
+            disabledDatesSet.add(dateStr);
+          }
+        });
+      }
+      
+      // Add holidays
+      if (holidaysRes?.data) {
+        holidaysRes.data.forEach(holiday => {
+          if (holiday?.date) {
+            const dateStr = holiday.date.split('T')[0]; // Get YYYY-MM-DD format
+            disabledDatesSet.add(dateStr);
+          }
+        });
+      }
+      
+      setDisabledDates(Array.from(disabledDatesSet));
+    } catch (error) {
+      console.error('Error fetching disabled dates:', error);
+      setDisabledDates([]); // Set empty array on error
+    }
+  };
 
   useEffect(() => {
     // Auto-populate manager from user's report_to_id
@@ -71,6 +120,7 @@ const ApplyLeave = () => {
       setContacts(res.data || []);
     } catch (error) {
       console.error('Error fetching contacts:', error);
+      setContacts([]); // Set empty array on error
     }
   };
 
@@ -80,6 +130,23 @@ const ApplyLeave = () => {
       setLeaveBalance(response.data);
     } catch (error) {
       console.error('Error fetching leave balance:', error);
+      // Set default values to prevent undefined errors
+      setLeaveBalance({
+        total_casual_leaves: 0,
+        used_casual_leaves: 0,
+        balance_casual_leaves: 0,
+        total_sick_leaves: 0,
+        used_sick_leaves: 0,
+        balance_sick_leaves: 0,
+        total_comp_off_leaves: 0,
+        used_comp_off_leaves: 0,
+        balance_comp_off_leaves: 0,
+        this_month: {
+          casual: 0,
+          sick: 0,
+          comp_off: 0
+        }
+      });
     }
   };
 
@@ -147,7 +214,7 @@ const ApplyLeave = () => {
         });
         
         // Show suggestion to hide week-offs and holidays
-        toast.info('Tip: Week-offs and holidays are automatically excluded from working days calculation.', {
+        toast('Tip: Week-offs and holidays are automatically excluded from working days calculation.', {
           duration: 4000,
           icon: '💡'
         });
@@ -182,7 +249,7 @@ const ApplyLeave = () => {
           setActualDays(0); // Set to 0 to prevent submission
         } else {
           // All conflicts are rejected - allow reapplication
-          toast.info('You can reapply for these dates as previous applications were rejected.', {
+          toast('You can reapply for these dates as previous applications were rejected.', {
             duration: 3000
           });
         }
@@ -226,6 +293,16 @@ const ApplyLeave = () => {
     e.preventDefault();
     if (!formData.leave_type || !formData.from_date || !formData.to_date || !formData.reason) {
       toast.error('Please fill all required fields');
+      return;
+    }
+
+    // Validate reason length
+    if (formData.reason.trim().length < 50) {
+      toast.error('Reason must be at least 50 characters long');
+      return;
+    }
+    if (formData.reason.trim().length > 200) {
+      toast.error('Reason must not exceed 200 characters');
       return;
     }
 
@@ -279,8 +356,15 @@ const ApplyLeave = () => {
       });
       setActualDays(0);
       setInvalidDatesList([]);
-      fetchLeaveBalance(); // Refresh balance
+      // Refresh balance - handle errors silently
+      try {
+        await fetchLeaveBalance();
+      } catch (err) {
+        console.error('Error refreshing leave balance:', err);
+        // Don't show error to user as leave was already submitted successfully
+      }
     } catch (error) {
+      console.error('Error submitting leave application:', error);
       toast.error(error.response?.data?.detail || 'Failed to submit leave application');
     } finally {
       setLoading(false);
@@ -311,22 +395,10 @@ const ApplyLeave = () => {
     }
   };
 
-  const handleRefresh = () => {
-    fetchLeaveBalance();
-    toast.success('Leave balance refreshed');
-  };
-
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>APPLY LEAVE!!</h1>
-        <button 
-          className="btn-secondary" 
-          onClick={handleRefresh}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-        >
-          <FiRefreshCw /> Refresh
-        </button>
+        <h1>APPLY LEAVE!</h1>
       </div>
 
       {/* Leave Balance Table */}
@@ -456,7 +528,9 @@ const ApplyLeave = () => {
                   setFormData(prev => ({ ...prev, from_date: date }));
                 }}
                 min={new Date().toISOString().split('T')[0]}
+                max={`${new Date().getFullYear()}-12-31`}
                 placeholder="Select from date"
+                disabledDates={disabledDates}
               />
             </div>
             <div className="form-group">
@@ -467,7 +541,9 @@ const ApplyLeave = () => {
                   setFormData(prev => ({ ...prev, to_date: date }));
                 }}
                 min={formData.from_date || new Date().toISOString().split('T')[0]}
+                max={`${new Date().getFullYear()}-12-31`}
                 placeholder="Select to date"
+                disabledDates={disabledDates}
               />
             </div>
           </div>
@@ -519,15 +595,38 @@ const ApplyLeave = () => {
           </div>
 
           <div className="form-group">
-            <label>Reason *</label>
+            <label>
+              Reason * (50-200 characters) 
+              <span style={{ 
+                marginLeft: '8px',
+                color: formData.reason.length < 50 ? '#f59e0b' : formData.reason.length > 200 ? '#ef4444' : '#64748b',
+                fontWeight: '600',
+                fontSize: '0.9rem'
+              }}>
+                ({formData.reason.length} characters)
+              </span>
+            </label>
             <textarea
               name="reason"
               value={formData.reason}
               onChange={handleChange}
               rows="5"
               className="form-input"
-              placeholder="Enter reason for leave..."
+              placeholder="Enter reason for leave (minimum 50 characters, maximum 200 characters)..."
+              minLength={50}
+              maxLength={200}
             />
+            <small className="form-hint" style={{ 
+              color: formData.reason.length < 50 ? '#f59e0b' : formData.reason.length > 200 ? '#ef4444' : '#64748b',
+              marginTop: '4px',
+              display: 'block'
+            }}>
+              {formData.reason.length < 50 
+                ? `${50 - formData.reason.length} more characters required (minimum 50)` 
+                : formData.reason.length > 200
+                ? `${formData.reason.length - 200} characters over limit (maximum 200)`
+                : `${formData.reason.length}/200 characters`}
+            </small>
           </div>
 
           <div className="form-group">
@@ -539,7 +638,7 @@ const ApplyLeave = () => {
               className="form-input"
               placeholder="Manager"
               readOnly
-              style={{ background: 'var(--bg-hover)' }}
+              style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)' }}
             />
           </div>
 

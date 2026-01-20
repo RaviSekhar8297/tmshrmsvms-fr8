@@ -12,7 +12,7 @@ const ContactDetails = () => {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [page, setPage] = useState(1);
-  const pageSize = 24;
+  const pageSize = 50;
 
   useEffect(() => {
     fetchContacts();
@@ -164,6 +164,8 @@ const ContactDetails = () => {
                         <th>Employee ID</th>
                         <th>Email</th>
                         <th>Phone</th>
+                        <th>Designation</th>
+                        <th>Branch</th>
                         <th>Role</th>
                       </tr>
                     </thead>
@@ -198,6 +200,8 @@ const ContactDetails = () => {
                             <td>{contact.empid}</td>
                             <td>{contact.email}</td>
                             <td>{contact.phone || 'Not provided'}</td>
+                            <td>{contact.designation || '-'}</td>
+                            <td>{contact.branch_name || '-'}</td>
                             <td><span className={`badge badge-${roleTone}`}>{contact.role}</span></td>
                           </tr>
                         );

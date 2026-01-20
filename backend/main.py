@@ -65,7 +65,7 @@ app.include_router(chatbot.router, prefix="/api")
 app.include_router(loans.router, prefix="/api")
 app.include_router(resignations.router, prefix="/api")
 
-# Mount static files for uploaded policies
+# Mount static files for uploaded files (policies, vms images, etc.)
 uploads_dir = os.path.join(os.path.dirname(__file__), "uploads")
 if os.path.exists(uploads_dir):
     app.mount("/api/uploads", StaticFiles(directory=uploads_dir), name="uploads")

@@ -207,7 +207,7 @@ def export_attendance_excel(
         
         # Title row
         month_name = datetime(year, month, 1).strftime("%B %Y")
-        ws.merge_cells('A1:P1')
+        ws.merge_cells('A1:Q1')
         ws['A1'] = f"ATTENDANCE SUMMARY - {month_name.upper()}"
         ws['A1'].font = Font(bold=True, size=14)
         ws['A1'].alignment = Alignment(horizontal='center')
@@ -217,7 +217,7 @@ def export_attendance_excel(
         headers = [
             "EMPLOYEE-NAME", "EMP-ID", "TOTAL", "WORK", "W.O", "HOLIDAYS",
             "PRESENT", "ABSENT", "HALFDAYS", "LATE", "LOPs", "CL", "SL",
-            "COMP", "PAYBLE", "MONTH"
+            "COMP", "PAYBLE", "MONTH", "YEAR"
         ]
         row_num = 3
         for col_idx, header in enumerate(headers, start=1):
@@ -259,12 +259,14 @@ def export_attendance_excel(
             ws.cell(row=row_num, column=14).alignment = center_align
             ws.cell(row=row_num, column=15, value=float(rec.payble_days) if rec.payble_days else 0).border = border
             ws.cell(row=row_num, column=15).alignment = center_align
-            ws.cell(row=row_num, column=16, value=f"{month_name} {year}").border = border
+            ws.cell(row=row_num, column=16, value=month).border = border  # Month number (10)
             ws.cell(row=row_num, column=16).alignment = center_align
+            ws.cell(row=row_num, column=17, value=year).border = border  # Year (2025)
+            ws.cell(row=row_num, column=17).alignment = center_align
             row_num += 1
         
         # Set column widths
-        column_widths = [25, 15, 12, 12, 10, 12, 12, 12, 12, 10, 10, 10, 10, 10, 12, 15]
+        column_widths = [25, 15, 12, 12, 10, 12, 12, 12, 12, 10, 10, 10, 10, 10, 12, 10, 10]
         for idx, width in enumerate(column_widths, start=1):
             ws.column_dimensions[get_column_letter(idx)].width = width
         
@@ -911,18 +913,39 @@ def get_attendance_history(
     except:
         target_date = datetime.now().date()
     
-    # Get all employees
-    employees = db.query(User).filter(User.role.in_(['Employee', 'Manager'])).all()
+    # Get all employees - limit to 500 for performance
+    employees = db.query(User).filter(User.role.in_(['Employee', 'Manager'])).limit(500).all()
+    
+    # Batch load attendance records to avoid N+1 queries
+    empids = [emp.empid for emp in employees if emp.empid]
+    attendance_map = {}
+    if empids:
+        attendance_records = db.query(Attendance).filter(
+            and_(
+                Attendance.employee_id.in_(empids),
+                Attendance.date == target_date
+            )
+        ).all()
+        attendance_map = {att.employee_id: att for att in attendance_records}
+    
+    # Batch load punch logs to avoid N+1 queries
+    punch_logs_map = {}
+    if empids:
+        punch_logs_all = db.query(PunchLog).filter(
+            and_(
+                PunchLog.employee_id.in_(empids),
+                PunchLog.date == target_date
+            )
+        ).order_by(PunchLog.employee_id, PunchLog.punch_time).limit(1000).all()
+        for log in punch_logs_all:
+            if log.employee_id not in punch_logs_map:
+                punch_logs_map[log.employee_id] = []
+            punch_logs_map[log.employee_id].append(log)
     
     result = []
     for emp in employees:
-        # Get attendance record if exists (manually modified times take priority)
-        attendance = db.query(Attendance).filter(
-            and_(
-                Attendance.employee_id == emp.empid,
-                Attendance.date == target_date
-            )
-        ).first()
+        # Get attendance record from map
+        attendance = attendance_map.get(emp.empid)
         
         # If attendance record exists with check_in/check_out, use those (manually modified)
         if attendance and attendance.check_in and attendance.check_out:
@@ -931,13 +954,8 @@ def get_attendance_history(
             min_time = attendance.check_in
             max_time = attendance.check_out
         else:
-            # Otherwise, get min/max from punch_logs
-            punch_logs = db.query(PunchLog).filter(
-                and_(
-                    PunchLog.employee_id == emp.empid,
-                    PunchLog.date == target_date
-                )
-            ).order_by(PunchLog.punch_time).all()
+            # Otherwise, get min/max from punch_logs map
+            punch_logs = punch_logs_map.get(emp.empid, [])
             
             # Get min and max times
             min_time = None
@@ -1002,27 +1020,27 @@ def get_attendance_history_month(
     
     # Get all employees - for Manager, include their team members + themselves
     if current_user.role == "Manager":
-        # Get employees reporting to this manager
+        # Get employees reporting to this manager - limit to 200 for performance
         team_members = db.query(User).filter(
             User.report_to_id == current_user.empid,
             User.role.in_(['Employee', 'Manager'])
-        ).all()
+        ).limit(200).all()
         # Include manager themselves
         employees = list(team_members)
         employees.append(current_user)
     else:
-        # Admin/HR see all employees (including HR, Admin, Manager, Employee roles)
+        # Admin/HR see all employees (including HR, Admin, Manager, Employee roles) - limit to 500 for performance
         employees = db.query(User).filter(
             User.role.in_(['Employee', 'Manager', 'HR', 'Admin'])
-        ).all()
+        ).limit(500).all()
     
-    # Get all punch logs for the month
+    # Get all punch logs for the month - limit to 10000 for performance
     punch_logs_all = db.query(PunchLog).filter(
         and_(
             PunchLog.date >= first_date,
             PunchLog.date <= last_date
         )
-    ).order_by(PunchLog.employee_id, PunchLog.date, PunchLog.punch_time).all()
+    ).order_by(PunchLog.employee_id, PunchLog.date, PunchLog.punch_time).limit(10000).all()
     
     # Group punch logs by employee_id (empid) and date
     # Store both punch_time and punch_type for proper calculation
@@ -2416,7 +2434,8 @@ def get_leave_balance_list(
                 )
             )
         
-        records = query.order_by(LeaveBalanceList.name).all()
+        # Limit to 500 records for performance
+        records = query.order_by(LeaveBalanceList.name).limit(500).all()
         
         return [
             {
@@ -2692,23 +2711,41 @@ def upload_attendance_list_excel(
                 
                 # Parse data from Excel columns (matching export format)
                 # Columns: EMPLOYEE-NAME, EMP-ID, TOTAL, WORK, W.O, HOLIDAYS, PRESENT, ABSENT, 
-                # HALFDAYS, LATE, LOPs, CL, SL, COMP, PAYBLE, MONTH
+                # HALFDAYS, LATE, LOPs, CL, SL, COMP, PAYBLE, MONTH, YEAR, MONTH_NUMBER
                 name = str(row[0]).strip() if row[0] else None
                 empid_str = str(row[1]).strip() if row[1] else None
-                total_days = float(row[2]) if row[2] is not None else None
-                working_days = float(row[3]) if row[3] is not None else None
-                week_offs = int(row[4]) if row[4] is not None else None
-                holi_days = float(row[5]) if row[5] is not None else None
-                presents = float(row[6]) if row[6] is not None else None
-                absents = float(row[7]) if row[7] is not None else None
-                half_days = float(row[8]) if row[8] is not None else None
-                late_logs = int(row[9]) if row[9] is not None else None
-                lops = float(row[10]) if row[10] is not None else None
-                cl = float(row[11]) if row[11] is not None else None
-                sl = float(row[12]) if row[12] is not None else None
-                comp_offs = float(row[13]) if row[13] is not None else None
-                payble_days = float(row[14]) if row[14] is not None else None
-                month_year_str = str(row[15]).strip() if row[15] else None
+                total_days = float(row[2]) if row[2] is not None and str(row[2]).strip() else 0
+                working_days = float(row[3]) if row[3] is not None and str(row[3]).strip() else 0
+                week_offs = int(row[4]) if row[4] is not None and str(row[4]).strip() else 0
+                holi_days = float(row[5]) if row[5] is not None and str(row[5]).strip() else 0
+                presents = float(row[6]) if row[6] is not None and str(row[6]).strip() else 0
+                absents = float(row[7]) if row[7] is not None and str(row[7]).strip() else 0
+                half_days = float(row[8]) if row[8] is not None and str(row[8]).strip() else 0
+                late_logs = int(row[9]) if row[9] is not None and str(row[9]).strip() else 0
+                lops = float(row[10]) if row[10] is not None and str(row[10]).strip() else 0
+                cl = float(row[11]) if row[11] is not None and str(row[11]).strip() else 0
+                sl = float(row[12]) if row[12] is not None and str(row[12]).strip() else 0
+                comp_offs = float(row[13]) if row[13] is not None and str(row[13]).strip() else 0
+                payble_days = float(row[14]) if row[14] is not None and str(row[14]).strip() else 0
+                
+                # Try to get month/year from new format first (separate columns)
+                month = None
+                year = None
+                if len(row) >= 17:
+                    # New format: MONTH (number), YEAR columns
+                    month_num_str = str(row[15]).strip() if row[15] else None
+                    year_str = str(row[16]).strip() if row[16] else None
+                    
+                    if month_num_str and year_str:
+                        try:
+                            month = int(month_num_str)
+                            year = int(year_str)
+                        except:
+                            pass
+                
+                # Fallback to old format if new format didn't work
+                if not month or not year:
+                    month_year_str = str(row[15]).strip() if row[15] and len(row) > 15 else None
                 
                 # Validate required fields
                 if not empid_str:
@@ -2722,30 +2759,28 @@ def upload_attendance_list_excel(
                     errors.append(f"Row {row_num}: Invalid Employee ID format: {empid_str}")
                     continue
                 
-                # Parse month and year from month_year_str (format: "December 2025" or "12 2025")
-                month = None
-                year = None
-                if month_year_str:
-                    try:
-                        # Try parsing "December 2025" format
-                        month_year_parts = month_year_str.split()
-                        if len(month_year_parts) >= 2:
-                            month_name = month_year_parts[0]
-                            year_str = month_year_parts[-1]
-                            year = int(year_str)
-                            # Convert month name to number
-                            month_names = ['january', 'february', 'march', 'april', 'may', 'june',
-                                         'july', 'august', 'september', 'october', 'november', 'december']
-                            month = month_names.index(month_name.lower()) + 1
-                    except:
+                    # Parse month and year from month_year_str (format: "December 2025" or "12 2025")
+                    if month_year_str:
                         try:
-                            # Try parsing "12 2025" format
-                            parts = month_year_str.split()
-                            if len(parts) >= 2:
-                                month = int(parts[0])
-                                year = int(parts[1])
+                            # Try parsing "December 2025" format
+                            month_year_parts = month_year_str.split()
+                            if len(month_year_parts) >= 2:
+                                month_name = month_year_parts[0]
+                                year_str = month_year_parts[-1]
+                                year = int(year_str)
+                                # Convert month name to number
+                                month_names = ['january', 'february', 'march', 'april', 'may', 'june',
+                                             'july', 'august', 'september', 'october', 'november', 'december']
+                                month = month_names.index(month_name.lower()) + 1
                         except:
-                            pass
+                            try:
+                                # Try parsing "12 2025" format
+                                parts = month_year_str.split()
+                                if len(parts) >= 2:
+                                    month = int(parts[0])
+                                    year = int(parts[1])
+                            except:
+                                pass
                 
                 if not month or not year:
                     errors.append(f"Row {row_num}: Could not parse month and year from: {month_year_str}")
@@ -2760,23 +2795,23 @@ def upload_attendance_list_excel(
                     )
                 ).first()
                 
-                # Prepare attendance data
+                # Prepare attendance data (null/empty values become 0)
                 attendance_data = {
                     'name': name.upper() if name else None,
                     'empid': empid_value,
-                    'total_days': float(total_days) if total_days is not None else None,
-                    'working_days': float(working_days) if working_days is not None else None,
-                    'week_offs': week_offs,
-                    'holi_days': float(holi_days) if holi_days is not None else None,
-                    'presents': float(presents) if presents is not None else None,
-                    'absents': float(absents) if absents is not None else None,
-                    'half_days': float(half_days) if half_days is not None else None,
-                    'late_logs': late_logs,
-                    'cl': float(cl) if cl is not None else None,
-                    'sl': float(sl) if sl is not None else None,
-                    'comp_offs': float(comp_offs) if comp_offs is not None else None,
-                    'payble_days': float(payble_days) if payble_days is not None else None,
-                    'lops': float(lops) if lops is not None else None,
+                    'total_days': float(total_days) if total_days is not None else 0,
+                    'working_days': float(working_days) if working_days is not None else 0,
+                    'week_offs': week_offs if week_offs is not None else 0,
+                    'holi_days': float(holi_days) if holi_days is not None else 0,
+                    'presents': float(presents) if presents is not None else 0,
+                    'absents': float(absents) if absents is not None else 0,
+                    'half_days': float(half_days) if half_days is not None else 0,
+                    'late_logs': late_logs if late_logs is not None else 0,
+                    'cl': float(cl) if cl is not None else 0,
+                    'sl': float(sl) if sl is not None else 0,
+                    'comp_offs': float(comp_offs) if comp_offs is not None else 0,
+                    'payble_days': float(payble_days) if payble_days is not None else 0,
+                    'lops': float(lops) if lops is not None else 0,
                     'year': year,
                     'month': str(month),
                     'status': 1,

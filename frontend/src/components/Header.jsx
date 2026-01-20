@@ -13,6 +13,7 @@ const Header = ({ onMenuClick }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const notificationWrapperRef = useRef(null);
 
   useEffect(() => {
@@ -99,9 +100,15 @@ const Header = ({ onMenuClick }) => {
 
       <div className="header-right">
         <button 
-          className="theme-toggle-btn refresh-btn" 
-          onClick={() => window.location.reload()} 
+          className={`theme-toggle-btn refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
+          onClick={() => {
+            setIsRefreshing(true);
+            setTimeout(() => {
+              window.location.reload();
+            }, 500);
+          }} 
           title="Refresh Page"
+          disabled={isRefreshing}
         >
           <FiRefreshCw />
         </button>

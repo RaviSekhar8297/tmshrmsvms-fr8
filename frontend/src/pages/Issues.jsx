@@ -3,7 +3,7 @@ import {
   FiPlus, FiSearch, FiAlertCircle, FiEdit2, 
   FiTrash2, FiCheckCircle
 } from 'react-icons/fi';
-import { issuesAPI, projectsAPI } from '../services/api';
+import { issuesAPI, tasksAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
@@ -11,7 +11,7 @@ import './Issues.css';
 
 const Issues = () => {
   const [issues, setIssues] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -34,15 +34,15 @@ const Issues = () => {
   const fetchData = async () => {
     try {
       const params = filter !== 'all' ? { status: filter } : {};
-      const [issuesRes, statsRes, projectsRes] = await Promise.all([
+      const [issuesRes, statsRes, tasksRes] = await Promise.all([
         issuesAPI.getAll(params),
         issuesAPI.getStats(),
-        projectsAPI.getAll()
+        tasksAPI.getAll()
       ]);
       
       setIssues(issuesRes.data);
       setStats(statsRes.data);
-      setProjects(projectsRes.data);
+      setTasks(tasksRes.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load issues');
@@ -363,15 +363,15 @@ const Issues = () => {
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Related Project</label>
+              <label className="form-label">Related Task</label>
               <select
                 className="form-select"
                 value={formData.project_id}
                 onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
               >
                 <option value="">None</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                {tasks.map((task) => (
+                  <option key={task.id} value={task.id}>{task.title}</option>
                 ))}
               </select>
             </div>

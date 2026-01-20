@@ -110,16 +110,23 @@ def get_self_requests(
     current_user: User = Depends(get_current_user)
 ):
     """Get own requests"""
+    # Limit to 500 records for performance
     requests = db.query(Request).filter(
         Request.empid == current_user.empid
-    ).order_by(Request.applied_date.desc()).all()
+    ).order_by(Request.applied_date.desc()).limit(500).all()
+    
+    # Batch load approvers to avoid N+1 queries
+    approver_empids = {req.approved_by for req in requests if req.approved_by}
+    approvers_map = {}
+    if approver_empids:
+        approvers = db.query(User).filter(User.empid.in_(approver_empids)).all()
+        approvers_map = {approver.empid: approver.name for approver in approvers}
     
     result = []
     for req in requests:
         approved_by_name = None
         if req.approved_by:
-            approver = db.query(User).filter(User.empid == req.approved_by).first()
-            approved_by_name = approver.name if approver else req.approved_by
+            approved_by_name = approvers_map.get(req.approved_by, req.approved_by)
         
         result.append({
             "id": req.id,
@@ -156,14 +163,21 @@ def get_all_requests(
     if filter != "all":
         query = query.filter(Request.status == filter)
     
-    requests = query.order_by(Request.applied_date.desc()).all()
+    # Limit to 500 records for performance
+    requests = query.order_by(Request.applied_date.desc()).limit(500).all()
+    
+    # Batch load approvers to avoid N+1 queries
+    approver_empids = {req.approved_by for req in requests if req.approved_by}
+    approvers_map = {}
+    if approver_empids:
+        approvers = db.query(User).filter(User.empid.in_(approver_empids)).all()
+        approvers_map = {approver.empid: approver.name for approver in approvers}
     
     result = []
     for req in requests:
         approved_by_name = None
         if req.approved_by:
-            approver = db.query(User).filter(User.empid == req.approved_by).first()
-            approved_by_name = approver.name if approver else req.approved_by
+            approved_by_name = approvers_map.get(req.approved_by, req.approved_by)
         
         result.append({
             "id": req.id,

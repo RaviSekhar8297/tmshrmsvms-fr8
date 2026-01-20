@@ -78,16 +78,23 @@ def get_self_permissions(
     current_user: User = Depends(get_current_user)
 ):
     """Get own permission requests"""
+    # Limit to 500 records for performance
     permissions = db.query(Permission).filter(
         Permission.empid == current_user.empid
-    ).order_by(Permission.applied_date.desc()).all()
+    ).order_by(Permission.applied_date.desc()).limit(500).all()
+    
+    # Batch load approvers to avoid N+1 queries
+    approver_empids = {perm.approved_by for perm in permissions if perm.approved_by}
+    approvers_map = {}
+    if approver_empids:
+        approvers = db.query(User).filter(User.empid.in_(approver_empids)).all()
+        approvers_map = {approver.empid: approver.name for approver in approvers}
     
     result = []
     for perm in permissions:
         approved_by_name = None
         if perm.approved_by:
-            approver = db.query(User).filter(User.empid == perm.approved_by).first()
-            approved_by_name = approver.name if approver else perm.approved_by
+            approved_by_name = approvers_map.get(perm.approved_by, perm.approved_by)
         
         result.append({
             "id": perm.id,
@@ -123,14 +130,21 @@ def get_all_permissions(
     if filter != "all":
         query = query.filter(Permission.status == filter)
     
-    permissions = query.order_by(Permission.applied_date.desc()).all()
+    # Limit to 500 records for performance
+    permissions = query.order_by(Permission.applied_date.desc()).limit(500).all()
+    
+    # Batch load approvers to avoid N+1 queries
+    approver_empids = {perm.approved_by for perm in permissions if perm.approved_by}
+    approvers_map = {}
+    if approver_empids:
+        approvers = db.query(User).filter(User.empid.in_(approver_empids)).all()
+        approvers_map = {approver.empid: approver.name for approver in approvers}
     
     result = []
     for perm in permissions:
         approved_by_name = None
         if perm.approved_by:
-            approver = db.query(User).filter(User.empid == perm.approved_by).first()
-            approved_by_name = approver.name if approver else perm.approved_by
+            approved_by_name = approvers_map.get(perm.approved_by, perm.approved_by)
         
         result.append({
             "id": perm.id,

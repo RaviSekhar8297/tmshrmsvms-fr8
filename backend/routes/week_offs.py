@@ -43,7 +43,8 @@ def get_week_offs(
                 )
             )
         
-        week_off_dates = query.order_by(WeekOffDate.date.desc(), WeekOffDate.employee_id).all()
+        # Limit to 1000 week off dates for performance
+        week_off_dates = query.order_by(WeekOffDate.date.desc(), WeekOffDate.employee_id).limit(1000).all()
         
         # Format each date as a row for the table
         result = []
@@ -114,7 +115,8 @@ def get_week_off_dates(
                 )
             )
         
-        week_off_dates = query.order_by(WeekOffDate.date).all()
+        # Limit to 1000 week off dates for performance
+        week_off_dates = query.order_by(WeekOffDate.date).limit(1000).all()
         
         return [
             {

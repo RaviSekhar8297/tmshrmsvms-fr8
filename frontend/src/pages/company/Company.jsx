@@ -97,8 +97,38 @@ const Company = () => {
     }
   };
 
+  // Validation function for name (letters only, max 50 characters)
+  const validateName = (name) => {
+    if (!name || name.trim() === '') {
+      return { valid: false, message: 'Name is required' };
+    }
+    if (name.length > 50) {
+      return { valid: false, message: 'Name must be below 50 characters' };
+    }
+    // Only letters and spaces allowed
+    const lettersOnlyRegex = /^[A-Za-z\s]+$/;
+    if (!lettersOnlyRegex.test(name.trim())) {
+      return { valid: false, message: 'Name must contain only letters' };
+    }
+    return { valid: true };
+  };
+
   const handleCompanySubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!companyForm.name || companyForm.name.trim() === '') {
+      toast.error('Name is required');
+      return;
+    }
+    
+    // Validate name format and length
+    const nameValidation = validateName(companyForm.name);
+    if (!nameValidation.valid) {
+      toast.error(nameValidation.message);
+      return;
+    }
+    
     setLoading(true);
     try {
       await api.post('/company', companyForm);
@@ -115,6 +145,24 @@ const Company = () => {
 
   const handleBranchSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!branchForm.company_id) {
+      toast.error('Company is required');
+      return;
+    }
+    if (!branchForm.name || branchForm.name.trim() === '') {
+      toast.error('Branch name is required');
+      return;
+    }
+    
+    // Validate name format and length
+    const nameValidation = validateName(branchForm.name);
+    if (!nameValidation.valid) {
+      toast.error(nameValidation.message);
+      return;
+    }
+    
     setLoading(true);
     try {
       await api.post('/branch', branchForm);
@@ -131,6 +179,28 @@ const Company = () => {
 
   const handleDepartmentSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!departmentForm.company_id) {
+      toast.error('Company is required');
+      return;
+    }
+    if (!departmentForm.branch_id) {
+      toast.error('Branch is required');
+      return;
+    }
+    if (!departmentForm.name || departmentForm.name.trim() === '') {
+      toast.error('Department name is required');
+      return;
+    }
+    
+    // Validate name format and length
+    const nameValidation = validateName(departmentForm.name);
+    if (!nameValidation.valid) {
+      toast.error(nameValidation.message);
+      return;
+    }
+    
     setLoading(true);
     try {
       await api.post('/department', departmentForm);
@@ -147,6 +217,20 @@ const Company = () => {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!editForm.name || editForm.name.trim() === '') {
+      toast.error('Name is required');
+      return;
+    }
+    
+    // Validate name format and length
+    const nameValidation = validateName(editForm.name);
+    if (!nameValidation.valid) {
+      toast.error(nameValidation.message);
+      return;
+    }
+    
     setLoading(true);
     try {
       if (editingType === 'company') {
@@ -649,9 +733,17 @@ const Company = () => {
                     type="text"
                     className="form-input"
                     value={companyForm.name}
-                    onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
-                    required
-                    placeholder="Enter company name"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Only allow letters and spaces
+                      if (value === '' || /^[A-Za-z\s]*$/.test(value)) {
+                        if (value.length <= 50) {
+                          setCompanyForm({ ...companyForm, name: value });
+                        }
+                      }
+                    }}
+                    placeholder="Enter company name (letters only, max 50 characters)"
+                    maxLength={50}
                   />
                 </div>
                 <div className="form-group">
@@ -751,9 +843,17 @@ const Company = () => {
                         type="text"
                         className="form-input"
                         value={editForm.name}
-                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                        required
-                        placeholder="Enter company name"
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Only allow letters and spaces
+                          if (value === '' || /^[A-Za-z\s]*$/.test(value)) {
+                            if (value.length <= 50) {
+                              setEditForm({ ...editForm, name: value });
+                            }
+                          }
+                        }}
+                        placeholder="Enter company name (letters only, max 50 characters)"
+                        maxLength={50}
                       />
                     </div>
                     <div className="form-group">
@@ -797,9 +897,17 @@ const Company = () => {
                     type="text"
                     className="form-input"
                     value={editForm.name}
-                    onChange={(e) => setEditForm({ name: e.target.value })}
-                    required
-                    placeholder="Enter name"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Only allow letters and spaces
+                      if (value === '' || /^[A-Za-z\s]*$/.test(value)) {
+                        if (value.length <= 50) {
+                          setEditForm({ name: value });
+                        }
+                      }
+                    }}
+                    placeholder="Enter name (letters only, max 50 characters)"
+                    maxLength={50}
                   />
                 </div>
               )}
@@ -843,10 +951,9 @@ const BranchModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loading
             <div className="form-group">
               <label>Company *</label>
               <select
-                
+                className="form-select"
                 value={formData.company_id}
                 onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
-                required
               >
                 <option value="">Select Company</option>
                 {companies.map((company) => (
@@ -862,9 +969,17 @@ const BranchModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loading
                 type="text"
                 className="form-input"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                placeholder="Enter branch name"
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Only allow letters and spaces
+                  if (value === '' || /^[A-Za-z\s]*$/.test(value)) {
+                    if (value.length <= 50) {
+                      setFormData({ ...formData, name: value });
+                    }
+                  }
+                }}
+                placeholder="Enter branch name (letters only, max 50 characters)"
+                maxLength={50}
               />
             </div>
           </div>
@@ -920,7 +1035,6 @@ const DepartmentModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loa
                 onChange={(e) => {
                   setFormData({ ...formData, company_id: e.target.value, branch_id: '' });
                 }}
-                required
               >
                 <option value="">Select Company</option>
                 {companies.map((company) => (
@@ -936,7 +1050,6 @@ const DepartmentModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loa
                 className="form-select"
                 value={formData.branch_id}
                 onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                required
                 disabled={!formData.company_id}
               >
                 <option value="">Select Branch</option>
@@ -955,9 +1068,17 @@ const DepartmentModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loa
                 type="text"
                 className="form-input"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                placeholder="Enter department name"
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Only allow letters and spaces
+                  if (value === '' || /^[A-Za-z\s]*$/.test(value)) {
+                    if (value.length <= 50) {
+                      setFormData({ ...formData, name: value });
+                    }
+                  }
+                }}
+                placeholder="Enter department name (letters only, max 50 characters)"
+                maxLength={50}
               />
             </div>
             <div className="form-group">

@@ -7,7 +7,8 @@ import {
   FiStar, FiVideo, FiPower, FiChevronDown, FiChevronRight,
   FiClock, FiList, FiEdit, FiPlus, FiTruck, FiDollarSign,
   FiBriefcase, FiSend, FiShield, FiCalendar as FiCalendarIcon,
-  FiTrendingUp, FiPhone, FiMail, FiGift, FiGitBranch, FiPercent, FiLogOut
+  FiTrendingUp, FiPhone, FiMail, FiGift, FiGitBranch, FiPercent, FiLogOut,
+  FiPackage
 } from 'react-icons/fi';
 import './Sidebar.css';
 
@@ -133,7 +134,6 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   // Employees Section (for HR, Admin - managing employees)
   const employeesItems = [
-    { path: '/employees/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Admin'] },
     { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'HR'] },
     { path: '/employees/balance-leaves', icon: FiList, label: 'Balance Leaves', roles: ['HR'] },
     { path: '/employees/data', icon: FiFileText, label: 'Data', roles: ['Admin', 'HR'] },
@@ -166,7 +166,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   // VMS Module Items
   const vmsItems = [
     { path: '/vms/list', icon: FiList, label: 'Visitors', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
-    { path: '/vms/items', icon: FiTruck, label: 'Items', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
+    { path: '/vms/item', icon: FiPackage, label: 'Stationery', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
   ];
 
   const filterItems = (items) => {

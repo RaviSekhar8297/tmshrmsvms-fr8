@@ -79,15 +79,23 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label className="form-label">Username or Employee ID</label>
-            <div className="input-with-icon">
+            <label className="form-label">Employee ID</label>
+            <div className="input-with-icon input-with-prefix" style={{ position: 'relative' }}>
               <FiMail className="input-icon" />
+              <span className="input-prefix">BT-</span>
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  let value = e.target.value;
+                  // Remove BT- prefix if user types it
+                  if (value.startsWith('BT-')) {
+                    value = value.substring(3);
+                  }
+                  setUsername(value);
+                }}
                 className="form-input"
-                placeholder="Enter your username"
+                placeholder={username ? '' : 'Employee ID'}
                 autoComplete="username"
               />
             </div>

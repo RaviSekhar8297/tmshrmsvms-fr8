@@ -38,7 +38,8 @@ def get_holidays(
     if year:
         query = query.filter(extract('year', Holiday.date) == year)
     
-    holidays = query.order_by(Holiday.date).all()
+    # Limit to 500 holidays for performance (typically years worth of holidays)
+    holidays = query.order_by(Holiday.date).limit(500).all()
     
     return [
         {

@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiCalendar, FiX, FiSearch } from 'react-icons/fi';
+import DatePicker from '../../components/DatePicker';
 import '../employee/Employee.css';
 import './WeekOffs.css';
 
@@ -20,6 +21,15 @@ const WeekOffs = () => {
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [selectedDates, setSelectedDates] = useState([]);
   const [employeeWeekOffDates, setEmployeeWeekOffDates] = useState([]);
+  const [search, setSearch] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [clickedDate, setClickedDate] = useState(null); // Date clicked in calendar
+  const [showAddModal, setShowAddModal] = useState(false); // Modal for adding week off
+  const [modalEmployeeId, setModalEmployeeId] = useState('0'); // Employee ID in modal
+  const [modalDate, setModalDate] = useState(''); // Date in modal
+  const [modalEmployeeSearch, setModalEmployeeSearch] = useState(''); // Employee search in modal
+  const [showModalEmployeeDropdown, setShowModalEmployeeDropdown] = useState(false); // Employee dropdown in modal
+  const modalEmployeeDropdownRef = useRef(null);
 
   useEffect(() => {
     fetchWeekOffs();
@@ -37,14 +47,17 @@ const WeekOffs = () => {
       if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
         setShowEmployeeDropdown(false);
       }
+      if (modalEmployeeDropdownRef.current && !modalEmployeeDropdownRef.current.contains(event.target)) {
+        setShowModalEmployeeDropdown(false);
+      }
     };
-    if (showEmployeeDropdown) {
+    if (showEmployeeDropdown || showModalEmployeeDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showEmployeeDropdown]);
+  }, [showEmployeeDropdown, showModalEmployeeDropdown]);
 
   const fetchWeekOffs = async () => {
     setLoading(true);
@@ -87,40 +100,99 @@ const WeekOffs = () => {
     fetchEmployeeWeekOffDates();
   };
 
-  const handleDateClick = async (dateStr) => {
+  const handleDateClick = (dateStr) => {
     // Only HR can add/delete weekoffs
     if (user?.role !== 'HR') {
       toast.error('Only HR can add or remove week-offs');
       return;
     }
     
-    const isSelected = selectedDates.includes(dateStr);
-    const empId = selectedEmployee === '0' ? '0' : selectedEmployee;
-    const empName = selectedEmployee === '0' ? 'All' : employees.find(e => e.empid === selectedEmployee)?.name || 'All';
+    const isSelected = employeeWeekOffDates.includes(dateStr);
     
+    if (isSelected) {
+      // If already selected, remove it directly
+      handleRemoveWeekOff(dateStr);
+    } else {
+      // If not selected, set clicked date and show add section
+      setClickedDate(dateStr);
+      setModalDate(dateStr);
+      setModalEmployeeId(selectedEmployee === '0' ? '0' : selectedEmployee);
+    }
+  };
+
+  const handleRemoveWeekOff = async (dateStr) => {
+    const empId = selectedEmployee === '0' ? '0' : selectedEmployee;
     try {
-      if (isSelected) {
-        // Remove week off
-        await api.delete(`/week-offs/dates?employee_id=${empId}&date=${dateStr}`);
-        setSelectedDates(prev => prev.filter(d => d !== dateStr));
-        setEmployeeWeekOffDates(prev => prev.filter(d => d !== dateStr));
-        toast.success('Week off removed');
-      } else {
-        // Add week off
-        await api.post('/week-offs/dates', {
-          employee_id: empId,
-          date: dateStr
-        });
-        setSelectedDates(prev => [...prev, dateStr]);
-        setEmployeeWeekOffDates(prev => [...prev, dateStr]);
-        toast.success('Week off added');
-      }
+      await api.delete(`/week-offs/dates?employee_id=${empId}&date=${dateStr}`);
+      setSelectedDates(prev => prev.filter(d => d !== dateStr));
+      setEmployeeWeekOffDates(prev => prev.filter(d => d !== dateStr));
+      toast.success('Week off removed');
       fetchWeekOffs();
       fetchEmployeeWeekOffDates();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to update week off');
+      toast.error(error.response?.data?.detail || 'Failed to remove week off');
     }
   };
+
+  const handleAddWeekOff = async () => {
+    if (!modalDate) {
+      toast.error('Please select a date');
+      return;
+    }
+
+    if (!modalEmployeeId) {
+      toast.error('Please select an employee');
+      return;
+    }
+
+    try {
+      await api.post('/week-offs/dates', {
+        employee_id: modalEmployeeId,
+        date: modalDate
+      });
+      toast.success('Week off added successfully');
+      setShowAddModal(false);
+      setClickedDate(null);
+      setModalDate('');
+      setModalEmployeeId('0');
+      setModalEmployeeSearch('');
+      fetchWeekOffs();
+      if (showCalendarModal) {
+        fetchEmployeeWeekOffDates();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to add week off');
+    }
+  };
+
+  // Auto-add week off when both employee and date are selected
+  useEffect(() => {
+    if (showAddModal && modalEmployeeId && modalDate) {
+      // Small delay to ensure both are set
+      const timer = setTimeout(async () => {
+        try {
+          await api.post('/week-offs/dates', {
+            employee_id: modalEmployeeId,
+            date: modalDate
+          });
+          toast.success('Week off added successfully');
+          setShowAddModal(false);
+          setClickedDate(null);
+          setModalDate('');
+          setModalEmployeeId('0');
+          setModalEmployeeSearch('');
+          fetchWeekOffs();
+          if (showCalendarModal) {
+            fetchEmployeeWeekOffDates();
+          }
+        } catch (error) {
+          toast.error(error.response?.data?.detail || 'Failed to add week off');
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalEmployeeId, modalDate, showAddModal]);
 
   const handleDeleteWeekOff = async (weekOff) => {
     // Show toast confirmation
@@ -220,157 +292,81 @@ const WeekOffs = () => {
     return days;
   };
 
+  const filteredWeekOffs = weekOffs.filter((wo) => {
+    // Search filter
+    const term = search.trim().toLowerCase();
+    if (term) {
+      const matchesSearch = (
+        wo.employee_id?.toLowerCase().includes(term) ||
+        wo.employee_name?.toLowerCase().includes(term) ||
+        wo.day_of_week?.toLowerCase().includes(term)
+      );
+      if (!matchesSearch) return false;
+    }
+    
+    // Year filter
+    if (wo.date) {
+      const woDate = new Date(wo.date);
+      if (woDate.getFullYear() !== selectedYear) return false;
+    }
+    
+    return true;
+  });
+
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>WEEK-OFF'S HISTORY!</h1>
-        {/* Only HR role can add weekoffs */}
-        {user?.role === 'HR' && (
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div ref={employeeDropdownRef} style={{ position: 'relative', minWidth: '200px' }}>
+      <div className="page-header stacked">
+        <div>
+          <h1>WEEK-OFF'S HISTORY!</h1>
+          <p className="page-subtitle">View and manage week-off assignments.</p>
+        </div>
+        <div className="header-actions filters-row toolbar">
+          <div className="toolbar-left" style={{ flex: 1, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="filter-field" style={{ flex: 1, minWidth: '200px' }}>
+              <label className="filter-label">Search</label>
               <input
                 type="text"
-                value={
-                  showEmployeeDropdown 
-                    ? employeeSearch 
-                    : (selectedEmployee === '0' 
-                        ? 'All' 
-                        : employees.find(e => e.empid === selectedEmployee)?.name || '')
-                }
-                onChange={(e) => {
-                  const searchValue = e.target.value;
-                  setEmployeeSearch(searchValue);
-                  setShowEmployeeDropdown(true);
-                }}
-                onFocus={() => {
-                  setShowEmployeeDropdown(true);
-                  setEmployeeSearch('');
-                }}
-                onBlur={(e) => {
-                  setTimeout(() => {
-                    if (!employeeDropdownRef.current?.contains(document.activeElement)) {
-                      setShowEmployeeDropdown(false);
-                      setEmployeeSearch('');
-                    }
-                  }, 200);
-                }}
-                placeholder="Search employee or select 'All'..."
                 className="form-input"
-                style={{ width: '100%', paddingRight: '40px' }}
+                placeholder="Search by employee ID, name, or day..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ marginBottom: 0 }}
               />
-              <FiSearch style={{ 
-                position: 'absolute', 
-                right: '12px', 
-                top: '50%', 
-                transform: 'translateY(-50%)', 
-                color: 'var(--text-secondary)', 
-                pointerEvents: 'none',
-                fontSize: '18px'
-              }} />
-              {showEmployeeDropdown && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  background: 'var(--bg-card)',
-                  border: '2px solid var(--border-color)',
-                  borderRadius: '8px',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  zIndex: 1000,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                  marginTop: '4px'
-                }}>
-                  <div
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                    }}
-                    onClick={() => {
-                      setSelectedEmployee('0');
-                      setEmployeeSearch('');
-                      setShowEmployeeDropdown(false);
-                    }}
-                    style={{
-                      padding: '14px 16px',
-                      cursor: 'pointer',
-                      borderBottom: '1px solid var(--border-color)',
-                      background: selectedEmployee === '0' ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                      fontWeight: selectedEmployee === '0' ? 600 : 400,
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selectedEmployee !== '0') e.currentTarget.style.background = 'var(--bg-hover)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedEmployee !== '0') e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>All</div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>All employees</div>
-                  </div>
-                  {employees
-                    .filter(emp => {
-                      if (!employeeSearch) return true;
-                      const search = employeeSearch.toLowerCase();
-                      return emp.name.toLowerCase().includes(search) || 
-                             emp.empid.toLowerCase().includes(search) ||
-                             (emp.email && emp.email.toLowerCase().includes(search));
-                    })
-                    .map((emp) => (
-                      <div
-                        key={emp.id}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                        }}
-                        onClick={() => {
-                          setSelectedEmployee(emp.empid);
-                          setEmployeeSearch('');
-                          setShowEmployeeDropdown(false);
-                        }}
-                        style={{
-                          padding: '14px 16px',
-                          cursor: 'pointer',
-                          borderBottom: '1px solid var(--border-color)',
-                          background: selectedEmployee === emp.empid ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                          fontWeight: selectedEmployee === emp.empid ? 600 : 400,
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedEmployee !== emp.empid) e.currentTarget.style.background = 'var(--bg-hover)';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedEmployee !== emp.empid) e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>{emp.name}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          {emp.empid} {emp.email ? `• ${emp.email}` : ''}
-                        </div>
-                      </div>
-                    ))}
-                  {employees.filter(emp => {
-                    if (!employeeSearch) return false;
-                    const search = employeeSearch.toLowerCase();
-                    return emp.name.toLowerCase().includes(search) || 
-                           emp.empid.toLowerCase().includes(search) ||
-                           (emp.email && emp.email.toLowerCase().includes(search));
-                  }).length === 0 && employeeSearch && (
-                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No employees found
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-            <button 
-              className="btn-primary" 
-              onClick={handleOpenCalendar}
-            >
-              <FiCalendar />  Date
+            <div className="filter-field" style={{ minWidth: '120px' }}>
+              <label className="filter-label">Year</label>
+              <select
+                className="form-input"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                style={{ marginBottom: 0 }}
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+            {/* Only HR role can add weekoffs */}
+            {user?.role === 'HR' && (
+              <button 
+                className="btn-primary" 
+                onClick={() => {
+                  setShowAddModal(true);
+                  setModalEmployeeId('0');
+                  setModalDate('');
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <FiCalendar /> Add Week Off
+              </button>
+            )}
+          </div>
+          <div className="toolbar-right">
+            <button className="btn-primary" onClick={() => toast('Excel export coming soon')}>
+              Excel
             </button>
           </div>
-        )}
+        </div>
       </div>
 
       {loading ? (
@@ -393,16 +389,24 @@ const WeekOffs = () => {
               </tr>
             </thead>
             <tbody>
-              {weekOffs.length === 0 ? (
+              {filteredWeekOffs.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">No week-offs assigned</td>
                 </tr>
               ) : (
-                weekOffs.map((weekOff, index) => (
+                filteredWeekOffs.map((weekOff, index) => (
                   <tr key={weekOff.id}>
                     <td>{index + 1}</td>
-                    <td>{weekOff.employee_id === "0" ? "All" : weekOff.employee_id}</td>
-                    <td>{weekOff.employee_name || '-'}</td>
+                    <td>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {weekOff.employee_id === "0" ? "All" : weekOff.employee_id}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ color: 'var(--text-primary)' }}>
+                        {weekOff.employee_name || '-'}
+                      </span>
+                    </td>
                     <td>{weekOff.date ? new Date(weekOff.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}</td>
                     <td>{weekOff.day_of_week || '-'}</td>
                     <td>
@@ -414,13 +418,34 @@ const WeekOffs = () => {
                       {/* Only HR role can delete weekoffs */}
                       {user?.role === 'HR' && (
                         <button 
-                          className="btn-sm btn-secondary"
+                          className="btn-sm btn-danger"
                           onClick={() => handleDeleteWeekOff(weekOff)}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.875rem',
+                            fontWeight: 500,
+                            borderRadius: '6px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            background: 'var(--danger)',
+                            color: 'white'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.9';
+                            e.currentTarget.style.transform = 'scale(1.02)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                            e.currentTarget.style.transform = 'scale(1)';
+                          }}
                         >
                           Delete
                         </button>
                       )}
-                      {user?.role !== 'HR' && <span>-</span>}
+                      {user?.role !== 'HR' && (
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>-</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -430,8 +455,8 @@ const WeekOffs = () => {
         </div>
       )}
 
-      {/* Calendar Modal */}
-      {showCalendarModal && (
+      {/* Calendar Modal (HR role only) */}
+      {user?.role === 'HR' && showCalendarModal && (
         <div className="modal-overlay" onClick={() => setShowCalendarModal(false)}>
           <div className="modal-content wo-calendar-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -478,6 +503,59 @@ const WeekOffs = () => {
                   {renderCalendar()}
                 </div>
               </div>
+              
+              {/* Add Week Off Section - Shows when a date is clicked (HR role only) */}
+              {user?.role === 'HR' && clickedDate && !employeeWeekOffDates.includes(clickedDate) && (
+                <div style={{ 
+                  marginTop: '24px', 
+                  padding: '20px', 
+                  background: 'var(--bg-hover)', 
+                  borderRadius: '12px',
+                  border: '2px solid var(--primary)'
+                }}>
+                  <h4 style={{ marginBottom: '16px', fontSize: '1.1rem', fontWeight: '600' }}>Add Week Off</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div className="form-group">
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>All Employees</label>
+                      <input
+                        type="text"
+                        value={modalEmployeeId === '0' ? 'All' : employees.find(e => e.empid === modalEmployeeId)?.name || ''}
+                        readOnly
+                        className="form-input"
+                        style={{ background: 'var(--bg-primary)', cursor: 'not-allowed' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>Selected Date</label>
+                      <input
+                        type="text"
+                        value={modalDate ? new Date(modalDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                        readOnly
+                        className="form-input"
+                        style={{ background: 'var(--bg-primary)', cursor: 'not-allowed' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => {
+                          setClickedDate(null);
+                          setModalDate('');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn-primary"
+                        onClick={handleAddWeekOff}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginTop: '16px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <div style={{ width: '12px', height: '12px', background: '#8b5cf6', borderRadius: '2px' }}></div>
@@ -492,6 +570,329 @@ const WeekOffs = () => {
           </div>
         </div>
       )}
+
+      {/* Add Week Off Modal (HR role only) */}
+      {user?.role === 'HR' && showAddModal && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => {
+            setShowAddModal(false);
+            setModalDate('');
+            setModalEmployeeId('0');
+            setModalEmployeeSearch('');
+          }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px'
+          }}
+        >
+          <div 
+            className="modal-content" 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ 
+              maxWidth: '520px',
+              width: '100%',
+              background: 'var(--bg-card)',
+              borderRadius: '16px',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              overflow: 'hidden',
+              animation: 'slideUp 0.3s ease-out'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '24px 28px',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <h3 style={{ 
+                  margin: 0, 
+                  fontSize: '1.5rem', 
+                  fontWeight: '700', 
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  <FiCalendar style={{ color: 'var(--primary)' }} />
+                  Add Week Off
+                </h3>
+                <p style={{ 
+                  margin: '6px 0 0 0', 
+                  fontSize: '0.9rem', 
+                  color: 'var(--text-secondary)' 
+                }}>
+                  Select employee and date to add week off
+                </p>
+              </div>
+              <button 
+                className="modal-close" 
+                onClick={() => {
+                  setShowAddModal(false);
+                  setModalDate('');
+                  setModalEmployeeId('0');
+                  setModalEmployeeSearch('');
+                }}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'var(--bg-hover)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s',
+                  fontSize: '1.2rem'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--danger)';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'var(--bg-hover)';
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }}
+              >
+                <FiX />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '28px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {/* Employee Selection */}
+                <div className="form-group" ref={modalEmployeeDropdownRef} style={{ position: 'relative' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '10px', 
+                    fontWeight: '600',
+                    fontSize: '0.95rem',
+                    color: 'var(--text-primary)'
+                  }}>
+                    All Employees <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={
+                        showModalEmployeeDropdown 
+                          ? modalEmployeeSearch 
+                          : (modalEmployeeId === '0' 
+                              ? 'All' 
+                              : employees.find(e => e.empid === modalEmployeeId)?.name || '')
+                      }
+                      onChange={(e) => {
+                        const searchValue = e.target.value;
+                        setModalEmployeeSearch(searchValue);
+                        setShowModalEmployeeDropdown(true);
+                      }}
+                    onFocus={(e) => {
+                      setShowModalEmployeeDropdown(true);
+                      setModalEmployeeSearch('');
+                      e.target.style.borderColor = 'var(--primary)';
+                      e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = 'var(--border-color)';
+                      e.target.style.boxShadow = 'none';
+                      setTimeout(() => {
+                        if (!modalEmployeeDropdownRef.current?.contains(document.activeElement)) {
+                          setShowModalEmployeeDropdown(false);
+                          setModalEmployeeSearch('');
+                        }
+                      }, 200);
+                    }}
+                    placeholder="Search employee or select 'All'..."
+                    className="form-input"
+                    style={{ 
+                      width: '100%', 
+                      padding: '12px 16px 12px 44px',
+                      fontSize: '0.95rem',
+                      border: '2px solid var(--border-color)',
+                      borderRadius: '10px',
+                      background: 'var(--bg-primary)',
+                      transition: 'all 0.2s'
+                    }}
+                    />
+                    <FiSearch style={{ 
+                      position: 'absolute', 
+                      left: '16px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)', 
+                      color: 'var(--text-secondary)', 
+                      pointerEvents: 'none',
+                      fontSize: '18px'
+                    }} />
+                  </div>
+                  {showModalEmployeeDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      left: 0,
+                      right: 0,
+                      background: 'var(--bg-card)',
+                      border: '2px solid var(--border-color)',
+                      borderRadius: '12px',
+                      maxHeight: '320px',
+                      overflowY: 'auto',
+                      zIndex: 1000,
+                      boxShadow: '0 12px 32px rgba(0, 0, 0, 0.15)',
+                      marginTop: '4px'
+                    }}>
+                      <div
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                        }}
+                        onClick={() => {
+                          setModalEmployeeId('0');
+                          setModalEmployeeSearch('');
+                          setShowModalEmployeeDropdown(false);
+                        }}
+                        style={{
+                          padding: '14px 18px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid var(--border-color)',
+                          background: modalEmployeeId === '0' ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                          fontWeight: modalEmployeeId === '0' ? 600 : 400,
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (modalEmployeeId !== '0') e.currentTarget.style.background = 'var(--bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (modalEmployeeId !== '0') e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>All</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>All employees</div>
+                      </div>
+                      {employees
+                        .filter(emp => {
+                          if (!modalEmployeeSearch) return true;
+                          const searchTerm = modalEmployeeSearch.toLowerCase();
+                          return emp.name.toLowerCase().includes(searchTerm) || 
+                                 emp.empid.toLowerCase().includes(searchTerm) ||
+                                 (emp.email && emp.email.toLowerCase().includes(searchTerm));
+                        })
+                        .map((emp) => (
+                          <div
+                            key={emp.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                            }}
+                            onClick={() => {
+                              setModalEmployeeId(emp.empid);
+                              setModalEmployeeSearch('');
+                              setShowModalEmployeeDropdown(false);
+                            }}
+                            style={{
+                              padding: '14px 18px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--border-color)',
+                              background: modalEmployeeId === emp.empid ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                              fontWeight: modalEmployeeId === emp.empid ? 600 : 400,
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (modalEmployeeId !== emp.empid) e.currentTarget.style.background = 'var(--bg-hover)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (modalEmployeeId !== emp.empid) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>{emp.name}</div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                              {emp.empid} {emp.email ? `• ${emp.email}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      {employees.filter(emp => {
+                        if (!modalEmployeeSearch) return false;
+                        const searchTerm = modalEmployeeSearch.toLowerCase();
+                        return emp.name.toLowerCase().includes(searchTerm) || 
+                               emp.empid.toLowerCase().includes(searchTerm) ||
+                               (emp.email && emp.email.toLowerCase().includes(searchTerm));
+                      }).length === 0 && modalEmployeeSearch && (
+                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          No employees found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Date Selection */}
+                <div className="form-group">
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '10px', 
+                    fontWeight: '600',
+                    fontSize: '0.95rem',
+                    color: 'var(--text-primary)'
+                  }}>
+                    Selected Date <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <DatePicker
+                    value={modalDate}
+                    onChange={(date) => {
+                      setModalDate(date);
+                    }}
+                    placeholder="Select date"
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+
+                {/* Info Message */}
+                <div style={{
+                  padding: '14px 16px',
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  fontSize: '0.9rem',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <FiCalendar style={{ color: 'var(--primary)', fontSize: '18px', flexShrink: 0 }} />
+                  <span>Week off will be automatically added once both fields are selected.</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };

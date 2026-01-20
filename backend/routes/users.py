@@ -22,7 +22,8 @@ def get_contacts(
     current_user: User = Depends(get_current_user)
 ):
     """Get contact details - accessible to all authenticated users"""
-    users = db.query(User).filter(User.is_active == True).order_by(User.name).all()
+    # Limit to 500 users for performance
+    users = db.query(User).filter(User.is_active == True).order_by(User.name).limit(500).all()
     return users
 
 @router.get("/", response_model=List[UserResponse])
@@ -50,7 +51,8 @@ def get_users(
             (User.report_to_id == current_user.empid) | (User.id == current_user.id)
         )
     
-    return query.order_by(User.created_at.desc()).all()
+    # Limit to 500 users for performance
+    return query.order_by(User.created_at.desc()).limit(500).all()
 
 @router.get("/employees", response_model=List[UserResponse])
 def get_employees(
@@ -65,7 +67,8 @@ def get_employees(
     elif current_user.role == "Employee":
         return [current_user]
     
-    return query.order_by(User.name).all()
+    # Limit employees query to 500 for performance
+    return query.order_by(User.name).limit(500).all()
 
 @router.get("/managers", response_model=List[UserResponse])
 def get_managers(
@@ -106,25 +109,29 @@ def get_hierarchy(
             manager_chain = []
             current = current_user
             visited = set()
-            while current and current.report_to_id and current.report_to_id not in visited:
+            # Limit manager chain depth to prevent infinite loops and improve performance
+            max_depth = 10
+            depth = 0
+            while current and current.report_to_id and current.report_to_id not in visited and depth < max_depth:
                 visited.add(current.report_to_id)
                 manager = db.query(User).filter(User.empid == current.report_to_id).first()
                 if manager:
                     manager_chain.append(manager.empid)
                     current = manager
+                    depth += 1
                 else:
                     break
             
             # Include root, manager chain, and employees under same manager
             empids_to_show = ['101'] + manager_chain + [current_user.empid]
             if current_user.report_to_id:
-                # Get colleagues (same manager)
+                # Get colleagues (same manager) - limit to 200 for performance
                 colleagues = db.query(User).filter(
                     and_(
                         User.report_to_id == current_user.report_to_id,
                         User.is_active == True
                     )
-                ).all()
+                ).limit(200).all()
                 empids_to_show.extend([c.empid for c in colleagues if c.empid])
             
             # Remove duplicates, filter out None/empty values, and ensure all are strings
@@ -137,7 +144,8 @@ def get_hierarchy(
                 return []
         # Admin and HR can see all
         
-        return query.order_by(User.name).all()
+        # Limit to 500 users for hierarchy display
+        return query.order_by(User.name).limit(500).all()
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { 
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiMail, 
   FiPhone, FiUser, FiEye, FiGrid, FiList,
-  FiChevronLeft, FiChevronRight, FiUpload, FiX, FiImage
+  FiChevronLeft, FiChevronRight, FiUpload, FiX, FiImage,
+  FiBriefcase, FiMapPin, FiCalendar, FiHash,
+  FiBell, FiCheckCircle
 } from 'react-icons/fi';
 import api, { usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +16,7 @@ import './Users.css';
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [managers, setManagers] = useState([]);
+  const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -23,7 +26,7 @@ const Users = () => {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('card'); // 'card' or 'grid'
   const [currentPage, setCurrentPage] = useState(1);
-  const recordsPerPage = 28;
+  const recordsPerPage = 48;
   const { isAdmin, isHR, user } = useAuth();
   const canManageUsers = isAdmin || isHR;
   const [companies, setCompanies] = useState([]);
@@ -50,6 +53,7 @@ const Users = () => {
     branch_id: '',
     department_id: ''
   });
+  const [empidValidation, setEmpidValidation] = useState({ exists: false, name: '' });
 
   const filteredBranches = formData.company_id
     ? branches.filter((b) => b.company_id === Number(formData.company_id))
@@ -70,12 +74,24 @@ const Users = () => {
   const fetchData = async () => {
     try {
       const params = filter !== 'all' ? { role: filter } : {};
-      const [usersRes, managersRes] = await Promise.all([
+      const promises = [
         usersAPI.getAll(params),
         usersAPI.getManagers()
-      ]);
-      setUsers(usersRes.data);
-      setManagers(managersRes.data);
+      ];
+      
+      // Fetch admins if HR is logged in
+      if (isHR) {
+        promises.push(usersAPI.getAll({ role: 'Admin' }));
+      }
+      
+      const results = await Promise.all(promises);
+      setUsers(results[0].data);
+      setManagers(results[1].data);
+      if (isHR && results[2]) {
+        setAdmins(results[2].data || []);
+      } else {
+        setAdmins([]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load users');
@@ -117,13 +133,84 @@ const Users = () => {
     });
   };
 
+  const validateForm = () => {
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      toast.error('Please enter a valid email address');
+      return false;
+    }
+
+    // Validate phone (if provided, must be 10 digits)
+    if (formData.phone && formData.phone.trim() !== '') {
+      const phoneRegex = /^\d{10}$/;
+      if (!phoneRegex.test(formData.phone.replace(/\D/g, ''))) {
+        toast.error('Phone number must be exactly 10 digits');
+        return false;
+      }
+    }
+
+    // Validate name (only letters, max 40 characters)
+    if (!formData.name || formData.name.trim() === '') {
+      toast.error('Full Name is required');
+      return false;
+    }
+    
+    // Check if name contains only letters and spaces
+    const nameRegex = /^[A-Za-z\s]+$/;
+    if (!nameRegex.test(formData.name.trim())) {
+      toast.error('Full Name must contain only letters and spaces');
+      return false;
+    }
+    
+    if (formData.name.length > 40) {
+      toast.error('Full Name must be 40 characters or less');
+      return false;
+    }
+
+    // Validate designation (max 25 characters if provided)
+    if (formData.designation && formData.designation.length > 25) {
+      toast.error('Designation must be 25 characters or less');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate required fields with toast notifications
+    if (!formData.empid || formData.empid.trim() === '') {
+      toast.error('Employee ID is required');
+      return;
+    }
+    
+    if (!formData.username || formData.username.trim() === '') {
+      toast.error('Username is required');
+      return;
+    }
+    
+    if (!formData.email || formData.email.trim() === '') {
+      toast.error('Email is required');
+      return;
+    }
+    
+    if (!editingUser && (!formData.password || formData.password.trim() === '')) {
+      toast.error('Password is required');
+      return;
+    }
+    
+    // Validate form before submission
+    if (!validateForm()) {
+      return;
+    }
     
     try {
       const data = {
         ...formData,
         name: formData.name.toUpperCase(),
+        phone: formData.phone ? formData.phone.replace(/\D/g, '') : null,
         report_to_id: formData.report_to_id || null,
         company_id: formData.company_id ? Number(formData.company_id) : null,
         branch_id: formData.branch_id ? Number(formData.branch_id) : null,
@@ -150,6 +237,34 @@ const Users = () => {
     }
   };
 
+  const handleEmpidChange = async (e) => {
+    const empid = e.target.value;
+    
+    // Auto-populate username with empid when adding new user
+    if (!editingUser) {
+      setFormData({ ...formData, empid, username: empid });
+    } else {
+      setFormData({ ...formData, empid });
+    }
+    
+    // Only validate if not editing and empid is not empty
+    if (!editingUser && empid.trim()) {
+      try {
+        // Check if empid exists in users list
+        const existingUser = users.find(u => u.empid === empid || u.empid === `BT-${empid}`);
+        if (existingUser) {
+          setEmpidValidation({ exists: true, name: existingUser.name });
+        } else {
+          setEmpidValidation({ exists: false, name: '' });
+        }
+      } catch (error) {
+        setEmpidValidation({ exists: false, name: '' });
+      }
+    } else {
+      setEmpidValidation({ exists: false, name: '' });
+    }
+  };
+
   const handleEdit = (user) => {
     setEditingUser(user);
     setFormData({
@@ -172,6 +287,7 @@ const Users = () => {
       branch_id: user.branch_id || '',
       department_id: user.department_id || ''
     });
+    setEmpidValidation({ exists: false, name: '' });
     setShowModal(true);
   };
 
@@ -258,6 +374,7 @@ const Users = () => {
       branch_id: '',
       department_id: ''
     });
+    setEmpidValidation({ exists: false, name: '' });
   };
 
   const handleImageChange = (e) => {
@@ -644,11 +761,24 @@ const Users = () => {
                 type="text"
                 className="form-input"
                 value={formData.empid}
-                onChange={(e) => setFormData({ ...formData, empid: e.target.value })}
+                onChange={handleEmpidChange}
                 placeholder="EMP001"
-                required
                 disabled={!!editingUser}
+                style={{ color: 'var(--text-primary)' }}
               />
+              {!editingUser && empidValidation.exists && (
+                <div style={{ 
+                  marginTop: '6px', 
+                  fontSize: '0.85rem', 
+                  color: '#f59e0b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <FiCheckCircle size={14} />
+                  <span>This empid already assigned to <strong>{empidValidation.name}</strong></span>
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Username *</label>
@@ -658,8 +788,8 @@ const Users = () => {
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                 placeholder="username"
-                required
-                disabled={!!editingUser}
+                disabled={true}
+                style={{ color: 'var(--text-primary)', cursor: 'not-allowed' }}
               />
             </div>
           </div>
@@ -670,9 +800,16 @@ const Users = () => {
               type="text"
               className="form-input"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
-              placeholder="Enter full name"
-              required
+              onChange={(e) => {
+                const value = e.target.value;
+                // Only allow letters and spaces
+                if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                  setFormData({ ...formData, name: value.toUpperCase() });
+                }
+              }}
+              placeholder="Enter full name (letters only)"
+              maxLength={40}
+              style={{ color: 'var(--text-primary)' }}
             />
           </div>
 
@@ -685,7 +822,7 @@ const Users = () => {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="email@example.com"
-                required
+                style={{ color: 'var(--text-primary)' }}
               />
             </div>
             <div className="form-group">
@@ -694,8 +831,13 @@ const Users = () => {
                 type="text"
                 className="form-input"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="Phone number"
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setFormData({ ...formData, phone: value });
+                }}
+                placeholder="10 digits only"
+                maxLength={10}
+                style={{ color: 'var(--text-primary)' }}
               />
             </div>
           </div>
@@ -707,6 +849,7 @@ const Users = () => {
                 value={formData.dob}
                 onChange={(date) => setFormData({ ...formData, dob: date })}
                 placeholder="Select date of birth"
+                max={new Date().toISOString().split('T')[0]}
               />
             </div>
             <div className="form-group">
@@ -728,6 +871,8 @@ const Users = () => {
                 value={formData.designation}
                 onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
                 placeholder="Enter designation"
+                maxLength={25}
+                style={{ color: 'var(--text-primary)' }}
               />
             </div>
             <div className="form-group">
@@ -736,6 +881,7 @@ const Users = () => {
                 className="form-select"
                 value={formData.role}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <option value="Employee">Employee</option>
                 <option value="Manager">Manager</option>
@@ -752,10 +898,11 @@ const Users = () => {
                 className="form-select"
                 value={formData.company_id}
                 onChange={(e) => handleCompanyChange(e.target.value)}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <option value="">Select company</option>
                 {companies.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id} style={{ color: 'var(--text-primary)' }}>{c.name}</option>
                 ))}
               </select>
             </div>
@@ -766,10 +913,11 @@ const Users = () => {
                 value={formData.branch_id}
                 onChange={(e) => handleBranchChange(e.target.value)}
                 disabled={!formData.company_id}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <option value="">{formData.company_id ? 'Select branch' : 'Select company first'}</option>
                 {filteredBranches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
+                  <option key={b.id} value={b.id} style={{ color: 'var(--text-primary)' }}>{b.name}</option>
                 ))}
               </select>
             </div>
@@ -783,10 +931,11 @@ const Users = () => {
                 value={formData.department_id}
                 onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
                 disabled={!formData.branch_id}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <option value="">{formData.branch_id ? 'Select department' : 'Select branch first'}</option>
                 {filteredDepartments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id} style={{ color: 'var(--text-primary)' }}>{d.name}</option>
                 ))}
               </select>
             </div>
@@ -796,13 +945,18 @@ const Users = () => {
                 className="form-select"
                 value={formData.report_to_id}
                 onChange={(e) => setFormData({ ...formData, report_to_id: e.target.value })}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <option value="">No one</option>
                 {user && (
-                  <option key="current-user" value={user.empid}>{user.name} {user.role === 'Manager' ? '(You)' : ''}</option>
+                  <option key="current-user" value={user.empid} style={{ color: 'var(--text-primary)' }}>{user.name} {user.role === 'Manager' ? '(You)' : ''}</option>
                 )}
+                {/* Show Admins if HR is logged in */}
+                {isHR && admins.filter(a => !user || a.empid !== user.empid).map((a) => (
+                  <option key={a.id} value={a.empid} style={{ color: 'var(--text-primary)' }}>{a.name} (Admin)</option>
+                ))}
                 {managers.filter(m => !user || m.empid !== user.empid).map((m) => (
-                  <option key={m.id} value={m.empid}>{m.name}</option>
+                  <option key={m.id} value={m.empid} style={{ color: 'var(--text-primary)' }}>{m.name}</option>
                 ))}
               </select>
             </div>
@@ -816,7 +970,7 @@ const Users = () => {
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               placeholder="Password"
-              required={!editingUser}
+              style={{ color: 'var(--text-primary)' }}
             />
           </div>
 
@@ -967,84 +1121,459 @@ const Users = () => {
       {/* View Modal */}
       <Modal
         isOpen={showViewModal}
-        onClose={() => setShowViewModal(false)}
+        onClose={() => {
+          setShowViewModal(false);
+          setViewingUser(null);
+        }}
         title="User Details"
+        size="full"
       >
-        {viewingUser && (
-          <div className="user-view">
-            <div className="user-view-header">
-              <div className="avatar avatar-lg">
+        {viewingUser ? (
+          <div className="user-view" style={{ maxHeight: '80vh', overflowY: 'auto', paddingRight: '4px' }}>
+            {/* Header Section */}
+            <div className="user-view-header" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '24px',
+              marginBottom: '32px',
+              paddingBottom: '28px',
+              borderBottom: '2px solid var(--border-color)',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(14, 165, 233, 0.02) 100%)',
+              margin: '-24px -24px 32px -24px',
+              padding: '24px 24px 28px 24px',
+              borderRadius: '12px 12px 0 0'
+            }}>
+              <div className="avatar avatar-lg" style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                background: viewingUser.image_base64 ? 'transparent' : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '2rem',
+                fontWeight: 700,
+                color: 'white',
+                border: '3px solid var(--border-color)',
+                flexShrink: 0
+              }}>
                 {viewingUser.image_base64 ? (
-                  <img src={viewingUser.image_base64} alt={viewingUser.name} />
+                  <img src={viewingUser.image_base64} alt={viewingUser.name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
                 ) : (
                   viewingUser.name?.charAt(0).toUpperCase()
                 )}
               </div>
-              <div>
-                <h3>{viewingUser.name?.toUpperCase()}</h3>
-                <span className={`badge badge-${getRoleBadgeColor(viewingUser.role)}`}>
-                  {viewingUser.role}
-                </span>
-              </div>
-            </div>
-            <div className="user-view-details">
-              <div className="detail-row">
-                <span className="label">Employee ID</span>
-                <span className="value">{viewingUser.empid}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Designation</span>
-                <span className="value">{viewingUser.designation || '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Date of Joining</span>
-                <span className="value">{viewingUser.doj ? new Date(viewingUser.doj).toLocaleDateString() : '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Date of Birth</span>
-                <span className="value">{viewingUser.dob ? new Date(viewingUser.dob).toLocaleDateString() : '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Company</span>
-                <span className="value">{viewingUser.company_name || '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Branch</span>
-                <span className="value">{viewingUser.branch_name || '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Department</span>
-                <span className="value">{viewingUser.department_name || '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Email</span>
-                <span className="value">{viewingUser.email}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Phone</span>
-                <span className="value">{viewingUser.phone || '-'}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Username</span>
-                <span className="value">{viewingUser.username}</span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Status</span>
-                <span className="value">
-                  <span className={`badge badge-${viewingUser.is_active ? 'success' : 'danger'}`}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ 
+                  marginBottom: '12px', 
+                  fontSize: '1.75rem', 
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  lineHeight: '1.2',
+                  wordBreak: 'break-word'
+                }}>
+                  {viewingUser.name?.toUpperCase()}
+                </h3>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className={`badge badge-${getRoleBadgeColor(viewingUser.role)}`} style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
+                    {viewingUser.role}
+                  </span>
+                  <span className={`badge badge-${viewingUser.is_active ? 'success' : 'danger'}`} style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
                     {viewingUser.is_active ? 'Active' : 'Inactive'}
                   </span>
-                </span>
-              </div>
-              <div className="detail-row">
-                <span className="label">Notifications</span>
-                <span className="value">
-                  {viewingUser.email_consent && <span className="badge badge-info">Email</span>}
-                  {viewingUser.sms_consent && <span className="badge badge-info">SMS</span>}
-                  {viewingUser.whatsapp_consent && <span className="badge badge-info">WhatsApp</span>}
-                </span>
+                </div>
               </div>
             </div>
+
+            {/* Details Sections */}
+            <div className="user-view-details">
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '20px'
+              }}>
+                {/* Personal Information */}
+                <div className="detail-section" style={{
+                  padding: '20px',
+                  background: 'var(--bg-hover)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <h4 style={{ 
+                    fontSize: '0.75rem', 
+                    color: 'var(--text-secondary)', 
+                    marginBottom: '16px', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '1px', 
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <FiUser size={14} />
+                    Personal Information
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiHash size={14} />
+                        Employee ID
+                      </span>
+                  <span className="value" style={{ 
+                    fontWeight: 600, 
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    fontFamily: 'monospace',
+                    background: 'var(--bg-card)',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    {viewingUser.empid}
+                  </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiBriefcase size={14} />
+                        Designation
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem'
+                      }}>
+                        {viewingUser.designation || '-'}
+                      </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiCalendar size={14} />
+                        Date of Joining
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem'
+                      }}>
+                        {viewingUser.doj ? new Date(viewingUser.doj).toLocaleDateString() : '-'}
+                      </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiCalendar size={14} />
+                        Date of Birth
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem'
+                      }}>
+                        {viewingUser.dob ? new Date(viewingUser.dob).toLocaleDateString() : '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Organization */}
+                <div className="detail-section" style={{
+                  padding: '20px',
+                  background: 'var(--bg-hover)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <h4 style={{ 
+                    fontSize: '0.75rem', 
+                    color: 'var(--text-secondary)', 
+                    marginBottom: '16px', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '1px', 
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <FiBriefcase size={14} />
+                    Organization
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiBriefcase size={14} />
+                        Company
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem',
+                        textAlign: 'right',
+                        maxWidth: '60%',
+                        wordBreak: 'break-word'
+                      }}>
+                        {viewingUser.company_name || '-'}
+                      </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiMapPin size={14} />
+                        Branch
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem',
+                        textAlign: 'right',
+                        maxWidth: '60%',
+                        wordBreak: 'break-word'
+                      }}>
+                        {viewingUser.branch_name || '-'}
+                      </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiBriefcase size={14} />
+                        Department
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem',
+                        textAlign: 'right',
+                        maxWidth: '60%',
+                        wordBreak: 'break-word'
+                      }}>
+                        {viewingUser.department_name || '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div className="detail-section" style={{
+                  padding: '20px',
+                  background: 'var(--bg-hover)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <h4 style={{ 
+                    fontSize: '0.75rem', 
+                    color: 'var(--text-secondary)', 
+                    marginBottom: '16px', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '1px', 
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <FiMail size={14} />
+                    Contact Information
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiMail size={14} />
+                        Email
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem',
+                        textAlign: 'right',
+                        maxWidth: '60%',
+                        wordBreak: 'break-word'
+                      }}>
+                        {viewingUser.email}
+                      </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiPhone size={14} />
+                        Phone
+                      </span>
+                      <span className="value" style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--text-primary)',
+                        fontSize: '0.95rem'
+                      }}>
+                        {viewingUser.phone || '-'}
+                      </span>
+                    </div>
+                    <div className="detail-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <span className="label" style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <FiUser size={14} />
+                        Username
+                      </span>
+                  <span className="value" style={{ 
+                    fontWeight: 600, 
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    fontFamily: 'monospace',
+                    background: 'var(--bg-card)',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    {viewingUser.username}
+                  </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notification Preferences */}
+                <div style={{ 
+                  padding: '20px', 
+                  background: 'var(--bg-hover)', 
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)'
+                }}>
+                  <h4 style={{ 
+                    fontSize: '0.75rem', 
+                    color: 'var(--text-secondary)', 
+                    marginBottom: '16px', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '1px', 
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <FiBell size={14} />
+                    Notification Preferences
+                  </h4>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {viewingUser.email_consent && (
+                      <span className="badge badge-info" style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '6px', 
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500
+                      }}>
+                        <FiCheckCircle size={14} />
+                        Email
+                      </span>
+                    )}
+                    {viewingUser.sms_consent && (
+                      <span className="badge badge-info" style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '6px', 
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500
+                      }}>
+                        <FiCheckCircle size={14} />
+                        SMS
+                      </span>
+                    )}
+                    {viewingUser.whatsapp_consent && (
+                      <span className="badge badge-info" style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '6px', 
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500
+                      }}>
+                        <FiCheckCircle size={14} />
+                        WhatsApp
+                      </span>
+                    )}
+                    {!viewingUser.email_consent && !viewingUser.sms_consent && !viewingUser.whatsapp_consent && (
+                      <span style={{ 
+                        color: 'var(--text-secondary)', 
+                        fontSize: '0.9rem', 
+                        fontStyle: 'italic',
+                        padding: '8px 14px',
+                        background: 'var(--bg-card)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)'
+                      }}>
+                        No notifications enabled
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+            <p>Loading user details...</p>
           </div>
         )}
       </Modal>

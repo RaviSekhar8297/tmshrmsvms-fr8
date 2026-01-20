@@ -52,6 +52,9 @@ class User(Base):
     
     __table_args__ = (
         CheckConstraint(role.in_(['Admin', 'Manager', 'Employee', 'HR', 'Front Desk']), name='check_role'),
+        Index('idx_users_role', 'role'),
+        Index('idx_users_is_active', 'is_active'),
+        Index('idx_users_report_to_id', 'report_to_id'),
     )
 
 class AuthToken(Base):
@@ -201,6 +204,12 @@ class Meeting(Base):
         super().__init__(**kwargs)
         if self.participants is None:
             self.participants = []
+    
+    __table_args__ = (
+        Index('idx_meeting_datetime', 'meeting_datetime'),
+        Index('idx_meeting_status', 'status'),
+        Index('idx_meeting_created_by', 'created_by'),
+    )
 
 class MeetingNotes(Base):
     __tablename__ = "meeting_notes"
@@ -250,6 +259,13 @@ class Issue(Base):
     resolution_notes = Column(Text)
     created_at = Column(DateTime, default=get_ist_now)
     updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
+    
+    __table_args__ = (
+        Index('idx_issues_status', 'status'),
+        Index('idx_issues_raised_by', 'raised_by'),
+        Index('idx_issues_assigned_to', 'assigned_to'),
+        Index('idx_issues_created_at', 'created_at'),
+    )
 
 class TaskTimer(Base):
     __tablename__ = "task_timers"
@@ -446,6 +462,13 @@ class Leave(Base):
     # half_to = Column(String(20), nullable=True)  # morning, evening, None
     created_at = Column(DateTime, default=get_ist_now)
     updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
+    
+    __table_args__ = (
+        Index('idx_leaves_empid', 'empid'),
+        Index('idx_leaves_status', 'status'),
+        Index('idx_leaves_applied_date', 'applied_date'),
+        Index('idx_leaves_report_to', 'report_to'),
+    )
 
 # Permissions Model
 class Permission(Base):
@@ -463,6 +486,12 @@ class Permission(Base):
     reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=get_ist_now)
     updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
+    
+    __table_args__ = (
+        Index('idx_permissions_empid', 'empid'),
+        Index('idx_permissions_status', 'status'),
+        Index('idx_permissions_applied_date', 'applied_date'),
+    )
 
 # Requests Model
 class Request(Base):
@@ -481,6 +510,12 @@ class Request(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=get_ist_now)
     updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
+    
+    __table_args__ = (
+        Index('idx_requests_empid', 'empid'),
+        Index('idx_requests_status', 'status'),
+        Index('idx_requests_applied_date', 'applied_date'),
+    )
 
 # Holidays Model
 class Holiday(Base):
@@ -527,6 +562,8 @@ class WeekOffDate(Base):
     
     __table_args__ = (
         Index('idx_employee_date', 'employee_id', 'date'),
+        Index('idx_weekoff_year', 'year'),
+        Index('idx_weekoff_month', 'month'),
     )
 
 # Company Model
@@ -825,3 +862,71 @@ class Resignation(Base):
         Index('idx_resignations_status', 'manager_status', 'hr_status', 'hod_status'),
     )
 
+# Stationery Models
+class StationeryItem(Base):
+    __tablename__ = "stationery_items"
+    
+    item_id = Column(Integer, primary_key=True, index=True)
+    item_name = Column(String(100), nullable=False)
+    available_quantity = Column(Integer, nullable=False, default=0)
+    description = Column(Text, nullable=True)
+    
+    __table_args__ = (
+        CheckConstraint('available_quantity >= 0', name='check_available_quantity'),
+    )
+
+class StockTransaction(Base):
+    __tablename__ = "stock_transactions"
+    
+    transaction_id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey('stationery_items.item_id'), nullable=False)
+    quantity_change = Column(Integer, nullable=False)  # positive = ADD, negative = ISSUE
+    transaction_type = Column(String(20), nullable=False)  # 'ADD' or 'ISSUE'
+    transaction_time = Column(DateTime, default=get_ist_now)
+    remarks = Column(Text, nullable=True)
+    
+    __table_args__ = (
+        CheckConstraint("transaction_type IN ('ADD', 'ISSUE')", name='check_transaction_type'),
+    )
+
+class ItemIssue(Base):
+    __tablename__ = "item_issues"
+    
+    issue_id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey('stationery_items.item_id'), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    issued_by_name = Column(String(100), default='FrontOffice')
+    issued_to_empid = Column(String(50), ForeignKey('users.empid'), nullable=False)
+    issue_date = Column(DateTime, default=get_ist_now)
+    
+    __table_args__ = (
+        CheckConstraint('quantity > 0', name='check_issue_quantity'),
+        Index('idx_item_issues_empid', 'issued_to_empid'),
+        Index('idx_item_issues_item_id', 'item_id'),
+    )
+
+class Event(Base):
+    __tablename__ = "events"
+    
+    event_id = Column(Integer, primary_key=True, index=True)
+    event_name = Column(String(150), nullable=False)
+    event_date = Column(Date, nullable=False)
+    total_quantity = Column(Integer, nullable=False, default=0)
+    
+    __table_args__ = (
+        CheckConstraint('total_quantity >= 0', name='check_total_quantity'),
+    )
+
+class EventItem(Base):
+    __tablename__ = "event_items"
+    
+    event_item_id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey('events.event_id', ondelete='CASCADE'), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    employees = Column(JSONB, nullable=True)  # Array of employee objects
+    clients = Column(JSONB, nullable=True)  # Array of client objects
+    
+    __table_args__ = (
+        CheckConstraint('quantity > 0', name='check_event_item_quantity'),
+        Index('idx_event_items_event_id', 'event_id'),
+    )

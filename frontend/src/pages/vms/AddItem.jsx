@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import { visitorsAPI, usersAPI } from '../../services/api';
+import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiCamera, FiX, FiUser, FiMail, FiPhone, FiClock, FiSearch } from 'react-icons/fi';
+import { FiCamera, FiX, FiUser, FiMail, FiPhone, FiClock, FiSearch, FiGrid, FiList } from 'react-icons/fi';
 import './VMS.css';
 import '../Users.css';
 
@@ -12,16 +13,18 @@ const AddItem = () => {
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [visitors, setVisitors] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'table'
   // Set default tab based on route and role
   // Front Desk and Employee roles have different defaults
   const [activeTab, setActiveTab] = useState(() => {
     if (user?.role === 'Employee') {
-      return 'list';
+      return 'dashboard';
     } else if (user?.role === 'Front Desk') {
       // Front Desk always starts with 'add' tab
       return location.pathname.includes('/vms/list') ? 'list' : 'add';
     } else {
-      return location.pathname.includes('/vms/list') ? 'list' : 'add';
+      return location.pathname.includes('/vms/list') ? 'list' : 'dashboard';
     }
   });
   
@@ -38,6 +41,9 @@ const AddItem = () => {
   const [capturedImage, setCapturedImage] = useState(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState(null);
+  const addressInputRef = useRef(null);
+  const autocompleteRef = useRef(null);
   
   const [formData, setFormData] = useState({
     fullname: '',
@@ -56,8 +62,86 @@ const AddItem = () => {
     }
     if (activeTab === 'add') {
       fetchUsers();
+      fetchGoogleMapsApiKey();
+    }
+    if (activeTab === 'dashboard') {
+      fetchDashboardData();
     }
   }, [activeTab]);
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await visitorsAPI.getDashboard();
+      setDashboardData(response.data);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    }
+  };
+
+  // Initialize Google Maps Autocomplete when name is entered
+  useEffect(() => {
+    // Clean up autocomplete if name is cleared
+    if (!formData.fullname && autocompleteRef.current) {
+      if (window.google?.maps?.event) {
+        window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+      }
+      autocompleteRef.current = null;
+    }
+    
+    // Initialize autocomplete when name is entered
+    if (formData.fullname && googleMapsApiKey && addressInputRef.current && !autocompleteRef.current) {
+      // Load Google Maps script if not already loaded
+      if (!window.google || !window.google.maps || !window.google.maps.places) {
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => {
+          initializeAutocomplete();
+        };
+        document.head.appendChild(script);
+      } else {
+        initializeAutocomplete();
+      }
+    }
+    
+    return () => {
+      if (autocompleteRef.current) {
+        if (window.google?.maps?.event) {
+          window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+        }
+        autocompleteRef.current = null;
+      }
+    };
+  }, [formData.fullname, googleMapsApiKey]);
+
+  const initializeAutocomplete = () => {
+    if (addressInputRef.current && window.google && window.google.maps && window.google.maps.places) {
+      autocompleteRef.current = new window.google.maps.places.Autocomplete(addressInputRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: 'in' }
+      });
+      
+      autocompleteRef.current.addListener('place_changed', () => {
+        const place = autocompleteRef.current.getPlace();
+        if (place.formatted_address) {
+          setFormData({ ...formData, address: place.formatted_address });
+        }
+      });
+    }
+  };
+
+  const fetchGoogleMapsApiKey = async () => {
+    try {
+      const response = await api.get('/config/google-maps-key');
+      const apiKey = response.data?.api_key;
+      if (apiKey && apiKey.trim() !== '') {
+        setGoogleMapsApiKey(apiKey);
+      }
+    } catch (error) {
+      console.error('Error fetching Google Maps API key:', error);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -126,6 +210,9 @@ const AddItem = () => {
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
       const ctx = canvas.getContext('2d');
+      // Flip the image back to normal when capturing (mirror the canvas context)
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(videoRef.current, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedImage(imageData);
@@ -150,10 +237,27 @@ const AddItem = () => {
     setCapturedImage(null);
   };
 
+  const validatePhone = (phone) => {
+    if (!phone) return true; // Phone is optional
+    const cleaned = phone.replace(/\D/g, ''); // Remove non-digits
+    if (cleaned.length !== 10) return false;
+    const firstDigit = cleaned[0];
+    return ['6', '7', '8', '9'].includes(firstDigit);
+  };
+
+  const handlePhoneChange = (e) => {
+    const value = e.target.value;
+    // Only allow digits
+    const digitsOnly = value.replace(/\D/g, '');
+    // Limit to 10 digits
+    const limited = digitsOnly.slice(0, 10);
+    setFormData({ ...formData, phone: limited });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate required fields
+    // Validate required fields with toast
     if (!formData.fullname) {
       toast.error('Full Name is required', { position: 'top-center' });
       return;
@@ -164,6 +268,12 @@ const AddItem = () => {
     }
     if (!formData.selfie) {
       toast.error('Selfie is required', { position: 'top-center' });
+      return;
+    }
+    
+    // Validate phone if provided
+    if (formData.phone && !validatePhone(formData.phone)) {
+      toast.error('Phone must be exactly 10 digits starting with 6, 7, 8, or 9', { position: 'top-center' });
       return;
     }
     
@@ -183,6 +293,11 @@ const AddItem = () => {
       });
       setCapturedImage(null);
       setSearchQuery('');
+      // Reset autocomplete
+      if (autocompleteRef.current) {
+        window.google?.maps?.event?.clearInstanceListeners?.(autocompleteRef.current);
+        autocompleteRef.current = null;
+      }
       setActiveTab('list');
       fetchVisitors();
     } catch (error) {
@@ -235,9 +350,20 @@ const AddItem = () => {
         <h1>Visitor Management!</h1>
       </div>
 
-      {/* Tabs - Like Users page - Hide Add Visitor tab for Employee role */}
-      {(user?.role !== 'Employee') && (
-        <div className="filter-tabs" style={{ marginBottom: '24px' }}>
+      {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee), then Visitors List */}
+      <div className="filter-tabs" style={{ marginBottom: '24px' }}>
+        <button
+          type="button"
+          className={`filter-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setActiveTab('dashboard');
+          }}
+        >
+          Dashboard
+        </button>
+        {(user?.role !== 'Employee') && (
           <button
             type="button"
             className={`filter-tab ${activeTab === 'add' ? 'active' : ''}`}
@@ -250,20 +376,20 @@ const AddItem = () => {
           >
             Add Visitor
           </button>
-          <button
-            type="button"
-            className={`filter-tab ${activeTab === 'list' ? 'active' : ''}`}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log('Switching to list tab');
-              setActiveTab('list');
-            }}
-          >
-            Visitors List
-          </button>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          className={`filter-tab ${activeTab === 'list' ? 'active' : ''}`}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Switching to list tab');
+            setActiveTab('list');
+          }}
+        >
+          Visitors List
+        </button>
+      </div>
 
       {/* Add Visitor Tab */}
       {activeTab === 'add' && (
@@ -277,10 +403,8 @@ const AddItem = () => {
                   name="fullname"
                   value={formData.fullname}
                   onChange={(e) => setFormData({ ...formData, fullname: e.target.value })}
-                  required
                   className="form-input"
                   placeholder="Enter full name"
-                  autoComplete="off"
                 />
               </div>
               <div className="form-group">
@@ -290,7 +414,6 @@ const AddItem = () => {
                   value={formData.purpose}
                   onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                   className="form-input"
-                  required
                 >
                   <option value="">Select Purpose</option>
                   <option value="Business">Business</option>
@@ -313,7 +436,6 @@ const AddItem = () => {
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="form-input"
                   placeholder="Enter email"
-                  autoComplete="off"
                 />
               </div>
               <div className="form-group">
@@ -322,10 +444,10 @@ const AddItem = () => {
                   type="tel"
                   name="phone"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={handlePhoneChange}
                   className="form-input"
-                  placeholder="Enter phone number"
-                  autoComplete="off"
+                  placeholder="Enter 10 digit phone (6-9)"
+                  maxLength="10"
                 />
               </div>
             </div>
@@ -333,14 +455,19 @@ const AddItem = () => {
             <div className="form-row">
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Address</label>
-                <textarea
+                <input
+                  ref={addressInputRef}
+                  type="text"
                   name="address"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  rows="3"
                   className="form-input"
-                  placeholder="Enter address"
-                  autoComplete="off"
+                  placeholder={formData.fullname ? "Start typing address for auto-complete" : "Enter name first to enable address auto-complete"}
+                  disabled={!formData.fullname}
+                  style={{
+                    opacity: formData.fullname ? 1 : 0.6,
+                    cursor: formData.fullname ? 'text' : 'not-allowed'
+                  }}
                 />
               </div>
             </div>
@@ -443,18 +570,60 @@ const AddItem = () => {
                 <label className="form-label">Selfie *</label>
                 <div className="image-upload-container">
                   {capturedImage ? (
-                    <div className="image-preview-wrapper">
-                      <img src={capturedImage} alt="Selfie preview" className="image-preview" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCapturedImage(null);
-                          setFormData({ ...formData, selfie: '' });
-                        }}
-                        className="remove-image-btn"
-                      >
-                        <FiX /> Remove
-                      </button>
+                    <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto' }}>
+                      <div style={{
+                        position: 'relative',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                        border: '2px solid var(--primary)'
+                      }}>
+                        <img 
+                          src={capturedImage} 
+                          alt="Selfie preview" 
+                          style={{
+                            width: '100%',
+                            height: 'auto',
+                            display: 'block'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCapturedImage(null);
+                            setFormData({ ...formData, selfie: '' });
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '12px',
+                            background: 'rgba(239, 68, 68, 0.9)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '10px 16px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            fontSize: '0.9rem',
+                            fontWeight: 600,
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                            transition: 'all 0.2s',
+                            zIndex: 10
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'rgba(239, 68, 68, 1)';
+                            e.target.style.transform = 'scale(1.05)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = 'rgba(239, 68, 68, 0.9)';
+                            e.target.style.transform = 'scale(1)';
+                          }}
+                        >
+                          <FiX size={18} /> Remove Image
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div style={{ position: 'relative', width: '100%' }}>
@@ -475,7 +644,8 @@ const AddItem = () => {
                             style={{ 
                               width: '100%', 
                               display: 'block',
-                              background: '#000'
+                              background: '#000',
+                              transform: 'scaleX(-1)' // Mirror the video (left to right, right to left)
                             }}
                           />
                         </div>
@@ -544,17 +714,209 @@ const AddItem = () => {
         </div>
       )}
 
+      {/* Dashboard Tab */}
+      {activeTab === 'dashboard' && (
+        <div>
+          {dashboardData ? (
+            <div>
+              {/* Count Cards */}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                gap: '20px', 
+                marginBottom: '32px' 
+              }}>
+                <div className="card" style={{ textAlign: 'center', padding: '24px' }}>
+                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '8px' }}>
+                    {dashboardData.counts?.today || 0}
+                  </div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Today</div>
+                </div>
+                <div className="card" style={{ textAlign: 'center', padding: '24px' }}>
+                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '8px' }}>
+                    {dashboardData.counts?.this_week || 0}
+                  </div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: '500' }}>This Week</div>
+                </div>
+                <div className="card" style={{ textAlign: 'center', padding: '24px' }}>
+                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '8px' }}>
+                    {dashboardData.counts?.this_month || 0}
+                  </div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: '500' }}>This Month</div>
+                </div>
+                <div className="card" style={{ textAlign: 'center', padding: '24px' }}>
+                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '8px' }}>
+                    {dashboardData.counts?.this_year || 0}
+                  </div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: '500' }}>This Year</div>
+                </div>
+              </div>
+
+              {/* Purpose Lists */}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+                gap: '24px' 
+              }}>
+                {/* Today Purpose List */}
+                <div className="card" style={{ padding: '24px' }}>
+                  <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: '600' }}>Today - By Purpose</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {['Business', 'Vendor', 'Client', 'Interview', 'Family', 'Friend'].map((purpose) => {
+                      const count = dashboardData.purpose_counts?.today?.[purpose] || 0;
+                      return (
+                        <div key={purpose} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          padding: '12px',
+                          background: 'var(--bg-hover)',
+                          borderRadius: '8px'
+                        }}>
+                          <span style={{ fontWeight: '500' }}>{purpose}</span>
+                          <span style={{ 
+                            fontSize: '1.2rem', 
+                            fontWeight: '700', 
+                            color: 'var(--primary)' 
+                          }}>{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* This Week Purpose List */}
+                <div className="card" style={{ padding: '24px' }}>
+                  <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: '600' }}>This Week - By Purpose</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {['Business', 'Vendor', 'Client', 'Interview', 'Family', 'Friend'].map((purpose) => {
+                      const count = dashboardData.purpose_counts?.this_week?.[purpose] || 0;
+                      return (
+                        <div key={purpose} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          padding: '12px',
+                          background: 'var(--bg-hover)',
+                          borderRadius: '8px'
+                        }}>
+                          <span style={{ fontWeight: '500' }}>{purpose}</span>
+                          <span style={{ 
+                            fontSize: '1.2rem', 
+                            fontWeight: '700', 
+                            color: 'var(--primary)' 
+                          }}>{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* This Month Purpose List */}
+                <div className="card" style={{ padding: '24px' }}>
+                  <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: '600' }}>This Month - By Purpose</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {['Business', 'Vendor', 'Client', 'Interview', 'Family', 'Friend'].map((purpose) => {
+                      const count = dashboardData.purpose_counts?.this_month?.[purpose] || 0;
+                      return (
+                        <div key={purpose} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          padding: '12px',
+                          background: 'var(--bg-hover)',
+                          borderRadius: '8px'
+                        }}>
+                          <span style={{ fontWeight: '500' }}>{purpose}</span>
+                          <span style={{ 
+                            fontSize: '1.2rem', 
+                            fontWeight: '700', 
+                            color: 'var(--primary)' 
+                          }}>{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* This Year Purpose List */}
+                <div className="card" style={{ padding: '24px' }}>
+                  <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: '600' }}>This Year - By Purpose</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {['Business', 'Vendor', 'Client', 'Interview', 'Family', 'Friend'].map((purpose) => {
+                      const count = dashboardData.purpose_counts?.this_year?.[purpose] || 0;
+                      return (
+                        <div key={purpose} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          padding: '12px',
+                          background: 'var(--bg-hover)',
+                          borderRadius: '8px'
+                        }}>
+                          <span style={{ fontWeight: '500' }}>{purpose}</span>
+                          <span style={{ 
+                            fontSize: '1.2rem', 
+                            fontWeight: '700', 
+                            color: 'var(--primary)' 
+                          }}>{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="loading-container">
+              <div className="spinner"></div>
+              <p>Loading dashboard...</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Visitors List Tab - Card View like Users */}
       {activeTab === 'list' && (
         <div>
+          {/* View Mode Toggle */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '24px' 
+          }}>
+            <h2 style={{ margin: 0 }}>Visitors List</h2>
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="Grid view"
+              >
+                <FiGrid />
+              </button>
+              <button
+                type="button"
+                className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setViewMode('table')}
+                title="Table view"
+              >
+                <FiList />
+              </button>
+            </div>
+          </div>
+
           {visitors.length === 0 ? (
             <div className="empty-state" style={{ textAlign: 'center', padding: '60px 20px' }}>
               <FiUser className="empty-state-icon" style={{ fontSize: '3rem', marginBottom: '16px', color: 'var(--text-secondary)' }} />
               <h3>No visitors found</h3>
             </div>
           ) : (
-            <div className="users-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-              {visitors.map((visitor) => (
+            <>
+              {viewMode === 'grid' ? (
+                <div className="users-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+                  {visitors.map((visitor) => (
                 <div 
                   key={visitor.id} 
                   className="user-card"
@@ -765,6 +1127,28 @@ const AddItem = () => {
                           </span>
                         </div>
                       )}
+                      {visitor.address && (
+                        <div 
+                          className="contact-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <FiClock size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+                          <span style={{ 
+                            flex: 1,
+                            wordBreak: 'break-word',
+                            lineHeight: '1.5'
+                          }}>
+                            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Address:</strong>
+                            {visitor.address}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div 
@@ -884,7 +1268,70 @@ const AddItem = () => {
                   )}
                 </div>
               ))}
-            </div>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Visitor</th>
+                        <th>VT ID</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Purpose</th>
+                        <th>Whom to Meet</th>
+                        <th>Check In</th>
+                        <th>Check Out</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visitors.map((visitor) => (
+                        <tr key={visitor.id}>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div className="contact-avatar contact-avatar-small">
+                                {visitor.selfie ? (
+                                  <img src={visitor.selfie} alt={visitor.fullname} />
+                                ) : (
+                                  <span>{visitor.fullname?.slice(0, 2).toUpperCase() || 'NA'}</span>
+                                )}
+                              </div>
+                              <div>
+                                <div className="contact-name">{visitor.fullname}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{visitor.vtid}</td>
+                          <td>{visitor.email || '-'}</td>
+                          <td>{visitor.phone || '-'}</td>
+                          <td>{visitor.purpose || '-'}</td>
+                          <td>{visitor.whometomeet || '-'}</td>
+                          <td>{formatDateTime(visitor.checkintime)}</td>
+                          <td>{visitor.checkouttime ? formatDateTime(visitor.checkouttime) : '-'}</td>
+                          <td>
+                            <span className={`badge ${visitor.status === 'IN' ? 'badge-success' : 'badge-danger'}`}>
+                              {visitor.status}
+                            </span>
+                          </td>
+                          <td>
+                            {visitor.status === 'IN' && (
+                              <button 
+                                className="btn btn-primary btn-sm" 
+                                onClick={() => handleCheckout(visitor.id)}
+                              >
+                                Check Out
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -892,19 +1339,19 @@ const AddItem = () => {
       {/* Camera Modal - Only show when modal is explicitly opened */}
       {showCameraModal && (
         <div className="modal-overlay" onClick={handleCloseCamera}>
-          <div className="modal-content camera-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div className="modal-content camera-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3>Capture Selfie - Live Webcam</h3>
               <button className="modal-close" onClick={handleCloseCamera}>
                 <FiX />
               </button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body" style={{ padding: '20px' }}>
               {!capturedImage ? (
                 <>
                   <div style={{
                     width: '100%',
-                    maxWidth: '500px',
+                    maxWidth: '450px',
                     margin: '0 auto',
                     borderRadius: '12px',
                     overflow: 'hidden',
@@ -920,7 +1367,9 @@ const AddItem = () => {
                       style={{ 
                         width: '100%', 
                         display: 'block',
-                        maxHeight: '400px'
+                        maxHeight: '280px',
+                        objectFit: 'cover',
+                        transform: 'scaleX(-1)' // Mirror the video (left to right, right to left)
                       }}
                     />
                     <div style={{
@@ -937,24 +1386,24 @@ const AddItem = () => {
                       🔴 LIVE
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px' }}>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '16px' }}>
                     <button 
                       className="btn-primary" 
                       onClick={captureImage}
                       style={{ 
-                        padding: '12px 24px',
-                        fontSize: '1rem',
+                        padding: '10px 20px',
+                        fontSize: '0.95rem',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px'
                       }}
                     >
-                      <FiCamera size={20} /> Capture Photo
+                      <FiCamera size={18} /> Capture Photo
                     </button>
                     <button 
                       className="btn-secondary" 
                       onClick={handleCloseCamera}
-                      style={{ padding: '12px 24px' }}
+                      style={{ padding: '10px 20px', fontSize: '0.95rem' }}
                     >
                       Cancel
                     </button>
@@ -964,7 +1413,7 @@ const AddItem = () => {
                 <>
                   <div style={{
                     width: '100%',
-                    maxWidth: '500px',
+                    maxWidth: '450px',
                     margin: '0 auto',
                     borderRadius: '12px',
                     overflow: 'hidden',
@@ -976,19 +1425,21 @@ const AddItem = () => {
                       alt="Captured" 
                       style={{ 
                         width: '100%', 
-                        display: 'block'
+                        display: 'block',
+                        maxHeight: '280px',
+                        objectFit: 'cover'
                       }}
                     />
                   </div>
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px' }}>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '16px' }}>
                     <button 
                       className="btn-primary" 
                       onClick={() => {
                         setShowCameraModal(false);
                       }}
                       style={{ 
-                        padding: '12px 24px',
-                        fontSize: '1rem'
+                        padding: '10px 20px',
+                        fontSize: '0.95rem'
                       }}
                     >
                       Use This Photo
@@ -999,14 +1450,14 @@ const AddItem = () => {
                         setCapturedImage(null);
                         setTimeout(() => startCamera(), 100);
                       }}
-                      style={{ padding: '12px 24px' }}
+                      style={{ padding: '10px 20px', fontSize: '0.95rem' }}
                     >
                       Retake
                     </button>
                     <button 
                       className="btn-secondary" 
                       onClick={handleCloseCamera}
-                      style={{ padding: '12px 24px' }}
+                      style={{ padding: '10px 20px', fontSize: '0.95rem' }}
                     >
                       Cancel
                     </button>

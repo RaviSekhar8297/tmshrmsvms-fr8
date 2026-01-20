@@ -4,7 +4,7 @@ import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { 
   FiDollarSign, FiUser, FiCalendar, FiSearch, FiDownload, 
-  FiUpload, FiGrid, FiList, FiChevronLeft, FiChevronRight 
+  FiUpload, FiGrid, FiList, FiChevronLeft, FiChevronRight, FiMail
 } from 'react-icons/fi';
 import './Payroll.css';
 
@@ -193,18 +193,35 @@ const PayrollStructure = () => {
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1>SALARY STRUCTURE</h1>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+          <h1 className="page-title">SALARY STRUCTURE</h1>
+          <p className="page-subtitle">
             {user?.role === 'Employee' || user?.role === 'Manager' 
               ? `View your salary structure${filteredData.length > 0 ? ` (${filteredData.length} record${filteredData.length > 1 ? 's' : ''})` : ''}`
               : `View and manage employee salary structures (${filteredData.length} records)`
             }
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+      </div>
+
+      {/* Filters - Search, Upload/Download, View Toggle - Single Row */}
+      <div className="header-buttons" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap', width: '100%' }}>
+        {/* Search - Flex grow */}
+        <div className="search-box" style={{ flex: '1 1 220px', minWidth: '220px' }}>
+          <FiSearch className="search-box-icon" />
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Search by employee name, ID, or email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        {/* Actions - Right aligned */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
           {(user?.role === 'Admin' || user?.role === 'HR') && (
-            <label className="btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
-              <FiUpload style={{ marginRight: '8px' }} />
+            <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FiUpload />
               Upload Excel
               <input
                 type="file"
@@ -215,65 +232,28 @@ const PayrollStructure = () => {
               />
             </label>
           )}
-          <button className="btn-primary" onClick={handleDownloadExcel}>
-            <FiDownload style={{ marginRight: '8px' }} />
+          <button className="btn btn-secondary" onClick={handleDownloadExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FiDownload />
             Download Excel
           </button>
-        </div>
-      </div>
 
-      {/* Search and View Toggle */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '20px',
-        gap: '16px',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ position: 'relative', flex: '1', minWidth: '300px' }}>
-          <FiSearch style={{ 
-            position: 'absolute', 
-            left: '12px', 
-            top: '50%', 
-            transform: 'translateY(-50%)',
-            color: 'var(--text-secondary)'
-          }} />
-          <input
-            type="text"
-            placeholder="Search by employee name, ID, or email..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-            }}
-            style={{
-              width: '100%',
-              padding: '12px 12px 12px 40px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              background: 'var(--bg-card)',
-              color: 'var(--text-primary)',
-              fontSize: '0.9rem'
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            className={`btn-secondary ${viewMode === 'table' ? 'active' : ''}`}
-            onClick={() => setViewMode('table')}
-            style={{ padding: '10px 16px' }}
-          >
-            <FiList style={{ marginRight: '6px' }} />
-            Table
-          </button>
-          <button
-            className={`btn-secondary ${viewMode === 'grid' ? 'active' : ''}`}
-            onClick={() => setViewMode('grid')}
-            style={{ padding: '10px 16px' }}
-          >
-            <FiGrid style={{ marginRight: '6px' }} />
-            Grid
-          </button>
+          {/* View Toggle */}
+          <div className="view-toggle">
+            <button 
+              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+              title="Table View"
+            >
+              <FiList />
+            </button>
+            <button 
+              className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Card View"
+            >
+              <FiGrid />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -289,8 +269,9 @@ const PayrollStructure = () => {
         </div>
       ) : viewMode === 'table' ? (
         <>
-          <div className="table-container">
-            <table className="data-table salary-structure-table">
+          <div className="card">
+            <div className="users-table-container">
+              <table className="users-table">
               <thead className="sticky-header">
                 <tr>
                   <th>Employee</th>
@@ -402,6 +383,7 @@ const PayrollStructure = () => {
               </tbody>
             </table>
           </div>
+          </div>
 
           {/* Pagination - Matching Users page style */}
           {totalPages > 1 && (
@@ -439,152 +421,103 @@ const PayrollStructure = () => {
         </>
       ) : (
         <>
-          <div className="structures-grid" style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', 
-            gap: '20px' 
+          <div className="users-grid" style={{ 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))'
           }}>
             {paginatedData.map((structure) => (
-              <div key={structure.id} className="structure-card">
-                <div className="structure-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div className="avatar" style={{ 
-                      width: '50px', 
-                      height: '50px', 
-                      borderRadius: '50%', 
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                      background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 600,
-                      fontSize: '1.1rem'
-                    }}>
-                      {structure.employee_image ? (
-                        <img 
-                          src={structure.employee_image} 
-                          alt={structure.employee_name || 'Employee'}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        (structure.employee_name || 'E').charAt(0).toUpperCase()
-                      )}
-                    </div>
-                    <div>
-                      <h3>{structure.employee_name || 'N/A'}</h3>
-                      {structure.employee_email && (
-                        <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          {structure.employee_email}
-                        </p>
-                      )}
-                      <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        {structure.empid || 'N/A'}
+              <div key={structure.id} className="user-card">
+                <div className="user-card-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '20px' }}>
+                  {/* Avatar */}
+                  <div className="avatar avatar-lg" style={{ flexShrink: 0 }}>
+                    {structure.employee_image ? (
+                      <img 
+                        src={structure.employee_image} 
+                        alt={structure.employee_name || 'Employee'}
+                      />
+                    ) : (
+                      (structure.employee_name || 'E').charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  
+                  {/* Name, Designation, EmpID */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ margin: 0, marginBottom: '8px' }}>{structure.employee_name?.toUpperCase() || 'N/A'}</h3>
+                    <p className="user-empid" style={{ margin: 0, marginBottom: '8px' }}>
+                      {structure.employee_designation || 'Update name'}
+                    </p>
+                    {structure.empid && (
+                      <p className="user-empid" style={{ margin: 0 }}>
+                        {structure.empid}
                       </p>
-                    </div>
+                    )}
                   </div>
                 </div>
-                <div className="structure-details">
-                  <div className="detail-row">
-                    <span>ID:</span>
-                    <span>{structure.id}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>DOJ:</span>
-                    <span>{formatDate(structure.doj)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Salary/Annum:</span>
-                    <span>{formatCurrency(structure.salary_per_annum)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Salary/Month:</span>
-                    <span>{formatCurrency(structure.salary_per_month)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Basic:</span>
-                    <span>{formatCurrency(structure.basic)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>HRA:</span>
-                    <span>{formatCurrency(structure.hra)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>CA:</span>
-                    <span>{formatCurrency(structure.ca)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>MA:</span>
-                    <span>{formatCurrency(structure.ma)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>SA:</span>
-                    <span>{formatCurrency(structure.sa)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Employee PF:</span>
-                    <span>{formatCurrency(structure.employee_pf)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Employee ESI:</span>
-                    <span>{formatCurrency(structure.employee_esi)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Professional Tax:</span>
-                    <span>{formatCurrency(structure.professional_tax)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Employer PF:</span>
-                    <span>{formatCurrency(structure.employer_pf)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Employer ESI:</span>
-                    <span>{formatCurrency(structure.employer_esi)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Variable Pay:</span>
-                    <span>{formatCurrency(structure.variable_pay)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>Retention Bonus:</span>
-                    <span>{formatCurrency(structure.retension_bonus)}</span>
-                  </div>
-                  <div className="detail-row" style={{ borderTop: '2px solid var(--border-color)', paddingTop: '12px', marginTop: '8px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '1.1rem' }}>Net Salary:</span>
-                    <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--success)' }}>
-                      {formatCurrency(structure.net_salary)}
-                    </span>
-                  </div>
-                  <div className="detail-row">
-                    <span style={{ fontWeight: 600 }}>Monthly CTC:</span>
-                    <span style={{ fontWeight: 600 }}>{formatCurrency(structure.monthly_ctc)}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span>PF Check:</span>
-                    <span>
-                      <label className="toggle-switch">
-                        <input
-                          type="checkbox"
-                          checked={structure.pf_check}
-                          onChange={() => handleTogglePF(structure.id, structure.pf_check)}
-                        />
-                        <span className="toggle-slider"></span>
-                      </label>
-                    </span>
-                  </div>
-                  <div className="detail-row">
-                    <span>ESI Check:</span>
-                    <span>
-                      <label className="toggle-switch">
-                        <input
-                          type="checkbox"
-                          checked={structure.esi_check}
-                          onChange={() => handleToggleESI(structure.id, structure.esi_check)}
-                        />
-                        <span className="toggle-slider"></span>
-                      </label>
-                    </span>
+                <div className="user-card-body">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>DOJ</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formatDate(structure.doj)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>Salary/Annum</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formatCurrency(structure.salary_per_annum)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>Salary/Month</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formatCurrency(structure.salary_per_month)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>Basic</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formatCurrency(structure.basic)}</span>
+                    </div>
+                    <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 500 }}>HRA</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{formatCurrency(structure.hra)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '12px', marginTop: '4px' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 400 }}>CA</span>
+                        <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{formatCurrency(structure.ca)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '12px', marginTop: '4px' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 400 }}>MA</span>
+                        <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{formatCurrency(structure.ma)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '12px', marginTop: '4px' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 400 }}>SA</span>
+                        <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{formatCurrency(structure.sa)}</span>
+                      </div>
+                    </div>
+                    <div style={{ borderTop: '2px solid var(--border-color)', paddingTop: '12px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Net Salary</span>
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--success)' }}>
+                          {formatCurrency(structure.net_salary)}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>PF Check</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={structure.pf_check}
+                            onChange={() => handleTogglePF(structure.id, structure.pf_check)}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>ESI Check</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={structure.esi_check}
+                            onChange={() => handleToggleESI(structure.id, structure.esi_check)}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

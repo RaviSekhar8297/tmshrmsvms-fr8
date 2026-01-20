@@ -46,7 +46,8 @@ def get_issues(
                 )
             )
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
+            # Limit team query for performance
+            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).limit(100).all()]
             team_ids.append(current_user.id)
             query = query.filter(
                 or_(
@@ -55,7 +56,8 @@ def get_issues(
                 )
             )
         
-        issues = query.order_by(Issue.created_at.desc()).all()
+        # Limit to 500 issues for performance
+        issues = query.order_by(Issue.created_at.desc()).limit(500).all()
         
         # Add delayed flag to issues for frontend
         now = get_ist_now()

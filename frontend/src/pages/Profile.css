@@ -293,6 +293,43 @@
   color: var(--text-muted);
 }
 
+/* White mode visibility fixes for form inputs, dropdowns, and text */
+[data-theme="light"] .form-input,
+[data-theme="light"] .form-select {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-input) !important;
+}
+
+[data-theme="light"] .form-select option {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .form-select:disabled {
+  background-color: var(--bg-hover) !important;
+  color: var(--text-secondary) !important;
+  opacity: 0.6;
+}
+
+[data-theme="light"] .form-input::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Profile page white mode fixes */
+[data-theme="light"] .profile-info h2 {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .info-label,
+[data-theme="light"] .info-value {
+  color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .detail-card-title,
+[data-theme="light"] .card-title {
+  color: var(--text-primary) !important;
+}
+
 /* Additional Details Section */
 .profile-details-section {
   margin-top: 32px;

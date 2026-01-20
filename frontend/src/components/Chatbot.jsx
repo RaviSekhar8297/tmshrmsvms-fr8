@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FiMessageCircle, FiX, FiSend, FiMinimize2 } from 'react-icons/fi';
+import { FiX, FiSend, FiMinimize2 } from 'react-icons/fi';
 import api from '../services/api';
+import chatbotGif from '../images/chatbotgif.gif';
 import './Chatbot.css';
 
 const Chatbot = () => {
@@ -16,6 +17,8 @@ const Chatbot = () => {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState(null); // Store pending selection data
+  const [originalQuestion, setOriginalQuestion] = useState(''); // Store original question for follow-up
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -46,12 +49,13 @@ const Chatbot = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const questionText = inputMessage.trim();
     setInputMessage('');
     setIsLoading(true);
 
     try {
       const response = await api.post('/chatbot/ask', {
-        question: userMessage.text
+        question: questionText
       });
 
       const botMessage = {
@@ -59,8 +63,117 @@ const Chatbot = () => {
         text: response.data.answer,
         sender: 'bot',
         timestamp: new Date(),
-        image: response.data.image_base64 || null  // Add image data if present
+        image: response.data.image_base64 || null,
+        selection_required: response.data.selection_required || false,
+        selection_data: response.data.selection_data || null,
+        selection_type: response.data.selection_type || null
       };
+
+      // If selection is required, store the original question and selection data
+      if (botMessage.selection_required && botMessage.selection_data) {
+        setPendingSelection({
+          question: questionText,
+          selection_data: botMessage.selection_data,
+          selection_type: botMessage.selection_type
+        });
+        setOriginalQuestion(questionText);
+      } else {
+        // Clear pending selection if not needed
+        setPendingSelection(null);
+        setOriginalQuestion('');
+      }
+
+      setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      console.error('Chatbot error:', error);
+      const errorMessage = {
+        id: Date.now() + 1,
+        text: "Sorry, I'm having trouble processing your request. Please try again later.",
+        sender: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      setPendingSelection(null);
+      setOriginalQuestion('');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSelection = async (selectedItem) => {
+    if (!pendingSelection) return;
+    
+    // Create a follow-up question with the selected empid
+    const selectedEmpid = selectedItem.empid;
+    const originalQ = pendingSelection.question.toLowerCase();
+    
+    // Extract the field being asked for from original question
+    let fieldQuery = '';
+    if (pendingSelection.selection_type === 'USER') {
+      // For user queries, reconstruct the question with empid
+      // Replace name with empid in the question
+      const words = originalQ.split(' ');
+      const fieldIndex = words.findIndex(w => w === 'of');
+      if (fieldIndex > 0 && fieldIndex < words.length - 1) {
+        const field = words[fieldIndex - 1]; // Field before "of"
+        fieldQuery = `${field} of ${selectedEmpid}`;
+      } else {
+        // Fallback: just use empid
+        fieldQuery = `${originalQ.replace(/of\s+\w+/i, `of ${selectedEmpid}`)}`;
+      }
+    } else if (pendingSelection.selection_type === 'LEAVE') {
+      // For leave queries
+      const words = originalQ.split(' ');
+      const leaveFieldIndex = words.findIndex(w => 
+        ['balance', 'total', 'used', 'casual', 'sick', 'comp', 'off', 'leave'].includes(w)
+      );
+      if (leaveFieldIndex >= 0) {
+        const leaveField = words.slice(leaveFieldIndex).join(' ');
+        fieldQuery = `${leaveField} of ${selectedEmpid}`;
+      } else {
+        fieldQuery = `leave balance of ${selectedEmpid}`;
+      }
+    }
+    
+    // Clear pending selection
+    setPendingSelection(null);
+    setOriginalQuestion('');
+    
+    // Add user message showing selection
+    const userMessage = {
+      id: Date.now(),
+      text: `Selected: ${selectedItem.name}`,
+      sender: 'user',
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+    
+    try {
+      const response = await api.post('/chatbot/ask', {
+        question: fieldQuery
+      });
+
+      const botMessage = {
+        id: Date.now() + 1,
+        text: response.data.answer,
+        sender: 'bot',
+        timestamp: new Date(),
+        image: response.data.image_base64 || null,
+        selection_required: response.data.selection_required || false,
+        selection_data: response.data.selection_data || null,
+        selection_type: response.data.selection_type || null
+      };
+
+      // If selection is required again, store it
+      if (botMessage.selection_required && botMessage.selection_data) {
+        setPendingSelection({
+          question: fieldQuery,
+          selection_data: botMessage.selection_data,
+          selection_type: botMessage.selection_type
+        });
+        setOriginalQuestion(fieldQuery);
+      }
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
@@ -109,9 +222,25 @@ const Chatbot = () => {
         onClick={handleToggle}
         aria-label="Open chatbot"
         title="Chat with TMS Assistant"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer'
+        }}
       >
-        <FiMessageCircle size={28} />
-        <span className="chatbot-badge">💬</span>
+        <img 
+          src={chatbotGif} 
+          alt="Chatbot" 
+          style={{ 
+            width: '64px', 
+            height: '64px', 
+            objectFit: 'contain',
+            display: 'block',
+            borderRadius: '50%',
+            transition: 'transform 0.3s ease'
+          }}
+        />
       </button>
     );
   }
@@ -166,6 +295,60 @@ const Chatbot = () => {
                     </div>
                   )}
                   <p>{message.text}</p>
+                  
+                  {/* Selection buttons */}
+                  {message.selection_required && message.selection_data && (
+                    <div className="chatbot-selection-buttons" style={{ 
+                      marginTop: '16px', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      gap: '8px',
+                      maxHeight: '250px',
+                      overflowY: 'auto',
+                      paddingRight: '4px'
+                    }}>
+                      {message.selection_data.slice(0, 10).map((item, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleSelection(item)}
+                          className="chatbot-selection-btn"
+                          style={{
+                            padding: '12px 18px',
+                            background: '#f8f9fa',
+                            border: '1.5px solid #e0e0e0',
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.25s ease',
+                            fontSize: '0.95rem',
+                            color: '#333',
+                            fontWeight: 500,
+                            width: '100%',
+                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                            e.target.style.color = 'white';
+                            e.target.style.borderColor = '#667eea';
+                            e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+                            e.target.style.transform = 'translateX(4px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = '#f8f9fa';
+                            e.target.style.color = '#333';
+                            e.target.style.borderColor = '#e0e0e0';
+                            e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.05)';
+                            e.target.style.transform = 'translateX(0)';
+                          }}
+                        >
+                          {item.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  
                   <span className="chatbot-message-time">
                     {formatTime(message.timestamp)}
                   </span>

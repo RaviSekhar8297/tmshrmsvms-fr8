@@ -1,169 +1,189 @@
 .attendance-cycle-page {
-  padding: 32px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.02) 0%, rgba(14, 165, 233, 0.02) 100%);
+  padding: 24px;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
 }
 
 .cycle-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
-  padding: 24px 32px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(14, 165, 233, 0.08) 100%);
-  border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  backdrop-filter: blur(10px);
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .cycle-header h1 {
-  font-size: 2.25rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, #6366f1 0%, #0ea5e9 50%, #8b5cf6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.5px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cycle-header h1 svg {
+  color: var(--primary);
 }
 
 .cycle-form-container {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(14, 165, 233, 0.05) 50%, rgba(139, 92, 246, 0.05) 100%);
-  border: 2px solid rgba(99, 102, 241, 0.25);
-  border-radius: 20px;
-  padding: 48px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(99, 102, 241, 0.08);
-  max-width: 1200px;
-  margin: 0 auto;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
+  width: 100%;
+  max-width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
 }
 
-.cycle-form-container:hover {
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 6px 20px rgba(99, 102, 241, 0.12);
-  transform: translateY(-2px);
+.cycle-shift-timings-card {
+  width: 100%;
+  padding: 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.cycle-shift-timings-card .cycle-section-title {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.cycle-shift-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
 }
 
 .cycle-form-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 28px;
-  margin-bottom: 40px;
+  gap: 20px;
+  margin-bottom: 32px;
 }
 
-@media (max-width: 1024px) {
-  .cycle-form-grid {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
+.cycle-section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cycle-section-title svg {
+  color: var(--primary);
+  font-size: 1.2rem;
 }
 
 .cycle-form-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  position: relative;
-  padding: 20px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(14, 165, 233, 0.06) 100%);
-  border-radius: 16px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  transition: all 0.3s ease;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  transition: none;
 }
 
 .cycle-form-group:hover {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(14, 165, 233, 0.12) 100%);
-  border-color: rgba(99, 102, 241, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  background: transparent;
+  border: none;
+  transform: none;
+  box-shadow: none;
 }
 
 .cycle-form-group label {
-  font-weight: 700;
+  font-weight: 500;
   color: var(--text-primary);
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .cycle-form-group label::after {
   content: '*';
   color: #ef4444;
   margin-left: 4px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .cycle-form-input {
   width: 100%;
-  padding: 14px 18px;
-  border: 2px solid rgba(99, 102, 241, 0.3);
-  border-radius: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 1rem;
-  transition: all 0.3s ease;
-  font-weight: 500;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  font-weight: 400;
 }
 
 .cycle-form-input:hover:not(:disabled) {
-  border-color: rgba(99, 102, 241, 0.5);
+  border-color: var(--primary);
   background: var(--bg-hover);
 }
 
 .cycle-form-input:focus {
   outline: none;
-  border-color: #6366f1;
+  border-color: var(--primary);
   background: var(--bg-hover);
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15), 0 4px 12px rgba(99, 102, 241, 0.1);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
 .cycle-form-input:disabled {
   background: var(--bg-hover);
   cursor: not-allowed;
-  opacity: 0.6;
-  border-color: rgba(99, 102, 241, 0.2);
+  opacity: 0.7;
+  border-color: var(--border-color);
 }
 
 .cycle-form-input-small {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
-  margin-top: 6px;
-  line-height: 1.5;
-  font-style: italic;
-  padding-left: 4px;
-  opacity: 0.85;
+  margin-top: 4px;
+  line-height: 1.4;
+  font-style: normal;
+  padding-left: 0;
+  opacity: 0.8;
+}
+
+.cycle-section-divider {
+  margin: 32px 0;
+  border: none;
+  height: 1px;
+  background: var(--border-color);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .cycle-info-card {
-  margin-top: 48px;
-  padding: 36px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(14, 165, 233, 0.12) 50%, rgba(139, 92, 246, 0.12) 100%);
-  border: 2px solid rgba(99, 102, 241, 0.3);
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15), inset 0 2px 4px rgba(99, 102, 241, 0.1);
-  position: relative;
-  overflow: hidden;
-}
-
-.cycle-info-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #6366f1 0%, #0ea5e9 50%, #8b5cf6 100%);
+  margin-top: 32px;
+  padding: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .cycle-info-card h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 600;
   margin-bottom: 16px;
   color: var(--text-primary);
   display: flex;
@@ -174,115 +194,42 @@
 .cycle-info-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
-  font-size: 0.95rem;
+  gap: 16px;
+  font-size: 0.9rem;
 }
 
 .cycle-info-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  background: rgba(99, 102, 241, 0.08);
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  gap: 6px;
+  padding: 12px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
   transition: all 0.2s ease;
 }
 
 .cycle-info-item:hover {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: rgba(99, 102, 241, 0.4);
-  transform: translateX(4px);
+  background: var(--bg-hover);
+  border-color: var(--primary);
+  transform: none;
 }
 
 .cycle-info-item strong {
-  color: rgba(99, 102, 241, 0.9);
-  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-weight: 600;
 }
 
 .cycle-info-item span {
   color: var(--text-primary);
-  font-weight: 600;
-  font-size: 1.1rem;
-  margin-top: 4px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  margin-top: 2px;
 }
 
-.cycle-section-divider {
-  margin: 48px 0;
-  border: none;
-  height: 3px;
-  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.3) 20%, rgba(99, 102, 241, 0.5) 50%, rgba(99, 102, 241, 0.3) 80%, transparent 100%);
-  border-radius: 2px;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
-}
-
-.cycle-section-title {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--text-primary);
-  margin-bottom: 28px;
-  padding-bottom: 20px;
-  border-bottom: 3px solid rgba(99, 102, 241, 0.3);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-size: 1.1rem;
-}
-
-.cycle-section-title svg {
-  color: #6366f1;
-  filter: drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3));
-}
-
-@media (max-width: 768px) {
-  .attendance-cycle-page {
-    padding: 20px;
-  }
-  
-  .cycle-header {
-    padding: 20px;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
-  
-  .cycle-header h1 {
-    font-size: 1.75rem;
-  }
-  
-  .cycle-form-container {
-    padding: 28px;
-  }
-  
-  .cycle-form-grid {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-  
-  .cycle-form-group {
-    padding: 16px;
-  }
-  
-  .cycle-info-grid {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-  
-  .cycle-section-title {
-    font-size: 1rem;
-  }
-  
-  .cycle-info-card {
-    padding: 24px;
-  }
-}
-
-/* Time input wrapper for notification times */
 .time-input-wrapper {
   position: relative;
   display: flex;
@@ -297,9 +244,62 @@
 .time-icon {
   position: absolute;
   right: 14px;
-  color: #6366f1;
-  font-size: 1.1rem;
+  color: var(--text-secondary);
+  font-size: 1rem;
   pointer-events: none;
-  opacity: 0.75;
+  opacity: 0.6;
 }
 
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .cycle-shift-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .attendance-cycle-page {
+    padding: 16px;
+  }
+  
+  .cycle-header {
+    padding: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .cycle-header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .cycle-shift-timings-card {
+    padding: 20px;
+  }
+  
+  .cycle-shift-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .cycle-form-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .cycle-form-group {
+    padding: 0;
+  }
+  
+  .cycle-info-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .cycle-section-title {
+    font-size: 1rem;
+  }
+  
+  .cycle-info-card {
+    padding: 20px;
+  }
+}

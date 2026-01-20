@@ -37,6 +37,7 @@ import ResignedList from './pages/employees/ResignedList';
 import AddItem from './pages/vms/AddItem';
 import ItemList from './pages/vms/ItemList';
 import Items from './pages/vms/Items';
+import Item from './pages/vms/Item';
 // Payroll Module
 import PayrollStructure from './pages/payroll/PayrollStructure';
 import Generate from './pages/payroll/Generate';
@@ -199,7 +200,7 @@ const AppRoutes = () => {
           </PrivateRoute>
         } />
         <Route path="employees/data" element={
-          <PrivateRoute allowedRoles={['HR', 'Manager']}>
+          <PrivateRoute allowedRoles={['Admin', 'HR', 'Manager']}>
             <Data />
           </PrivateRoute>
         } />
@@ -218,6 +219,7 @@ const AppRoutes = () => {
         <Route path="vms/add" element={<AddItem />} />
         <Route path="vms/list" element={<AddItem />} />
         <Route path="vms/items" element={<Items />} />
+        <Route path="vms/item" element={<Item />} />
         
         {/* Payroll Module Routes */}
         <Route path="payroll/structure" element={<PayrollStructure />} />

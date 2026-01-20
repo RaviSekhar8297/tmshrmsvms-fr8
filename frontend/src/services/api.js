@@ -194,6 +194,7 @@ export const visitorsAPI = {
   getById: (id) => api.get(`/vms/visitors/${id}`),
   add: (data) => api.post('/vms/visitors/add', data),
   checkout: (id) => api.put(`/vms/visitors/${id}/checkout`),
+  getDashboard: () => api.get('/vms/dashboard'),
 };
 
 export const policiesAPI = {
@@ -225,4 +226,12 @@ export const resignationsAPI = {
   approveHOD: (id, data) => api.post(`/resignations/${id}/approve-hod`, data),
   withdraw: (id) => api.post(`/resignations/${id}/withdraw`),
   getNoticePeriodInfo: () => api.get('/resignations/notice-period-info'),
+};
+
+export const weekOffsAPI = {
+  getDates: (employeeId, month, year) => api.get('/week-offs/dates', { params: { employee_id: employeeId, month, year } }),
+};
+
+export const holidaysAPI = {
+  getAll: (year) => api.get('/holidays', { params: { year } }),
 };

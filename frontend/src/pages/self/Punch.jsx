@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api, { attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiClock, FiCamera, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiClock, FiCamera, FiX, FiChevronLeft, FiChevronRight, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import '../employee/Employee.css';
 import './Punch.css';
 
@@ -18,6 +18,7 @@ const Punch = () => {
   const [runningStart, setRunningStart] = useState(null); // Date when current run started
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [leaves, setLeaves] = useState([]);
   const [weekOffDates, setWeekOffDates] = useState([]);
   const [location, setLocation] = useState(null);
@@ -125,6 +126,21 @@ const Punch = () => {
     fetchPunchHistory();
     // fetchLeaves and fetchWeekOffDates are now handled in fetchPunchHistory
   }, [selectedMonth, selectedYear]);
+
+  // Close month picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMonthPicker && !event.target.closest('.month-picker-wrapper')) {
+        setShowMonthPicker(false);
+      }
+    };
+    if (showMonthPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMonthPicker]);
 
   const fetchLeaves = async () => {
     try {
@@ -477,6 +493,9 @@ const Punch = () => {
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
       const ctx = canvas.getContext('2d', { willReadFrequently: false });
+      // Flip the image back to normal when capturing (mirror the canvas context)
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(videoRef.current, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedImage(imageData);
@@ -1029,13 +1048,12 @@ const Punch = () => {
                   marginBottom: '12px',
                 }}>
                   <div style={{ 
-                    fontSize: '0.875rem', 
+                    fontSize: '0.75rem', 
                     color: 'var(--text-secondary)', 
                     fontWeight: 500,
                     marginBottom: '6px',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    fontSize: '0.75rem'
+                    letterSpacing: '0.5px'
                   }}>
                     Address
                   </div>
@@ -1086,13 +1104,12 @@ const Punch = () => {
                   marginBottom: '12px',
                 }}>
                   <div style={{ 
-                    fontSize: '0.875rem', 
+                    fontSize: '0.75rem', 
                     color: 'var(--text-secondary)', 
                     fontWeight: 500,
                     marginBottom: '6px',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    fontSize: '0.75rem'
+                    letterSpacing: '0.5px'
                   }}>
                     Coordinates
                   </div>
@@ -1106,29 +1123,60 @@ const Punch = () => {
                     {coordinates}
                   </div>
                 </div>
-                <div style={{ 
-                  fontSize: '0.875rem', 
-                  color: 'var(--text-secondary)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  background: 'rgba(59, 130, 246, 0.05)',
-                  border: '1px solid rgba(59, 130, 246, 0.1)'
-                }}>
-                  {isGeocoding ? (
-                    <>
-                      <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', borderTopColor: '#3b82f6' }}></span>
-                      <span>Converting coordinates to address...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ fontSize: '16px' }}>⏳</span>
-                      <span>Converting coordinates to address...</span>
-                    </>
-                  )}
-                </div>
+                {location && location !== coordinates && (
+                  <div style={{ 
+                    padding: '16px 20px',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-hover)',
+                    wordBreak: 'break-word',
+                    lineHeight: '1.6',
+                    marginBottom: '12px',
+                  }}>
+                    <div style={{ 
+                      fontSize: '0.75rem', 
+                      color: 'var(--text-secondary)', 
+                      fontWeight: 500,
+                      marginBottom: '6px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      Address
+                    </div>
+                    <div style={{ 
+                      fontSize: '1rem', 
+                      color: 'var(--text-primary)', 
+                      fontWeight: 600,
+                    }}>
+                      {location}
+                    </div>
+                  </div>
+                )}
+                {(!location || location === coordinates) && (
+                  <div style={{ 
+                    fontSize: '0.875rem', 
+                    color: 'var(--text-secondary)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(59, 130, 246, 0.05)',
+                    border: '1px solid rgba(59, 130, 246, 0.1)'
+                  }}>
+                    {isGeocoding ? (
+                      <>
+                        <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', borderTopColor: '#3b82f6' }}></span>
+                        <span>Converting coordinates to address...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: '16px' }}>⏳</span>
+                        <span>Converting coordinates to address...</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -1370,31 +1418,78 @@ const Punch = () => {
       <div className="form-container full-width-card punch-calendar-full" style={{ background: 'transparent', border: '2px solid rgba(99, 102, 241, 0.15)', boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)' }}>
         <div className="punch-calendar-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '16px', borderBottom: '2px solid var(--border-color)' }}>
           <h3 className="punch-calendar-title" style={{ fontSize: '1.5rem', fontWeight: 700, background: 'linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Punch History Calendar</h3>
-          <div className="punch-calendar-selectors" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <select
-              value={selectedMonth}
-              onChange={(e) => {
-                setSelectedMonth(parseInt(e.target.value));
-              }}
-              className="form-select punch-month-select"
-              style={{ width: '150px' }}
-            >
-              {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, index) => (
-                <option key={index} value={index}>{month}</option>
-              ))}
-            </select>
-            <select
-              value={selectedYear}
-              onChange={(e) => {
-                setSelectedYear(parseInt(e.target.value));
-              }}
-              className="form-select punch-year-select"
-              style={{ width: '100px' }}
-            >
-              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
+          <div className="punch-calendar-selectors" style={{ position: 'relative' }}>
+            <div className="month-picker-wrapper" style={{ width: '200px' }}>
+              <div 
+                className="month-picker-input"
+                onClick={() => setShowMonthPicker(!showMonthPicker)}
+              >
+                <FiCalendar size={18} />
+                <span>
+                  {new Date(selectedYear, selectedMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </span>
+                <FiChevronDown size={18} className={showMonthPicker ? 'rotate' : ''} />
+              </div>
+              {showMonthPicker && (
+                <div className="month-picker-dropdown" style={{ zIndex: 1000 }}>
+                  <div className="month-picker-header">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedYear(prev => prev - 1);
+                      }}
+                      className="month-picker-nav"
+                    >
+                      ←
+                    </button>
+                    <span className="month-picker-year">{selectedYear}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const currentDate = new Date();
+                        const maxYear = currentDate.getFullYear();
+                        if (selectedYear < maxYear) {
+                          setSelectedYear(prev => prev + 1);
+                        }
+                      }}
+                      className="month-picker-nav"
+                      disabled={selectedYear >= new Date().getFullYear()}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div className="month-picker-grid">
+                    {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, index) => {
+                      const currentDate = new Date();
+                      const currentYear = currentDate.getFullYear();
+                      const currentMonth = currentDate.getMonth();
+                      const isCurrentMonth = selectedYear === currentYear && index === currentMonth;
+                      const isFutureMonth = selectedYear > currentYear || (selectedYear === currentYear && index > currentMonth);
+                      
+                      return (
+                        <button
+                          key={month}
+                          type="button"
+                          className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${selectedMonth === index ? 'selected' : ''} ${isFutureMonth ? 'disabled' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isFutureMonth) {
+                              setSelectedMonth(index);
+                              setShowMonthPicker(false);
+                            }
+                          }}
+                          disabled={isFutureMonth}
+                        >
+                          {month.substring(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="calendar-container" style={{ background: 'transparent' }}>
@@ -1416,28 +1511,35 @@ const Punch = () => {
           borderRadius: '12px',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
         }}>
-          {/* Late Mark Indicator */}
+          {/* Legend Items in horizontal row */}
           <div style={{ 
             display: 'flex', 
-            alignItems: 'center', 
-            gap: '12px',
-            marginBottom: '16px'
+            flexDirection: 'row', 
+            alignItems: 'center',
+            gap: '24px',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-start'
           }}>
-            <span style={{ 
-              fontSize: '1.5rem',
-              color: '#eab308',
-              fontWeight: 700,
-              lineHeight: 1
-            }}>★</span>
-            <span style={{ 
-              fontSize: '0.9rem',
-              color: 'var(--text-primary)',
-              fontWeight: 600
-            }}>Late Mark</span>
-          </div>
-          
-          {/* Legend Items with same style */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Late Mark */}
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px'
+            }}>
+              <span style={{ 
+                fontSize: '1.5rem',
+                color: '#eab308',
+                fontWeight: 700,
+                lineHeight: 1
+              }}>★</span>
+              <span style={{ 
+                fontSize: '0.9rem',
+                color: 'var(--text-primary)',
+                fontWeight: 600
+              }}>Late Mark</span>
+            </div>
+            
+            {/* Present */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -1460,6 +1562,7 @@ const Punch = () => {
               }}>Present (≥9H)</span>
             </div>
             
+            {/* Half Day */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -1482,6 +1585,7 @@ const Punch = () => {
               }}>Half Day (4.5H-8.59H)</span>
             </div>
             
+            {/* Absent */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -1504,6 +1608,7 @@ const Punch = () => {
               }}>Absent (&lt;4.5H)</span>
             </div>
             
+            {/* Week Off */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -1526,6 +1631,7 @@ const Punch = () => {
               }}>Week Off (WO)</span>
             </div>
             
+            {/* Leave */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -1548,6 +1654,7 @@ const Punch = () => {
               }}>Leave</span>
             </div>
             
+            {/* Holiday */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -1595,7 +1702,8 @@ const Punch = () => {
                         width: '100%', 
                         borderRadius: '8px',
                         border: faceDetected ? '3px solid #10b981' : '3px solid #ef4444',
-                        transition: 'border-color 0.3s ease'
+                        transition: 'border-color 0.3s ease',
+                        transform: 'scaleX(-1)' // Mirror the video (left to right, right to left)
                       }}
                     />
                     <canvas

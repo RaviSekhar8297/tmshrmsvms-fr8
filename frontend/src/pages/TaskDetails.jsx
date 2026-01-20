@@ -86,17 +86,24 @@ const TaskDetails = () => {
       toast.success('Status updated');
       fetchTaskDetails();
     } catch (error) {
-      toast.error('Failed to update status');
+      console.error('Error updating status:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update status');
     }
   };
 
   const handleProgressChange = async () => {
     try {
-      await tasksAPI.update(id, { percent_complete: progress });
+      const progressValue = parseInt(progress);
+      if (isNaN(progressValue) || progressValue < 0 || progressValue > 100) {
+        toast.error('Progress must be between 0 and 100');
+        return;
+      }
+      await tasksAPI.update(id, { percent_complete: progressValue });
       toast.success('Progress updated');
       fetchTaskDetails();
     } catch (error) {
-      toast.error('Failed to update progress');
+      console.error('Error updating progress:', error);
+      toast.error(error.response?.data?.detail || 'Failed to update progress');
     }
   };
 

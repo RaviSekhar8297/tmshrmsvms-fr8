@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import DatePicker from '../../components/DatePicker';
+import * as XLSX from 'xlsx';
 import './Employee.css';
 
 const Permission = () => {
@@ -14,6 +15,9 @@ const Permission = () => {
   const [loading, setLoading] = useState(false);
   const [permissions, setPermissions] = useState([]);
   const [search, setSearch] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     type: '',
@@ -238,16 +242,138 @@ const Permission = () => {
     return <span className={`badge ${badge.class}`}>{badge.text}</span>;
   };
 
+  const exportToExcel = () => {
+    const filteredPermissions = permissions.filter((p) => {
+      // Search filter
+      const term = search.trim().toLowerCase();
+      if (term) {
+        const matchesSearch = (
+          p.type?.toLowerCase().includes(term) ||
+          p.status?.toLowerCase().includes(term) ||
+          p.reason?.toLowerCase().includes(term) ||
+          p.name?.toLowerCase().includes(term) ||
+          p.empid?.toLowerCase().includes(term)
+        );
+        if (!matchesSearch) return false;
+      }
+      
+      // Year filter
+      const permissionDate = new Date(p.from_datetime || p.applied_date);
+      if (permissionDate.getFullYear() !== selectedYear) return false;
+      
+      // Date range filter
+      if (fromDate || toDate) {
+        const permDateStr = permissionDate.toISOString().split('T')[0];
+        if (fromDate && permDateStr < fromDate) return false;
+        if (toDate && permDateStr > toDate) return false;
+      }
+      
+      return true;
+    });
+
+    if (filteredPermissions.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel
+      const data = [];
+      
+      // Header row
+      const headerRow = isEmployeesPage 
+        ? ['Employee ID', 'Employee Name', 'Applied Date', 'Date', 'From Time', 'To Time', 'Type', 'Status', 'Reason', 'Approved By']
+        : ['Applied Date', 'Date', 'From Time', 'To Time', 'Type', 'Status', 'Reason', 'Approved By'];
+      data.push(headerRow);
+      
+      // Data rows
+      filteredPermissions.forEach((permission) => {
+        const row = isEmployeesPage
+          ? [
+              permission.empid || '',
+              permission.name || '',
+              new Date(permission.applied_date).toLocaleDateString(),
+              new Date(permission.from_datetime).toLocaleDateString(),
+              new Date(permission.from_datetime).toLocaleTimeString(),
+              new Date(permission.to_datetime).toLocaleTimeString(),
+              permission.type || '',
+              permission.status || '',
+              permission.reason || '',
+              permission.approved_by || 'Pending'
+            ]
+          : [
+              new Date(permission.applied_date).toLocaleDateString(),
+              new Date(permission.from_datetime).toLocaleDateString(),
+              new Date(permission.from_datetime).toLocaleTimeString(),
+              new Date(permission.to_datetime).toLocaleTimeString(),
+              permission.type || '',
+              permission.status || '',
+              permission.reason || '',
+              permission.approved_by || 'Pending'
+            ];
+        data.push(row);
+      });
+      
+      // Create workbook and worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Permissions');
+      
+      // Set column widths
+      const colWidths = isEmployeesPage
+        ? [
+            { wch: 15 }, // Employee ID
+            { wch: 25 }, // Employee Name
+            { wch: 12 }, // Applied Date
+            { wch: 12 }, // Date
+            { wch: 12 }, // From Time
+            { wch: 12 }, // To Time
+            { wch: 20 }, // Type
+            { wch: 12 }, // Status
+            { wch: 40 }, // Reason
+            { wch: 20 }  // Approved By
+          ]
+        : [
+            { wch: 12 }, // Applied Date
+            { wch: 12 }, // Date
+            { wch: 12 }, // From Time
+            { wch: 12 }, // To Time
+            { wch: 20 }, // Type
+            { wch: 12 }, // Status
+            { wch: 40 }, // Reason
+            { wch: 20 }  // Approved By
+          ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename
+      let filename = 'permissions';
+      if (fromDate || toDate) {
+        const from = fromDate ? new Date(fromDate).toISOString().split('T')[0] : 'all';
+        const to = toDate ? new Date(toDate).toISOString().split('T')[0] : 'all';
+        filename += `_${from}_to_${to}`;
+      } else {
+        filename += `_${selectedYear}`;
+      }
+      
+      // Download
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Failed to export Excel file');
+    }
+  };
+
   return (
     <div className="page-container employee-permission-page">
       <div className="page-header stacked">
         <div>
-          <h1>Permission Requests!</h1>
+          <h1>Permission Requests</h1>
           <p className="page-subtitle">View your permission history with quick filters.</p>
         </div>
         <div className="header-actions filters-row toolbar">
-          <div className="toolbar-left" style={{ flex: 1 }}>
-            <div className="filter-field" style={{ flex: 1 }}>
+          <div className="toolbar-left" style={{ flex: 1, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="filter-field" style={{ flex: 1, minWidth: '200px' }}>
               <label className="filter-label">Search</label>
               <input
                 type="text"
@@ -255,7 +381,37 @@ const Permission = () => {
                 placeholder="Search by type, date, status or reason..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ marginBottom: 0, minWidth: '280px' }}
+                style={{ marginBottom: 0 }}
+              />
+            </div>
+            <div className="filter-field" style={{ minWidth: '120px' }}>
+              <label className="filter-label">Year</label>
+              <select
+                className="form-input"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                style={{ marginBottom: 0 }}
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-field" style={{ minWidth: '150px' }}>
+              <label className="filter-label">From Date</label>
+              <DatePicker
+                value={fromDate}
+                onChange={(date) => setFromDate(date)}
+                placeholder="Select from date"
+              />
+            </div>
+            <div className="filter-field" style={{ minWidth: '150px' }}>
+              <label className="filter-label">To Date</label>
+              <DatePicker
+                value={toDate}
+                onChange={(date) => setToDate(date)}
+                min={fromDate || undefined}
+                placeholder="Select to date"
               />
             </div>
           </div>
@@ -265,7 +421,7 @@ const Permission = () => {
                 {showForm ? 'Cancel' : '+ Add Permission'}
               </button>
             )}
-            <button className="btn-primary" onClick={() => toast('Excel export coming soon')}>
+            <button className="btn-primary" onClick={exportToExcel}>
               Excel
             </button>
           </div>
@@ -426,15 +582,31 @@ const Permission = () => {
             <tbody>
               {permissions
                 .filter((p) => {
+                  // Search filter
                   const term = search.trim().toLowerCase();
-                  if (!term) return true;
-                  return (
-                    p.type?.toLowerCase().includes(term) ||
-                    p.status?.toLowerCase().includes(term) ||
-                    p.reason?.toLowerCase().includes(term) ||
-                    p.name?.toLowerCase().includes(term) ||
-                    p.empid?.toLowerCase().includes(term)
-                  );
+                  if (term) {
+                    const matchesSearch = (
+                      p.type?.toLowerCase().includes(term) ||
+                      p.status?.toLowerCase().includes(term) ||
+                      p.reason?.toLowerCase().includes(term) ||
+                      p.name?.toLowerCase().includes(term) ||
+                      p.empid?.toLowerCase().includes(term)
+                    );
+                    if (!matchesSearch) return false;
+                  }
+                  
+                  // Year filter
+                  const permissionDate = new Date(p.from_datetime || p.applied_date);
+                  if (permissionDate.getFullYear() !== selectedYear) return false;
+                  
+                  // Date range filter
+                  if (fromDate || toDate) {
+                    const permDateStr = permissionDate.toISOString().split('T')[0];
+                    if (fromDate && permDateStr < fromDate) return false;
+                    if (toDate && permDateStr > toDate) return false;
+                  }
+                  
+                  return true;
                 })
                 .map((permission) => (
                   <tr key={permission.id}>
@@ -495,16 +667,32 @@ const Permission = () => {
                   </tr>
                 ))}
               {permissions.filter((p) => {
-                const term = search.trim().toLowerCase();
-                if (!term) return true;
-                return (
-                  p.type?.toLowerCase().includes(term) ||
-                  p.status?.toLowerCase().includes(term) ||
-                  p.reason?.toLowerCase().includes(term) ||
-                  p.name?.toLowerCase().includes(term) ||
-                  p.empid?.toLowerCase().includes(term)
-                );
-              }).length === 0 ? (
+                  // Search filter
+                  const term = search.trim().toLowerCase();
+                  if (term) {
+                    const matchesSearch = (
+                      p.type?.toLowerCase().includes(term) ||
+                      p.status?.toLowerCase().includes(term) ||
+                      p.reason?.toLowerCase().includes(term) ||
+                      p.name?.toLowerCase().includes(term) ||
+                      p.empid?.toLowerCase().includes(term)
+                    );
+                    if (!matchesSearch) return false;
+                  }
+                  
+                  // Year filter
+                  const permissionDate = new Date(p.from_datetime || p.applied_date);
+                  if (permissionDate.getFullYear() !== selectedYear) return false;
+                  
+                  // Date range filter
+                  if (fromDate || toDate) {
+                    const permDateStr = permissionDate.toISOString().split('T')[0];
+                    if (fromDate && permDateStr < fromDate) return false;
+                    if (toDate && permDateStr > toDate) return false;
+                  }
+                  
+                  return true;
+                }).length === 0 ? (
                 <tr>
                   <td colSpan={isEmployeesPage ? 10 : 8} className="text-center">No permission requests found</td>
                 </tr>

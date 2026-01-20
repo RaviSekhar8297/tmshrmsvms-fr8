@@ -119,9 +119,9 @@
 
 .date-picker-month-year {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
 }
 
 .date-picker-month {
@@ -239,6 +239,51 @@
   background: #ef4444;
   color: white;
   border-color: #ef4444;
+}
+
+.date-picker-select {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.date-picker-select option {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  padding: 8px;
+}
+
+.date-picker-select:focus {
+  background: var(--bg-hover) !important;
+  border-color: var(--primary) !important;
+  outline: none;
+}
+
+.date-picker-select:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--primary) !important;
+}
+
+/* Dark mode colors for month/year selects in white mode */
+[data-theme="light"] .date-picker-select {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="light"] .date-picker-select option {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="light"] .date-picker-select:hover {
+  background: #334155 !important;
+  border-color: #475569 !important;
+}
+
+[data-theme="light"] .date-picker-select:focus {
+  background: #334155 !important;
+  border-color: #6366f1 !important;
 }
 
 /* Responsive */

@@ -27,7 +27,8 @@ def get_policies(
 ):
     """Get all policies - accessible by all roles"""
     try:
-        policies = db.query(Policy).order_by(Policy.created_at.desc()).all()
+        # Limit to 500 policies for performance
+        policies = db.query(Policy).order_by(Policy.created_at.desc()).limit(500).all()
         
         # Normalize likes field - ensure it's always a list
         for policy in policies:
@@ -60,7 +61,8 @@ def get_unread_policies(
 ):
     """Get all policies that the current user has not read yet"""
     try:
-        policies = db.query(Policy).order_by(Policy.created_at.desc()).all()
+        # Limit to 500 policies for performance
+        policies = db.query(Policy).order_by(Policy.created_at.desc()).limit(500).all()
         unread_policies = []
         
         for policy in policies:

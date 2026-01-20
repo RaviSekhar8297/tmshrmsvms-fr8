@@ -24,6 +24,7 @@ const Meetings = () => {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [checkingCalendar, setCheckingCalendar] = useState(true);
   const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
+  const [participantSearch, setParticipantSearch] = useState('');
   const notesPopupRef = useRef(null);
   const { isEmployee, user } = useAuth();
 
@@ -45,6 +46,23 @@ const Meetings = () => {
     checkCalendarStatus();
   }, [filter]);
 
+  // Auto-connect Google Calendar when user logs in (only once, after calendar status is checked)
+  useEffect(() => {
+    if (user?.email && !autoConnectAttempted && !checkingCalendar && !calendarConnected) {
+      // Small delay to ensure page is fully loaded and calendar status is checked
+      const timer = setTimeout(() => {
+        setAutoConnectAttempted(true);
+        // Automatically connect with user's email
+        console.log(`Auto-connecting Google Calendar for ${user.email}...`);
+        handleConnectCalendar().catch(err => {
+          console.log('Auto-connect failed, user can connect manually:', err);
+          // Don't show error toast for auto-connect failures - user can connect manually
+        });
+      }, 2000); // Wait 2 seconds after page load
+      return () => clearTimeout(timer);
+    }
+  }, [user?.email, autoConnectAttempted, checkingCalendar, calendarConnected]);
+
   const checkCalendarStatus = async () => {
     try {
       const response = await googleCalendarAPI.getStatus();
@@ -62,6 +80,7 @@ const Meetings = () => {
       } else {
         setCalendarConnected(isConnected);
       }
+      
     } catch (error) {
       console.error('Error checking calendar status:', error);
       setCalendarConnected(false);
@@ -130,13 +149,13 @@ const Meetings = () => {
       if (isOffline && !data.location) {
         throw new Error('Please provide meeting location/area for offline meeting');
       }
-      // Block submission if trying to use Google Meet without calendar connection
+      // Warn user if trying to use Google Meet without calendar connection, but allow submission
       if (!isOffline && data.platform === 'gmeet' && !calendarConnected && !checkingCalendar) {
         const action = window.confirm(
           '⚠️ Google Calendar is not connected!\n\n' +
           'To create Google Meet links automatically, you need to connect your Google Calendar account.\n\n' +
           'Click OK to connect Google Calendar now.\n' +
-          'Click Cancel to switch to a different platform (Zoom/Custom) and provide a meeting link manually.'
+          'Click Cancel to continue (meeting will be created but you may need to add a link manually later).'
         );
         
         if (action) {
@@ -144,25 +163,8 @@ const Meetings = () => {
           handleConnectCalendar();
           setSubmitting(false);
           return;
-        } else {
-          // User cancelled - show error and stop submission
-          toast.error(
-            'Cannot create meeting with Google Meet (auto) without Google Calendar connection.\n\n' +
-            'Please either:\n' +
-            '1. Connect Google Calendar (click "Connect Google Calendar" button), OR\n' +
-            '2. Change platform to "Zoom" or "Custom" and provide a meeting link',
-            {
-              duration: 8000,
-              style: {
-                maxWidth: '500px',
-                whiteSpace: 'pre-line',
-                fontSize: '14px'
-              }
-            }
-          );
-          setSubmitting(false);
-          return;
         }
+        // If user cancels, continue with submission - backend will try to create link or allow without it
       }
 
       if (editingMeeting) {
@@ -188,22 +190,16 @@ const Meetings = () => {
       
       // Check if error is about Google Calendar
       if (errorMessage.includes('Google Calendar') || errorMessage.includes('Google Meet link') || errorMessage.includes('Failed to create')) {
-        // Show detailed error with action buttons
-        const shouldConnect = window.confirm(
-          errorMessage + '\n\n' +
-          'Would you like to connect Google Calendar now?\n\n' +
-          'Click OK to connect, or Cancel to switch to a different platform (Zoom/Custom) and provide a meeting link manually.'
-        );
-        
-        if (shouldConnect) {
-          handleConnectCalendar();
-        } else {
-          toast.error(
-            'Please either:\n' +
-            '1. Connect Google Calendar (click button above), OR\n' +
-            '2. Change platform to "Zoom" or "Custom" and provide a meeting link',
+        // If it's a non-critical error (like couldn't create link), allow meeting creation
+        if (errorMessage.includes('Failed to create Google Meet link')) {
+          // Meeting can still be created without the link
+          toast(
+            'Meeting created successfully, but Google Meet link could not be generated automatically.\n\n' +
+            'You can:\n' +
+            '1. Connect Google Calendar for automatic links (click "Connect Google Calendar" button), OR\n' +
+            '2. Edit this meeting later to add a meeting link manually',
             {
-              duration: 10000,
+              duration: 8000,
               style: {
                 maxWidth: '500px',
                 whiteSpace: 'pre-line',
@@ -211,6 +207,35 @@ const Meetings = () => {
               }
             }
           );
+          // Continue - meeting was likely created
+          setShowModal(false);
+          resetForm();
+          fetchData();
+        } else {
+          // Show detailed error with action buttons
+          const shouldConnect = window.confirm(
+            errorMessage + '\n\n' +
+            'Would you like to connect Google Calendar now?\n\n' +
+            'Click OK to connect, or Cancel to switch to a different platform (Zoom/Custom) and provide a meeting link manually.'
+          );
+          
+          if (shouldConnect) {
+            handleConnectCalendar();
+          } else {
+            toast.error(
+              'Please either:\n' +
+              '1. Connect Google Calendar (click button above), OR\n' +
+              '2. Change platform to "Zoom" or "Custom" and provide a meeting link',
+              {
+                duration: 10000,
+                style: {
+                  maxWidth: '500px',
+                  whiteSpace: 'pre-line',
+                  fontSize: '14px'
+                }
+              }
+            );
+          }
         }
       } else {
         toast.error(errorMessage);
@@ -241,15 +266,79 @@ const Meetings = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this meeting?')) return;
-    
-    try {
-      await meetingsAPI.delete(id);
-      toast.success('Meeting deleted successfully');
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to delete meeting');
-    }
+    // Use toast for confirmation instead of window.confirm
+    toast((t) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '300px' }}>
+        <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' }}>
+          Delete Meeting?
+        </div>
+        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+          Are you sure you want to delete this meeting? This action cannot be undone.
+        </div>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              try {
+                await meetingsAPI.delete(id);
+                toast.success('Meeting deleted successfully');
+                fetchData();
+              } catch (error) {
+                toast.error(error.response?.data?.detail || 'Failed to delete meeting');
+              }
+            }}
+            style={{
+              padding: '8px 20px',
+              background: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#dc2626';
+              e.currentTarget.style.transform = 'scale(1.02)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#ef4444';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            style={{
+              padding: '8px 20px',
+              background: 'var(--bg-hover)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-card)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 10000,
+      id: `delete-meeting-${id}`,
+      position: 'top-center',
+      icon: '⚠️'
+    });
   };
 
   const toggleParticipant = (emp) => {
@@ -273,6 +362,7 @@ const Meetings = () => {
 
   const resetForm = () => {
     setEditingMeeting(null);
+    setParticipantSearch('');
     setFormData({
       title: '',
       description: '',
@@ -714,23 +804,119 @@ const Meetings = () => {
 
           <div className="form-group">
             <label className="form-label">Participants</label>
-            <div className="participants-selector">
-              {employees.map((emp) => (
-                <div 
-                  key={emp.empid} 
-                  className={`participant-chip ${formData.participants.some(p => p.empid === emp.empid) ? 'selected' : ''}`}
-                  onClick={() => toggleParticipant(emp)}
+            <div style={{
+              position: 'relative',
+              marginBottom: '12px'
+            }}>
+              <div style={{
+                position: 'absolute',
+                left: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-secondary)',
+                pointerEvents: 'none',
+                zIndex: 1
+              }}>
+                <FiSearch size={18} />
+              </div>
+              <input
+                type="text"
+                placeholder="Search participants by name, employee ID, or email..."
+                value={participantSearch}
+                onChange={(e) => setParticipantSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px 12px 42px',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.95rem',
+                  transition: 'all 0.2s ease',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--primary)';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-color)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+              {participantSearch && (
+                <button
+                  onClick={() => setParticipantSearch('')}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '4px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-hover)';
+                    e.currentTarget.style.color = 'var(--text-primary)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--text-secondary)';
+                  }}
                 >
-                  <div className="avatar avatar-sm">
-                    {emp.image_base64 ? (
-                      <img src={emp.image_base64} alt={emp.name} />
-                    ) : (
-                      emp.name?.charAt(0).toUpperCase()
-                    )}
+                  <FiX size={18} />
+                </button>
+              )}
+            </div>
+            <div className="participants-selector" style={{ maxHeight: '300px', overflowY: 'auto', padding: '8px' }}>
+              {employees
+                .filter(emp => {
+                  if (!participantSearch.trim()) return true;
+                  const searchTerm = participantSearch.toLowerCase();
+                  return (
+                    emp.name?.toLowerCase().includes(searchTerm) ||
+                    emp.empid?.toLowerCase().includes(searchTerm) ||
+                    emp.email?.toLowerCase().includes(searchTerm)
+                  );
+                })
+                .map((emp) => (
+                  <div 
+                    key={emp.empid} 
+                    className={`participant-chip ${formData.participants.some(p => p.empid === emp.empid) ? 'selected' : ''}`}
+                    onClick={() => toggleParticipant(emp)}
+                  >
+                    <div className="avatar avatar-sm">
+                      {emp.image_base64 ? (
+                        <img src={emp.image_base64} alt={emp.name} />
+                      ) : (
+                        emp.name?.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <span>{emp.name}</span>
+                    {emp.empid && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '4px' }}>({emp.empid})</span>}
                   </div>
-                  <span>{emp.name}</span>
+                ))}
+              {employees.filter(emp => {
+                if (!participantSearch.trim()) return false;
+                const searchTerm = participantSearch.toLowerCase();
+                return (
+                  emp.name?.toLowerCase().includes(searchTerm) ||
+                  emp.empid?.toLowerCase().includes(searchTerm) ||
+                  emp.email?.toLowerCase().includes(searchTerm)
+                );
+              }).length === 0 && participantSearch.trim() && (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  No participants found matching "{participantSearch}"
                 </div>
-              ))}
+              )}
             </div>
           </div>
 

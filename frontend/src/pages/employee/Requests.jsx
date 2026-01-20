@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 import './Employee.css';
 
 const Requests = () => {
@@ -14,6 +15,7 @@ const Requests = () => {
   const [requests, setRequests] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const isPrivileged = ['Admin', 'Manager', 'HR'].includes(user?.role);
   const [formData, setFormData] = useState({
     type: '',
@@ -346,14 +348,106 @@ const Requests = () => {
     return <span className={`badge ${badge.class}`}>{badge.text}</span>;
   };
 
+  const exportToExcel = () => {
+    if (filteredRequests.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel
+      const data = [];
+      
+      // Header row
+      const headerRow = isEmployeesPage
+        ? ['Employee ID', 'Employee Name', 'Applied Date', 'Request Type', 'Subject', 'In Time', 'Out Time', 'Status', 'Approved By']
+        : ['Applied Date', 'Request Type', 'Subject', 'In Time', 'Out Time', 'Status', 'Approved By'];
+      data.push(headerRow);
+      
+      // Data rows
+      filteredRequests.forEach((request) => {
+        const row = isEmployeesPage
+          ? [
+              request.empid || '',
+              request.name || '',
+              new Date(request.applied_date).toLocaleDateString(),
+              request.type || '',
+              request.subject || '',
+              request.intime ? new Date(request.intime).toLocaleString() : '-',
+              request.outtime ? new Date(request.outtime).toLocaleString() : '-',
+              request.status || '',
+              request.approved_by || 'Pending'
+            ]
+          : [
+              new Date(request.applied_date).toLocaleDateString(),
+              request.type || '',
+              request.subject || '',
+              request.intime ? new Date(request.intime).toLocaleString() : '-',
+              request.outtime ? new Date(request.outtime).toLocaleString() : '-',
+              request.status || '',
+              request.approved_by || 'Pending'
+            ];
+        data.push(row);
+      });
+      
+      // Create workbook and worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Requests');
+      
+      // Set column widths
+      const colWidths = isEmployeesPage
+        ? [
+            { wch: 15 }, // Employee ID
+            { wch: 25 }, // Employee Name
+            { wch: 12 }, // Applied Date
+            { wch: 20 }, // Request Type
+            { wch: 30 }, // Subject
+            { wch: 20 }, // In Time
+            { wch: 20 }, // Out Time
+            { wch: 12 }, // Status
+            { wch: 20 }  // Approved By
+          ]
+        : [
+            { wch: 12 }, // Applied Date
+            { wch: 20 }, // Request Type
+            { wch: 30 }, // Subject
+            { wch: 20 }, // In Time
+            { wch: 20 }, // Out Time
+            { wch: 12 }, // Status
+            { wch: 20 }  // Approved By
+          ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename
+      const filename = `requests_${selectedYear}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Download
+      XLSX.writeFile(wb, filename);
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Failed to export Excel file');
+    }
+  };
+
   const filteredRequests = requests.filter((req) => {
+    // Search filter
     const term = search.trim().toLowerCase();
-    if (!term) return true;
-    return (
-      req.type?.toLowerCase().includes(term) ||
-      req.subject?.toLowerCase().includes(term) ||
-      req.status?.toLowerCase().includes(term)
-    );
+    if (term) {
+      const matchesSearch = (
+        req.type?.toLowerCase().includes(term) ||
+        req.subject?.toLowerCase().includes(term) ||
+        req.status?.toLowerCase().includes(term)
+      );
+      if (!matchesSearch) return false;
+    }
+    
+    // Year filter
+    const requestDate = new Date(req.applied_date || req.intime);
+    if (requestDate.getFullYear() !== selectedYear) return false;
+    
+    return true;
   });
 
   return (
@@ -364,8 +458,8 @@ const Requests = () => {
           <p className="page-subtitle">Submit and track requests across roles.</p>
         </div>
         <div className="header-actions filters-row toolbar">
-          <div className="toolbar-left" style={{ flex: 1 }}>
-            <div className="filter-field" style={{ minWidth: '240px' }}>
+          <div className="toolbar-left" style={{ flex: 1, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="filter-field" style={{ flex: 1, minWidth: '200px' }}>
               <label className="filter-label">Search</label>
               <input
                 type="text"
@@ -376,12 +470,22 @@ const Requests = () => {
                 style={{ marginBottom: 0 }}
               />
             </div>
+            <div className="filter-field" style={{ minWidth: '120px' }}>
+              <label className="filter-label">Year</label>
+              <select
+                className="form-input"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                style={{ marginBottom: 0 }}
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="toolbar-right" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button className="btn-secondary" onClick={fetchRequests}>
-              Refresh
-            </button>
-            <button className="btn-primary" onClick={() => toast('Excel export coming soon')}>
+            <button className="btn-primary" onClick={exportToExcel}>
               Excel
             </button>
             {(user?.role === 'Employee' || isSelfPage) && (

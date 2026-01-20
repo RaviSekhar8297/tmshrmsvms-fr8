@@ -26,20 +26,20 @@ def get_self_work_report(
     except:
         raise HTTPException(status_code=400, detail="Invalid month format")
     
-    # Get task timers for the month
+    # Get task timers for the month - limit to 1000 for performance
     timers = db.query(TaskTimer).filter(
         TaskTimer.user_id == current_user.id,
         extract('year', TaskTimer.start_time) == year,
         extract('month', TaskTimer.start_time) == month_num
-    ).all()
+    ).limit(1000).all()
     
-    # Get completed tasks
+    # Get completed tasks - limit to 500 for performance
     tasks = db.query(Task).filter(
         Task.assigned_to_id == current_user.id,
         extract('year', Task.updated_at) == year,
         extract('month', Task.updated_at) == month_num,
         Task.status == 'completed'
-    ).all()
+    ).limit(500).all()
     
     # Group by date
     reports = {}

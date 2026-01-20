@@ -387,8 +387,7 @@ const Data = () => {
           department_id: departmentId || '',
           department_name: employee.department_name || '',
           salaryper_annum: salaryPerAnnum,
-          emp_inactive_date: empInactiveDate,
-          is_late: employee.is_late || false
+          emp_inactive_date: empInactiveDate
         });
         
         // Initialize tempInactiveDate for editing
@@ -586,25 +585,64 @@ const Data = () => {
       let users = response.data || [];
       
       // For Manager: Filter only employees under them
+      // HR and Admin see all employees
       if (user?.role === 'Manager') {
         users = users.filter(emp => emp.report_to_id === user.empid);
       }
       
       const alerts = users.map(user => {
         const bankDetails = user.bank_details || {};
-        const familyDetails = user.family_details || {};
+        const familyDetails = user.family_details || [];
         const nomineeDetails = user.nominee_details || {};
-        const educationDetails = user.education_details || {};
+        const educationDetails = user.education_details || [];
         
-        const getStatus = (details, updatedAt, createdAt) => {
-          if (!details || Object.keys(details).length === 0) {
-            return { status: 'Pending', date: null, created_at: null };
+        // Helper function to get date from JSONB field
+        const getDateFromDetails = (details, isArray = false) => {
+          if (isArray) {
+            // For arrays, get the most recent date
+            if (!Array.isArray(details) || details.length === 0) {
+              return null;
+            }
+            const dates = details
+              .map(item => item?.date)
+              .filter(date => date)
+              .map(date => new Date(date))
+              .filter(date => !isNaN(date.getTime()));
+            
+            if (dates.length === 0) return null;
+            
+            // Return the most recent date
+            const mostRecent = new Date(Math.max(...dates));
+            return mostRecent.toISOString();
+          } else {
+            // For single objects, get date directly
+            if (!details || Object.keys(details).length === 0) {
+              return null;
+            }
+            return details.date || null;
           }
-          return { 
-            status: 'Updated', 
-            date: updatedAt || user.updated_at || null,
-            created_at: createdAt || user.created_at || null
-          };
+        };
+        
+        const getStatus = (details, isArray = false) => {
+          if (isArray) {
+            if (!Array.isArray(details) || details.length === 0) {
+              return { status: 'Pending', date: null };
+            }
+            const date = getDateFromDetails(details, true);
+            return { 
+              status: 'Updated', 
+              date: date
+            };
+          } else {
+            if (!details || Object.keys(details).length === 0) {
+              return { status: 'Pending', date: null };
+            }
+            const date = getDateFromDetails(details, false);
+            return { 
+              status: 'Updated', 
+              date: date
+            };
+          }
         };
 
         return {
@@ -613,10 +651,10 @@ const Data = () => {
           email: user.email || '-',
           phone: user.phone || '-',
           image_base64: user.image_base64 || null,
-          bank_details: getStatus(bankDetails, user.bank_details_updated_at, user.bank_details_created_at),
-          family_details: getStatus(familyDetails, user.family_details_updated_at, user.family_details_created_at),
-          nominee_details: getStatus(nomineeDetails, user.nominee_details_updated_at, user.nominee_details_created_at),
-          education_details: getStatus(educationDetails, user.education_details_updated_at, user.education_details_created_at)
+          bank_details: getStatus(bankDetails, false),
+          family_details: getStatus(familyDetails, true),
+          nominee_details: getStatus(nomineeDetails, false),
+          education_details: getStatus(educationDetails, true)
         };
       });
       
@@ -2078,14 +2116,9 @@ const Data = () => {
                             <span className={alert.bank_details.status === 'Pending' ? 'badge badge-warning' : 'badge badge-success'}>
                               {alert.bank_details.status}
                             </span>
-                            {alert.bank_details.status === 'Updated' && alert.bank_details.date && (
+                            {alert.bank_details.status === 'Updated' && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                Updated: {formatDateTime(alert.bank_details.date)}
-                              </div>
-                            )}
-                            {alert.bank_details.status === 'Updated' && alert.bank_details.created_at && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                 {formatDateTime(alert.bank_details.created_at)}
+                                {alert.bank_details.date ? formatDateTime(alert.bank_details.date) : '-'}
                               </div>
                             )}
                           </div>
@@ -2095,14 +2128,9 @@ const Data = () => {
                             <span className={alert.family_details.status === 'Pending' ? 'badge badge-warning' : 'badge badge-success'}>
                               {alert.family_details.status}
                             </span>
-                            {alert.family_details.status === 'Updated' && alert.family_details.date && (
+                            {alert.family_details.status === 'Updated' && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                Updated: {formatDateTime(alert.family_details.date)}
-                              </div>
-                            )}
-                            {alert.family_details.status === 'Updated' && alert.family_details.created_at && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                 {formatDateTime(alert.family_details.created_at)}
+                                {alert.family_details.date ? formatDateTime(alert.family_details.date) : '-'}
                               </div>
                             )}
                           </div>
@@ -2112,14 +2140,9 @@ const Data = () => {
                             <span className={alert.nominee_details.status === 'Pending' ? 'badge badge-warning' : 'badge badge-success'}>
                               {alert.nominee_details.status}
                             </span>
-                            {alert.nominee_details.status === 'Updated' && alert.nominee_details.date && (
+                            {alert.nominee_details.status === 'Updated' && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                Updated: {formatDateTime(alert.nominee_details.date)}
-                              </div>
-                            )}
-                            {alert.nominee_details.status === 'Updated' && alert.nominee_details.created_at && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                 {formatDateTime(alert.nominee_details.created_at)}
+                                {alert.nominee_details.date ? formatDateTime(alert.nominee_details.date) : '-'}
                               </div>
                             )}
                           </div>
@@ -2129,14 +2152,9 @@ const Data = () => {
                             <span className={alert.education_details.status === 'Pending' ? 'badge badge-warning' : 'badge badge-success'}>
                               {alert.education_details.status}
                             </span>
-                            {alert.education_details.status === 'Updated' && alert.education_details.date && (
+                            {alert.education_details.status === 'Updated' && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                Updated: {formatDateTime(alert.education_details.date)}
-                              </div>
-                            )}
-                            {alert.education_details.status === 'Updated' && alert.education_details.created_at && (
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                 {formatDateTime(alert.education_details.created_at)}
+                                {alert.education_details.date ? formatDateTime(alert.education_details.date) : '-'}
                               </div>
                             )}
                           </div>

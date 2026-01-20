@@ -467,8 +467,8 @@ const AttendanceHistory = () => {
     const today = new Date();
     const sampleDate = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
     const sampleData = [
-      { empid: 'BT-1027', Name: 'John Doe', date: sampleDate, intime: '09:00', outtime: '18:00', Reason: 'Regular attendance' },
-      { empid: 'BT-1028', Name: 'Jane Smith', date: sampleDate, intime: '09:30', outtime: '18:30', Reason: 'Late arrival' }
+      { empid: '1027', Name: 'John Doe', date: sampleDate, intime: '09:00', outtime: '18:00', Reason: 'Regular attendance' },
+      { empid: '1028', Name: 'Jane Smith', date: sampleDate, intime: '09:30', outtime: '18:30', Reason: 'Late arrival' }
     ];
 
     // Create workbook and worksheet

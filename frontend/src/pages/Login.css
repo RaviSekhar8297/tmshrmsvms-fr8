@@ -103,6 +103,49 @@
   padding-right: 48px;
 }
 
+/* Input with prefix styling */
+.input-with-prefix {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.input-with-prefix .input-prefix {
+  position: absolute;
+  left: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  pointer-events: none;
+  z-index: 2;
+  background: transparent;
+  padding: 0 6px 0 0;
+  letter-spacing: 0.3px;
+  user-select: none;
+  transition: color 0.2s ease;
+  white-space: nowrap;
+  line-height: 1;
+  display: inline-block;
+}
+
+.input-with-prefix .form-input:focus ~ .input-prefix,
+.input-with-prefix .form-input:focus + .input-prefix {
+  color: var(--primary);
+}
+
+.input-with-prefix .form-input {
+  padding-left: 80px;
+  padding-right: 48px;
+}
+
+.input-with-prefix .form-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+  margin-left: 0;
+}
+
 .password-toggle {
   position: absolute;
   right: 16px;

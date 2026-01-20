@@ -352,13 +352,16 @@ def get_service_account_credentials():
         service_account_path = settings.GOOGLE_SERVICE_ACCOUNT_PATH
         if not os.path.exists(service_account_path):
             print(f"Service account file not found at: {service_account_path}")
-            raise Exception(f"Service account file not found at: {service_account_path}")
+            raise FileNotFoundError(f"Service account file not found at: {service_account_path}")
         
         credentials = service_account.Credentials.from_service_account_file(
             service_account_path,
             scopes=SCOPES
         )
         return credentials
+    except FileNotFoundError:
+        # Re-raise FileNotFoundError as-is so it can be caught specifically
+        raise
     except Exception as e:
         print(f'Error loading service account credentials: {e}')
         import traceback

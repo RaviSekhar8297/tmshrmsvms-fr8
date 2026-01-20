@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, and_
 from database import get_db
 from routes.auth import get_current_user
-from models import User
+from models import User, LeaveBalanceList
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import re
+import json
 
 router = APIRouter()
 
@@ -17,6 +18,9 @@ class ChatbotRequest(BaseModel):
 class ChatbotResponse(BaseModel):
     answer: str
     image_base64: Optional[str] = None  # For user profile images
+    selection_required: bool = False  # Whether user needs to select from multiple matches
+    selection_data: Optional[List[Dict[str, Any]]] = None  # List of matches for selection
+    selection_type: Optional[str] = None  # Type of selection: 'user' or 'leave'
 
 def get_chatbot_response(question: str, user_role: str, db: Session = None, current_user: User = None) -> str:
     """
@@ -102,32 +106,125 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                     
                     return None
                 
-                # Helper function to search user by name
-                def find_user_by_name(name):
-                    """Search for user by name"""
+                # Helper function to search users by name - returns ALL matches
+                def find_users_by_name(name):
+                    """Search for users by name - returns list of all matches"""
                     if not name or len(name.strip()) < 2:
-                        return None
+                        return []
                     name_clean = name.strip()
-                    # Try exact match first, then partial match
-                    user = db.query(User).filter(
+                    # Find all users matching the name
+                    users = db.query(User).filter(
                         User.is_active == True,
                         User.name.ilike(f'%{name_clean}%')
-                    ).first()
-                    return user
+                    ).limit(20).all()
+                    return users
+                
+                # Helper function to get field value from user based on field variations
+                def get_user_field_value(user, field_keywords):
+                    """Get field value from user based on field keyword variations"""
+                    # Field name variations mapping
+                    field_mapping = {
+                        'empid': ['empid', 'emp_id', 'employee_id', 'staff_id', 'user_id', 'personnel_id'],
+                        'name': ['name', 'employee_name', 'full_name', 'staff_name', 'user_name', 'emp_name'],
+                        'doj': ['doj', 'date_of_joining', 'joining_date', 'join_date', 'date_of_join', 'entry_date', 'employment_start_date', 'start_date'],
+                        'email': ['email', 'email_id', 'email_address', 'official_email', 'work_email', 'contact_email'],
+                        'phone': ['phone', 'mobile', 'mobile_no', 'phone_no', 'contact_number', 'mobile_number', 'telephone'],
+                        'image_base64': ['image_base64', 'profile_image', 'profile_photo', 'employee_photo', 'user_image', 'image_data', 'avatar', 'photo_base64'],
+                        'designation': ['designation', 'job_title', 'role', 'position', 'designation_name', 'job_role'],
+                        'company_name': ['company_name', 'organization_name', 'employer_name', 'company', 'org_name', 'firm_name'],
+                        'branch_name': ['branch_name', 'office_branch', 'branch', 'location', 'branch_location', 'office_name'],
+                        'department_name': ['department_name', 'department', 'dept_name', 'division', 'team', 'functional_area']
+                    }
+                    
+                    # Find which field is being asked for
+                    for field_key, variations in field_mapping.items():
+                        if any(keyword in field_keywords for keyword in variations):
+                            if field_key == 'empid':
+                                return user.empid
+                            elif field_key == 'name':
+                                return user.name
+                            elif field_key == 'doj':
+                                return user.doj.strftime('%d-%m-%Y') if user.doj else None
+                            elif field_key == 'email':
+                                return user.email
+                            elif field_key == 'phone':
+                                return user.phone
+                            elif field_key == 'image_base64':
+                                return user.image_base64
+                            elif field_key == 'designation':
+                                return user.designation
+                            elif field_key == 'company_name':
+                                return user.company_name
+                            elif field_key == 'branch_name':
+                                return user.branch_name
+                            elif field_key == 'department_name':
+                                return user.department_name
+                    return None
                 
                 # UNIFIED FIELD QUERY HANDLER - Handles "what is [field] of [name]?" pattern
                 # Check if question asks for a specific field OF a name (not empid)
                 extracted_name = extract_name_from_question(question_lower)
                 if extracted_name:
-                    # Found a name in the question - search by name first
-                    user = find_user_by_name(extracted_name)
+                    # Found a name in the question - search by name first (get ALL matches)
+                    users = find_users_by_name(extracted_name)
                     
-                    if user:
-                        # Now determine which field is being asked for
-                        if any(word in question_lower for word in ['empid', 'employee id', 'id']):
+                    if users:
+                        # If multiple users found, return selection response
+                        if len(users) > 1:
+                            # Build selection data
+                            selection_data = []
+                            for user in users:
+                                selection_data.append({
+                                    'empid': user.empid,
+                                    'name': user.name,
+                                    'designation': user.designation or 'N/A',
+                                    'department': user.department_name or 'N/A'
+                                })
+                            
+                            # Return special format for selection - show simple prompt message
+                            # The actual names will be shown in the selection buttons
+                            result_text = "Please select an employee:"
+                            
+                            # Return special format that will be parsed in endpoint
+                            # Use |||SEPARATOR||| to avoid conflicts with JSON or text content
+                            return f"SELECTION:USER|||SEPARATOR|||{json.dumps(selection_data)}|||SEPARATOR|||{result_text}"
+                        
+                        # Single user found - proceed with field query
+                        user = users[0]
+                        
+                        # Get all field keyword variations
+                        all_field_keywords = [
+                            # empid variations
+                            'empid', 'emp_id', 'employee_id', 'staff_id', 'user_id', 'personnel_id',
+                            # name variations
+                            'name', 'employee_name', 'full_name', 'staff_name', 'user_name', 'emp_name',
+                            # doj variations
+                            'doj', 'date_of_joining', 'joining_date', 'join_date', 'date_of_join', 'entry_date', 
+                            'employment_start_date', 'start_date', 'date of joining', 'when joined',
+                            # email variations
+                            'email', 'email_id', 'email_address', 'official_email', 'work_email', 'contact_email', 'mail id',
+                            # phone variations
+                            'phone', 'mobile', 'mobile_no', 'phone_no', 'contact_number', 'mobile_number', 'telephone', 'phone number',
+                            # image variations
+                            'image', 'photo', 'picture', 'avatar', 'profile picture', 'profile image', 'profile_image', 
+                            'profile_photo', 'employee_photo', 'user_image', 'image_data', 'photo_base64', 'image_base64',
+                            # designation variations
+                            'designation', 'job_title', 'role', 'position', 'designation_name', 'job_role',
+                            # company_name variations
+                            'company_name', 'organization_name', 'employer_name', 'company', 'org_name', 'firm_name',
+                            # branch_name variations
+                            'branch_name', 'office_branch', 'branch', 'location', 'branch_location', 'office_name',
+                            # department_name variations
+                            'department_name', 'department', 'dept_name', 'division', 'team', 'functional_area'
+                        ]
+                        
+                        # Check which field is being asked for
+                        field_value = get_user_field_value(user, all_field_keywords)
+                        
+                        if any(keyword in question_lower for keyword in ['empid', 'emp_id', 'employee_id', 'staff_id', 'user_id', 'personnel_id', 'employee id']):
                             return f"Employee ID for {user.name}:\n\n• Employee ID: {user.empid}"
                         
-                        elif any(word in question_lower for word in ['dob', 'date of birth', 'birthday', 'birth date']):
+                        elif any(keyword in question_lower for keyword in ['dob', 'date of birth', 'birthday', 'birth date']):
                             if user.dob:
                                 dob_str = user.dob.strftime('%d-%m-%Y')
                                 age = (datetime.now().date() - user.dob).days // 365
@@ -135,7 +232,7 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                             else:
                                 return f"Date of Birth is not available for {user.name} ({user.empid})."
                         
-                        elif any(word in question_lower for word in ['doj', 'date of joining', 'joining date', 'when joined']):
+                        elif any(keyword in question_lower for keyword in ['doj', 'date_of_joining', 'joining_date', 'join_date', 'date_of_join', 'entry_date', 'employment_start_date', 'start_date', 'date of joining', 'when joined']):
                             if user.doj:
                                 doj_str = user.doj.strftime('%d-%m-%Y')
                                 years_worked = (datetime.now().date() - user.doj).days // 365
@@ -143,32 +240,28 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                             else:
                                 return f"Date of Joining is not available for {user.name} ({user.empid})."
                         
-                        elif any(word in question_lower for word in ['phone', 'mobile', 'contact number', 'phone number']):
+                        elif any(keyword in question_lower for keyword in ['email', 'email_id', 'email_address', 'official_email', 'work_email', 'contact_email', 'mail id']):
+                            return f"Email for {user.name} ({user.empid}):\n\n• Email: {user.email}"
+                        
+                        elif any(keyword in question_lower for keyword in ['phone', 'mobile', 'mobile_no', 'phone_no', 'contact_number', 'mobile_number', 'telephone', 'phone number']):
                             if user.phone:
                                 return f"Phone number for {user.name} ({user.empid}):\n\n• Phone: {user.phone}"
                             else:
                                 return f"Phone number is not available for {user.name} ({user.empid})."
                         
-                        elif any(word in question_lower for word in ['email', 'email address', 'mail id']):
-                            return f"Email for {user.name} ({user.empid}):\n\n• Email: {user.email}"
-                        
-                        elif any(word in question_lower for word in ['designation']):
+                        elif any(keyword in question_lower for keyword in ['designation', 'job_title', 'position', 'designation_name', 'job_role']):
                             return f"Designation for {user.name} ({user.empid}):\n\n• Designation: {user.designation or 'N/A'}"
                         
-                        elif any(word in question_lower for word in ['department']):
+                        elif any(keyword in question_lower for keyword in ['department_name', 'department', 'dept_name', 'division', 'team', 'functional_area']):
                             return f"Department for {user.name} ({user.empid}):\n\n• Department: {user.department_name or 'N/A'}"
                         
-                        elif any(word in question_lower for word in ['branch']):
+                        elif any(keyword in question_lower for keyword in ['branch_name', 'office_branch', 'branch', 'location', 'branch_location', 'office_name']):
                             return f"Branch for {user.name} ({user.empid}):\n\n• Branch: {user.branch_name or 'N/A'}"
                         
-                        elif any(word in question_lower for word in ['role']):
-                            return f"Role for {user.name} ({user.empid}):\n\n• Role: {user.role or 'N/A'}"
+                        elif any(keyword in question_lower for keyword in ['company_name', 'organization_name', 'employer_name', 'company', 'org_name', 'firm_name']):
+                            return f"Company for {user.name} ({user.empid}):\n\n• Company: {user.company_name or 'N/A'}"
                         
-                        elif any(word in question_lower for word in ['name']):
-                            return f"Name for Employee ID {user.empid}:\n\n• Name: {user.name}"
-                        
-                        elif any(word in question_lower for word in ['image', 'photo', 'picture', 'avatar', 'profile picture', 'profile image']):
-                            # Return image response - will be handled separately in the endpoint
+                        elif any(keyword in question_lower for keyword in ['image', 'photo', 'picture', 'avatar', 'profile picture', 'profile image', 'profile_image', 'profile_photo', 'employee_photo', 'user_image', 'image_data', 'photo_base64', 'image_base64']):
                             if user.image_base64 and user.image_base64.strip():
                                 return f"IMAGE:{user.name}:{user.empid}:{user.image_base64}"
                             else:
@@ -176,7 +269,7 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                         
                         else:
                             # Name found but field not clear - return basic info
-                            return f"Found user: {user.name} ({user.empid}). What information would you like? (empid, dob, doj, phone, email, designation, department, branch, role, image)"
+                            return f"Found user: {user.name} ({user.empid}). What information would you like? (empid, doj, phone, email, designation, department, branch, company, image)"
                     else:
                         return f"No user found with name '{extracted_name}'. Please check the name and try again."
                 
@@ -220,8 +313,68 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                     else:
                         return "To get DOB, please specify the employee ID. For example: 'What is DOB of empid 1027' or 'Date of birth of BT-1027'"
                 
-                # DOJ (Date of Joining) queries
-                elif any(word in question_lower for word in ['doj', 'date of joining', 'joining date', 'when joined']):
+                # Helper function to handle field queries for a user
+                def get_field_response_for_user(user, question_lower):
+                    """Get field response for a user based on question keywords"""
+                    # DOJ variations
+                    doj_keywords = ['doj', 'date_of_joining', 'joining_date', 'join_date', 'date_of_join', 'entry_date', 
+                                   'employment_start_date', 'start_date', 'date of joining', 'when joined']
+                    if any(keyword in question_lower for keyword in doj_keywords):
+                        if user.doj:
+                            doj_str = user.doj.strftime('%d-%m-%Y')
+                            years_worked = (datetime.now().date() - user.doj).days // 365
+                            return f"Date of Joining for {user.name} ({user.empid}):\n\n• DOJ: {doj_str}\n• Experience: {years_worked} years"
+                        else:
+                            return f"Date of Joining is not available for {user.name} ({user.empid})."
+                    
+                    # Email variations
+                    email_keywords = ['email', 'email_id', 'email_address', 'official_email', 'work_email', 'contact_email', 'mail id']
+                    if any(keyword in question_lower for keyword in email_keywords):
+                        return f"Email for {user.name} ({user.empid}):\n\n• Email: {user.email}"
+                    
+                    # Phone variations
+                    phone_keywords = ['phone', 'mobile', 'mobile_no', 'phone_no', 'contact_number', 'mobile_number', 'telephone', 'phone number']
+                    if any(keyword in question_lower for keyword in phone_keywords):
+                        if user.phone:
+                            return f"Phone number for {user.name} ({user.empid}):\n\n• Phone: {user.phone}"
+                        else:
+                            return f"Phone number is not available for {user.name} ({user.empid})."
+                    
+                    # Designation variations
+                    designation_keywords = ['designation', 'job_title', 'position', 'designation_name', 'job_role']
+                    if any(keyword in question_lower for keyword in designation_keywords):
+                        return f"Designation for {user.name} ({user.empid}):\n\n• Designation: {user.designation or 'N/A'}"
+                    
+                    # Department variations
+                    dept_keywords = ['department_name', 'department', 'dept_name', 'division', 'team', 'functional_area']
+                    if any(keyword in question_lower for keyword in dept_keywords):
+                        return f"Department for {user.name} ({user.empid}):\n\n• Department: {user.department_name or 'N/A'}"
+                    
+                    # Branch variations
+                    branch_keywords = ['branch_name', 'office_branch', 'branch', 'location', 'branch_location', 'office_name']
+                    if any(keyword in question_lower for keyword in branch_keywords):
+                        return f"Branch for {user.name} ({user.empid}):\n\n• Branch: {user.branch_name or 'N/A'}"
+                    
+                    # Company variations
+                    company_keywords = ['company_name', 'organization_name', 'employer_name', 'company', 'org_name', 'firm_name']
+                    if any(keyword in question_lower for keyword in company_keywords):
+                        return f"Company for {user.name} ({user.empid}):\n\n• Company: {user.company_name or 'N/A'}"
+                    
+                    # Image variations
+                    image_keywords = ['image', 'photo', 'picture', 'avatar', 'profile picture', 'profile image', 'profile_image', 
+                                     'profile_photo', 'employee_photo', 'user_image', 'image_data', 'photo_base64', 'image_base64']
+                    if any(keyword in question_lower for keyword in image_keywords):
+                        if user.image_base64 and user.image_base64.strip():
+                            return f"IMAGE:{user.name}:{user.empid}:{user.image_base64}"
+                        else:
+                            return f"Profile image is not uploaded for {user.name} ({user.empid})."
+                    
+                    return None
+                
+                # DOJ (Date of Joining) queries - with all variations
+                doj_keywords = ['doj', 'date_of_joining', 'joining_date', 'join_date', 'date_of_join', 'entry_date', 
+                               'employment_start_date', 'start_date', 'date of joining', 'when joined']
+                if any(keyword in question_lower for keyword in doj_keywords):
                     empid_match = re.search(r'\b(\d{4,})\b', question_lower)
                     if not empid_match:
                         words = question_lower.split()
@@ -245,6 +398,10 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                         ).first()
                         
                         if user:
+                            response = get_field_response_for_user(user, question_lower)
+                            if response:
+                                return response
+                            # Fallback if field not matched
                             if user.doj:
                                 doj_str = user.doj.strftime('%d-%m-%Y')
                                 years_worked = (datetime.now().date() - user.doj).days // 365
@@ -254,13 +411,24 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                         else:
                             return f"No user found with Employee ID: {empid}."
                     else:
-                        return "To get DOJ, please specify the employee ID. For example: 'What is DOJ of empid 1027'"
+                        return "To get DOJ, please specify the employee ID or name. For example: 'date_of_joining of empid 1027' or 'doj of ravi'"
                 
-                # Phone number queries
-                elif any(word in question_lower for word in ['phone', 'mobile', 'contact number', 'phone number']):
+                # Phone number queries - with all variations
+                phone_keywords = ['phone', 'mobile', 'mobile_no', 'phone_no', 'contact_number', 'mobile_number', 'telephone', 'phone number']
+                if any(keyword in question_lower for keyword in phone_keywords):
                     empid_match = re.search(r'\b(\d{4,})\b', question_lower)
+                    if not empid_match:
+                        words = question_lower.split()
+                        for i, word in enumerate(words):
+                            if word in ['empid', 'id', 'employee'] and i + 1 < len(words):
+                                next_word = words[i + 1]
+                                if next_word.isdigit() or 'bt-' in next_word.lower():
+                                    empid = next_word.replace('bt-', '').replace('BT-', '')
+                                    empid_match = type('obj', (object,), {'group': lambda x: empid})()
+                                    break
+                    
                     if empid_match:
-                        empid = empid_match.group(1)
+                        empid = empid_match.group(1) if hasattr(empid_match, 'group') else str(empid_match)
                         user = db.query(User).filter(
                             or_(
                                 User.empid == empid,
@@ -271,20 +439,30 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                         ).first()
                         
                         if user:
-                            if user.phone:
-                                return f"Phone number for {user.name} ({user.empid}):\n\n• Phone: {user.phone}"
-                            else:
-                                return f"Phone number is not available for {user.name} ({user.empid})."
+                            response = get_field_response_for_user(user, question_lower)
+                            if response:
+                                return response
                         else:
                             return f"No user found with Employee ID: {empid}."
                     else:
-                        return "To get phone number, please specify the employee ID."
+                        return "To get phone number, please specify the employee ID or name. For example: 'phone of empid 1027' or 'mobile of ravi'"
                 
-                # Email queries
-                elif any(word in question_lower for word in ['email', 'email address', 'mail id']):
+                # Email queries - with all variations
+                email_keywords = ['email', 'email_id', 'email_address', 'official_email', 'work_email', 'contact_email', 'mail id']
+                if any(keyword in question_lower for keyword in email_keywords):
                     empid_match = re.search(r'\b(\d{4,})\b', question_lower)
+                    if not empid_match:
+                        words = question_lower.split()
+                        for i, word in enumerate(words):
+                            if word in ['empid', 'id', 'employee'] and i + 1 < len(words):
+                                next_word = words[i + 1]
+                                if next_word.isdigit() or 'bt-' in next_word.lower():
+                                    empid = next_word.replace('bt-', '').replace('BT-', '')
+                                    empid_match = type('obj', (object,), {'group': lambda x: empid})()
+                                    break
+                    
                     if empid_match:
-                        empid = empid_match.group(1)
+                        empid = empid_match.group(1) if hasattr(empid_match, 'group') else str(empid_match)
                         user = db.query(User).filter(
                             or_(
                                 User.empid == empid,
@@ -295,17 +473,31 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                         ).first()
                         
                         if user:
-                            return f"Email for {user.name} ({user.empid}):\n\n• Email: {user.email}"
+                            response = get_field_response_for_user(user, question_lower)
+                            if response:
+                                return response
                         else:
                             return f"No user found with Employee ID: {empid}."
                     else:
-                        return "To get email, please specify the employee ID."
+                        return "To get email, please specify the employee ID or name. For example: 'email of empid 1027' or 'email_address of ravi'"
                 
-                # Image queries (empid-based)
-                elif any(word in question_lower for word in ['image', 'photo', 'picture', 'avatar', 'profile picture', 'profile image']):
+                # Image queries (empid-based) - with all variations
+                image_keywords = ['image', 'photo', 'picture', 'avatar', 'profile picture', 'profile image', 'profile_image', 
+                                 'profile_photo', 'employee_photo', 'user_image', 'image_data', 'photo_base64', 'image_base64']
+                if any(keyword in question_lower for keyword in image_keywords):
                     empid_match = re.search(r'\b(\d{4,})\b', question_lower)
+                    if not empid_match:
+                        words = question_lower.split()
+                        for i, word in enumerate(words):
+                            if word in ['empid', 'id', 'employee'] and i + 1 < len(words):
+                                next_word = words[i + 1]
+                                if next_word.isdigit() or 'bt-' in next_word.lower():
+                                    empid = next_word.replace('bt-', '').replace('BT-', '')
+                                    empid_match = type('obj', (object,), {'group': lambda x: empid})()
+                                    break
+                    
                     if empid_match:
-                        empid = empid_match.group(1)
+                        empid = empid_match.group(1) if hasattr(empid_match, 'group') else str(empid_match)
                         user = db.query(User).filter(
                             or_(
                                 User.empid == empid,
@@ -316,10 +508,9 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                         ).first()
                         
                         if user:
-                            if user.image_base64 and user.image_base64.strip():
-                                return f"IMAGE:{user.name}:{user.empid}:{user.image_base64}"
-                            else:
-                                return f"Profile image is not uploaded for {user.name} ({user.empid})."
+                            response = get_field_response_for_user(user, question_lower)
+                            if response:
+                                return response
                         else:
                             return f"No user found with Employee ID: {empid}."
                     else:
@@ -516,12 +707,153 @@ def get_chatbot_response(question: str, user_role: str, db: Session = None, curr
                 traceback.print_exc()
                 return f"I encountered an error while searching users. Please try again or contact support."
     
-    # PRIORITY 2: Leave related questions (only if not a user query)
+    # PRIORITY 2: Leave balance queries (check before general leave questions)
+    if db and current_user:
+        # Check for leave balance field keywords
+        leave_balance_keywords = [
+            'total_casual_leaves', 'total_cl', 'total_casual', 'allocated_casual_leaves', 'entitled_casual_leaves', 'casual_leave_quota',
+            'used_casual_leaves', 'used_cl', 'availed_casual_leaves', 'taken_casual_leaves', 'consumed_casual_leaves',
+            'balance_casual_leaves', 'remaining_casual_leaves', 'available_casual_leaves', 'balance_cl', 'pending_casual_leaves',
+            'total_sick_leaves', 'total_sl', 'allocated_sick_leaves', 'entitled_sick_leaves', 'sick_leave_quota',
+            'used_sick_leaves', 'used_sl', 'availed_sick_leaves', 'taken_sick_leaves', 'consumed_sick_leaves',
+            'balance_sick_leaves', 'remaining_sick_leaves', 'available_sick_leaves', 'balance_sl', 'pending_sick_leaves',
+            'total_comp_off_leaves', 'total_comp_off', 'comp_off_quota', 'allocated_comp_off_leaves', 'earned_comp_off_leaves',
+            'used_comp_off_leaves', 'used_comp_off', 'availed_comp_off_leaves', 'taken_comp_off_leaves', 'consumed_comp_off',
+            'balance_comp_off_leaves', 'remaining_comp_off_leaves', 'available_comp_off_leaves', 'balance_comp_off', 'pending_comp_off',
+            'leave balance', 'leave_balance', 'casual leave', 'sick leave', 'comp off'
+        ]
+        
+        has_leave_balance_keywords = any(keyword in question_lower for keyword in leave_balance_keywords)
+        
+        if has_leave_balance_keywords:
+            try:
+                # Extract name or empid from question
+                extracted_name = extract_name_from_question(question_lower)
+                empid_match = re.search(r'\b(\d{4,})\b', question_lower)
+                
+                # Get current year
+                current_year = datetime.now().year
+                
+                # If name extracted, find users
+                if extracted_name:
+                    users = find_users_by_name(extracted_name)
+                    
+                    if users:
+                        # Multiple users found - return selection
+                        if len(users) > 1:
+                            selection_data = []
+                            for user in users:
+                                # Get leave balance for each user
+                                leave_balance = db.query(LeaveBalanceList).filter(
+                                    and_(
+                                        LeaveBalanceList.empid == int(user.empid) if user.empid and str(user.empid).isdigit() else None,
+                                        LeaveBalanceList.year == current_year
+                                    )
+                                ).first() if user.empid and str(user.empid).isdigit() else None
+                                
+                                selection_data.append({
+                                    'empid': user.empid,
+                                    'name': user.name,
+                                    'designation': user.designation or 'N/A'
+                                })
+                            
+                            # Show simple prompt message - names will be in selection buttons
+                            result_text = "Please select an employee:"
+                            
+                            # Use |||SEPARATOR||| to avoid conflicts with JSON or text content
+                            return f"SELECTION:LEAVE|||SEPARATOR|||{json.dumps(selection_data)}|||SEPARATOR|||{result_text}"
+                        
+                        # Single user found
+                        user = users[0]
+                        empid_value = int(user.empid) if user.empid and str(user.empid).isdigit() else None
+                    else:
+                        return f"No user found with name '{extracted_name}'. Please check the name and try again."
+                
+                # If empid found in question
+                elif empid_match:
+                    empid = empid_match.group(1)
+                    user = db.query(User).filter(
+                        or_(
+                            User.empid == empid,
+                            User.empid == f"BT-{empid}",
+                            User.empid.ilike(f'%{empid}%')
+                        ),
+                        User.is_active == True
+                    ).first()
+                    
+                    if user:
+                        empid_value = int(user.empid) if user.empid and str(user.empid).isdigit() else None
+                    else:
+                        return f"No user found with Employee ID: {empid}."
+                else:
+                    # No name or empid - use current user
+                    empid_value = int(current_user.empid) if current_user.empid and str(current_user.empid).isdigit() else None
+                    user = current_user
+                
+                if empid_value:
+                    # Get leave balance
+                    leave_balance = db.query(LeaveBalanceList).filter(
+                        and_(
+                            LeaveBalanceList.empid == empid_value,
+                            LeaveBalanceList.year == current_year
+                        )
+                    ).first()
+                    
+                    if leave_balance:
+                        # Determine which field is being asked for
+                        result = f"Leave Balance for {user.name if user else 'Employee'} ({user.empid if user else empid_value}) - Year {current_year}:\n\n"
+                        
+                        # Casual leave fields
+                        if any(keyword in question_lower for keyword in ['total_casual', 'total_cl', 'allocated_casual', 'entitled_casual', 'casual_quota']):
+                            result += f"• Total Casual Leaves: {float(leave_balance.total_casual_leaves) if leave_balance.total_casual_leaves else 0}\n"
+                        elif any(keyword in question_lower for keyword in ['used_casual', 'used_cl', 'availed_casual', 'taken_casual', 'consumed_casual']):
+                            result += f"• Used Casual Leaves: {float(leave_balance.used_casual_leaves) if leave_balance.used_casual_leaves else 0}\n"
+                        elif any(keyword in question_lower for keyword in ['balance_casual', 'balance_cl', 'remaining_casual', 'available_casual', 'pending_casual']):
+                            result += f"• Balance Casual Leaves: {float(leave_balance.balance_casual_leaves) if leave_balance.balance_casual_leaves else 0}\n"
+                        # Sick leave fields
+                        elif any(keyword in question_lower for keyword in ['total_sick', 'total_sl', 'allocated_sick', 'entitled_sick', 'sick_quota']):
+                            result += f"• Total Sick Leaves: {float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 0}\n"
+                        elif any(keyword in question_lower for keyword in ['used_sick', 'used_sl', 'availed_sick', 'taken_sick', 'consumed_sick']):
+                            result += f"• Used Sick Leaves: {float(leave_balance.used_sick_leaves) if leave_balance.used_sick_leaves else 0}\n"
+                        elif any(keyword in question_lower for keyword in ['balance_sick', 'balance_sl', 'remaining_sick', 'available_sick', 'pending_sick']):
+                            result += f"• Balance Sick Leaves: {float(leave_balance.balance_sick_leaves) if leave_balance.balance_sick_leaves else 0}\n"
+                        # Comp off fields
+                        elif any(keyword in question_lower for keyword in ['total_comp_off', 'comp_off_quota', 'allocated_comp_off', 'earned_comp_off']):
+                            result += f"• Total Comp Off Leaves: {float(leave_balance.total_comp_off_leaves) if leave_balance.total_comp_off_leaves else 0}\n"
+                        elif any(keyword in question_lower for keyword in ['used_comp_off', 'availed_comp_off', 'taken_comp_off', 'consumed_comp_off']):
+                            result += f"• Used Comp Off Leaves: {float(leave_balance.used_comp_off_leaves) if leave_balance.used_comp_off_leaves else 0}\n"
+                        elif any(keyword in question_lower for keyword in ['balance_comp_off', 'remaining_comp_off', 'available_comp_off', 'pending_comp_off']):
+                            result += f"• Balance Comp Off Leaves: {float(leave_balance.balance_comp_off_leaves) if leave_balance.balance_comp_off_leaves else 0}\n"
+                        else:
+                            # Show all leave balances
+                            result += f"• Total Casual Leaves: {float(leave_balance.total_casual_leaves) if leave_balance.total_casual_leaves else 0}\n"
+                            result += f"• Used Casual Leaves: {float(leave_balance.used_casual_leaves) if leave_balance.used_casual_leaves else 0}\n"
+                            result += f"• Balance Casual Leaves: {float(leave_balance.balance_casual_leaves) if leave_balance.balance_casual_leaves else 0}\n\n"
+                            result += f"• Total Sick Leaves: {float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 0}\n"
+                            result += f"• Used Sick Leaves: {float(leave_balance.used_sick_leaves) if leave_balance.used_sick_leaves else 0}\n"
+                            result += f"• Balance Sick Leaves: {float(leave_balance.balance_sick_leaves) if leave_balance.balance_sick_leaves else 0}\n\n"
+                            result += f"• Total Comp Off Leaves: {float(leave_balance.total_comp_off_leaves) if leave_balance.total_comp_off_leaves else 0}\n"
+                            result += f"• Used Comp Off Leaves: {float(leave_balance.used_comp_off_leaves) if leave_balance.used_comp_off_leaves else 0}\n"
+                            result += f"• Balance Comp Off Leaves: {float(leave_balance.balance_comp_off_leaves) if leave_balance.balance_comp_off_leaves else 0}\n"
+                        
+                        return result
+                    else:
+                        return f"Leave balance not found for {user.name if user else 'Employee'} ({user.empid if user else empid_value}) for year {current_year}."
+                else:
+                    return "Unable to determine employee. Please specify name or employee ID."
+                    
+            except Exception as e:
+                print(f"Error querying leave balance: {e}")
+                import traceback
+                traceback.print_exc()
+                return f"I encountered an error while searching leave balance. Please try again."
+    
+    # PRIORITY 3: Leave related questions (only if not a user query or leave balance query)
     if any(word in question_lower for word in ['leave', 'holiday', 'vacation', 'time off']):
         if 'apply' in question_lower or 'how to apply' in question_lower:
             return "To apply for leave:\n1. Go to Employee → Apply Leave\n2. Select leave type (Sick, Casual, Annual, etc.)\n3. Choose start and end dates\n4. Add reason if required\n5. Submit your request\n\nYour manager/HR will review and approve it."
         elif 'balance' in question_lower or 'remaining' in question_lower:
-            return "To check your leave balance:\n1. Go to Employee → Leaves List\n2. You'll see your available leave balance for each type\n\nFor detailed balance, HR can check Employee → Balance Leaves."
+            return "To check your leave balance:\n1. Go to Employee → Leaves List\n2. You'll see your available leave balance for each type\n\nFor detailed balance, HR can check Employee → Balance Leaves.\n\nYou can also ask: 'balance_casual_leaves of [name]' or 'leave balance of [empid]'"
         elif 'types' in question_lower or 'kinds' in question_lower:
             return "Available leave types:\n• Sick Leave (SL)\n• Casual Leave (CL)\n• Annual Leave (AL)\n• Emergency Leave\n• Other Leave\n\nEach has different rules and approval processes."
         else:
@@ -610,9 +942,42 @@ def ask_chatbot(
             current_user=current_user
         )
         
-        # Check if response contains image data (format: "IMAGE:name:empid:base64data")
+        # Check if response contains selection data (format: "SELECTION:TYPE|||SEPARATOR|||JSON_DATA|||SEPARATOR|||TEXT")
+        selection_required = False
+        selection_data = None
+        selection_type = None
         image_base64 = None
-        if answer.startswith("IMAGE:"):
+        
+        if answer.startswith("SELECTION:"):
+            # Split by the separator to get: SELECTION:TYPE, JSON_DATA, TEXT
+            if "|||SEPARATOR|||" in answer:
+                parts = answer.split("|||SEPARATOR|||")
+                if len(parts) == 3:
+                    # Extract type from first part (e.g., "SELECTION:USER")
+                    type_part = parts[0].split(":")
+                    if len(type_part) == 2:
+                        selection_type = type_part[1]  # USER or LEAVE
+                        try:
+                            selection_data = json.loads(parts[1])
+                            answer = parts[2]  # Only the text part (comma-separated names)
+                            selection_required = True
+                        except json.JSONDecodeError:
+                            # If JSON parsing fails, treat as regular answer
+                            answer = parts[2]
+            else:
+                # Fallback for old format (backward compatibility)
+                parts = answer.split(":", 3)
+                if len(parts) == 4:
+                    selection_type = parts[1]
+                    try:
+                        selection_data = json.loads(parts[2])
+                        answer = parts[3]
+                        selection_required = True
+                    except json.JSONDecodeError:
+                        answer = parts[3]
+        
+        # Check if response contains image data (format: "IMAGE:name:empid:base64data")
+        elif answer.startswith("IMAGE:"):
             parts = answer.split(":", 3)
             if len(parts) == 4:
                 user_name = parts[1]
@@ -631,7 +996,13 @@ def ask_chatbot(
                 else:
                     answer = f"Profile image is not uploaded for {user_name} ({user_empid})."
         
-        return ChatbotResponse(answer=answer, image_base64=image_base64)
+        return ChatbotResponse(
+            answer=answer, 
+            image_base64=image_base64,
+            selection_required=selection_required,
+            selection_data=selection_data,
+            selection_type=selection_type
+        )
     
     except HTTPException:
         raise

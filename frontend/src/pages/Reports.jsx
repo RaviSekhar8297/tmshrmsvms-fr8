@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FiDownload, FiFileText, FiFilter, FiPieChart } from 'react-icons/fi';
 import { reportsAPI } from '../services/api';
+import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
 import './Reports.css';
 
@@ -127,21 +128,20 @@ const Reports = () => {
 
           <div className="form-group">
             <label className="form-label">Start Date</label>
-            <input
-              type="date"
-              className="form-input"
+            <DatePicker
               value={filters.start_date}
-              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+              onChange={(date) => setFilters({ ...filters, start_date: date || '' })}
+              placeholder="Select start date"
             />
           </div>
 
           <div className="form-group">
             <label className="form-label">End Date</label>
-            <input
-              type="date"
-              className="form-input"
+            <DatePicker
               value={filters.end_date}
-              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+              onChange={(date) => setFilters({ ...filters, end_date: date || '' })}
+              placeholder="Select end date"
+              min={filters.start_date || ''}
             />
           </div>
         </div>

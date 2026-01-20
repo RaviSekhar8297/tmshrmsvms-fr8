@@ -41,7 +41,8 @@ def get_projects(
                 )
             )
         
-        projects = query.order_by(Project.created_at.desc()).all()
+        # Limit to 200 projects for performance
+        projects = query.order_by(Project.created_at.desc()).limit(200).all()
         
         # Enrich teams with latest user images and calculate delayed days
         today = datetime.now().date()

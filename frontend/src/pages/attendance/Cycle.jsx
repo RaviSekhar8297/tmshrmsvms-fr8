@@ -206,12 +206,13 @@ const AttendanceCycle = () => {
       </div>
 
       <div className="cycle-form-container">
-        <div className="cycle-section-title">
-          <FiClock style={{ marginRight: '8px', display: 'inline' }} />
-          Shift Timings
-        </div>
-        
-        <div className="cycle-form-grid">
+        <div className="cycle-shift-timings-card">
+          <div className="cycle-section-title">
+            <FiClock style={{ marginRight: '8px', display: 'inline' }} />
+            Shift Timings
+          </div>
+          
+          <div className="cycle-form-grid cycle-shift-grid">
           <div className="cycle-form-group">
             <label>Cycle Name</label>
             <input
@@ -267,102 +268,102 @@ const AttendanceCycle = () => {
               Employees logging in after this time will be marked as late
             </small>
           </div>
-        </div>
-
-        <hr className="cycle-section-divider" />
-
-        <div className="cycle-section-title">
-          <FiClock style={{ marginRight: '8px', display: 'inline' }} />
-          Duration Settings
-        </div>
-
-        <div className="cycle-form-grid">
-          <div className="cycle-form-group">
-            <label>Full Day Duration</label>
-            <input
-              type="time"
-              name="full_day_duration"
-              value={formData.full_day_duration}
-              onChange={handleChange}
-              disabled={!editing}
-              className="cycle-form-input"
-              required
-            />
-            <small className="cycle-form-input-small">
-              Minimum hours required for a full day (e.g., 09:00 = 9 hours)
-            </small>
-          </div>
-
-          <div className="cycle-form-group">
-            <label>Half Day Duration</label>
-            <input
-              type="time"
-              name="half_day_duration"
-              value={formData.half_day_duration}
-              onChange={handleChange}
-              disabled={!editing}
-              className="cycle-form-input"
-              required
-            />
-            <small className="cycle-form-input-small">
-              Minimum hours for half day (e.g., 04:30 = 4.5 hours)
-            </small>
           </div>
         </div>
 
-        <hr className="cycle-section-divider" />
-
-        <div className="cycle-section-title">
-          <FiCalendar style={{ marginRight: '8px', display: 'inline' }} />
-          Cycle Dates
-        </div>
-
-        <div className="cycle-form-grid">
-          <div className="cycle-form-group">
-            <label>Cycle Start Date (Day)</label>
-            <input
-              type="number"
-              name="attendance_cycle_start_date"
-              value={formData.attendance_cycle_start_date}
-              onChange={handleChange}
-              disabled={!editing}
-              className="cycle-form-input"
-              min="1"
-              max="31"
-              required
-            />
-            <small className="cycle-form-input-small">
-              Day of month when cycle starts (1-31)
-            </small>
+        <div className="cycle-shift-timings-card">
+          <div className="cycle-section-title">
+            <FiClock style={{ marginRight: '8px', display: 'inline' }} />
+            Duration Settings
           </div>
+          
+          <div className="cycle-form-grid">
+            <div className="cycle-form-group">
+              <label>Full Day Duration</label>
+              <input
+                type="time"
+                name="full_day_duration"
+                value={formData.full_day_duration}
+                onChange={handleChange}
+                disabled={!editing}
+                className="cycle-form-input"
+                required
+              />
+              <small className="cycle-form-input-small">
+                Minimum hours required for a full day (e.g., 09:00 = 9 hours)
+              </small>
+            </div>
 
-          <div className="cycle-form-group">
-            <label>Cycle End Date (Day)</label>
-            <input
-              type="number"
-              name="attendance_cycle_end_date"
-              value={formData.attendance_cycle_end_date}
-              onChange={handleChange}
-              disabled={!editing}
-              className="cycle-form-input"
-              min="1"
-              max="31"
-              required
-            />
-            <small className="cycle-form-input-small">
-              Day of month when cycle ends (1-31). Use cross-month cycle (e.g., 26-25 means Nov 26 to Dec 25)
-            </small>
+            <div className="cycle-form-group">
+              <label>Half Day Duration</label>
+              <input
+                type="time"
+                name="half_day_duration"
+                value={formData.half_day_duration}
+                onChange={handleChange}
+                disabled={!editing}
+                className="cycle-form-input"
+                required
+              />
+              <small className="cycle-form-input-small">
+                Minimum hours for half day (e.g., 04:30 = 4.5 hours)
+              </small>
+            </div>
           </div>
         </div>
 
-        <hr className="cycle-section-divider" />
+        <div className="cycle-shift-timings-card">
+          <div className="cycle-section-title">
+            <FiCalendar style={{ marginRight: '8px', display: 'inline' }} />
+            Cycle Dates
+          </div>
+          
+          <div className="cycle-form-grid">
+            <div className="cycle-form-group">
+              <label>Cycle Start Date (Day)</label>
+              <input
+                type="number"
+                name="attendance_cycle_start_date"
+                value={formData.attendance_cycle_start_date}
+                onChange={handleChange}
+                disabled={!editing}
+                className="cycle-form-input"
+                min="1"
+                max="31"
+                required
+              />
+              <small className="cycle-form-input-small">
+                Day of month when cycle starts (1-31)
+              </small>
+            </div>
 
-        <div className="cycle-section-title">
-          <FiBell style={{ marginRight: '8px', display: 'inline' }} />
-          Notification Settings
+            <div className="cycle-form-group">
+              <label>Cycle End Date (Day)</label>
+              <input
+                type="number"
+                name="attendance_cycle_end_date"
+                value={formData.attendance_cycle_end_date}
+                onChange={handleChange}
+                disabled={!editing}
+                className="cycle-form-input"
+                min="1"
+                max="31"
+                required
+              />
+              <small className="cycle-form-input-small">
+                Day of month when cycle ends (1-31). Use cross-month cycle (e.g., 26-25 means Nov 26 to Dec 25)
+              </small>
+            </div>
+          </div>
         </div>
 
-        <div className="cycle-form-grid">
+        <div className="cycle-shift-timings-card">
+          <div className="cycle-section-title">
+            <FiBell style={{ marginRight: '8px', display: 'inline' }} />
+            Notification Settings
+          </div>
+          
+          <div className="cycle-form-grid">
           <div className="cycle-form-group">
             <label>Birthdays Send Day</label>
             <select
@@ -490,6 +491,7 @@ const AttendanceCycle = () => {
                 ? 'Time to send weekly attendance reports (00:00 - 23:59)'
                 : 'Please select a day first to enable time selection'}
             </small>
+          </div>
           </div>
         </div>
 

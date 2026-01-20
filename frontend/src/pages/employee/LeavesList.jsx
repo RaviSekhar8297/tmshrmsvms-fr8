@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiChevronLeft, FiChevronRight, FiRefreshCw } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import DatePicker from '../../components/DatePicker';
 import './Employee.css';
 import '../hr/HR.css';
@@ -139,9 +139,6 @@ const LeavesList = () => {
               <option value="rejected">Rejected</option>
             </select>
           </div>
-          <button className="btn-secondary" onClick={fetchLeaves}>
-            Refresh
-          </button>
           <button className="btn-primary" onClick={() => toast('Excel export coming soon')}>
             Excel
           </button>

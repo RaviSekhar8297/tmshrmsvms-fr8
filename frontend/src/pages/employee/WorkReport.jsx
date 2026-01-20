@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiCalendar, FiChevronDown } from 'react-icons/fi';
+import * as XLSX from 'xlsx';
 import './Employee.css';
 
 const WorkReport = () => {
@@ -35,11 +36,74 @@ const WorkReport = () => {
     }
   };
 
+  const exportToExcel = () => {
+    const filteredReports = reports.filter((report) => {
+      const term = search.toLowerCase();
+      return (
+        !term ||
+        report.remarks?.toLowerCase().includes(term) ||
+        String(report.tasks_completed || '').includes(term) ||
+        String(report.hours_worked || '').includes(term)
+      );
+    });
+
+    if (filteredReports.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel
+      const data = [];
+      
+      // Header row
+      const headerRow = ['Date', 'Tasks Completed', 'Hours Worked', 'Status', 'Remarks'];
+      data.push(headerRow);
+      
+      // Data rows
+      filteredReports.forEach((report) => {
+        const row = [
+          new Date(report.date).toLocaleDateString(),
+          report.tasks_completed || 0,
+          report.hours_worked || 0,
+          report.status || '',
+          report.remarks || '-'
+        ];
+        data.push(row);
+      });
+      
+      // Create workbook and worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Work Reports');
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 12 }, // Date
+        { wch: 15 }, // Tasks Completed
+        { wch: 15 }, // Hours Worked
+        { wch: 12 }, // Status
+        { wch: 40 }  // Remarks
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename with month
+      const filename = `work_reports_${month || 'all'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Download
+      XLSX.writeFile(wb, filename);
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Failed to export Excel file');
+    }
+  };
+
   return (
     <div className="page-container">
       <div className="page-header stacked">
         <div>
-          <h1>WORK REPORT!</h1>
+          <h1>WORK REPORT</h1>
           <p className="page-subtitle">Search your daily submissions and filter by month.</p>
         </div>
         <div className="header-actions filters-row toolbar">
@@ -204,7 +268,7 @@ const WorkReport = () => {
             </div>
           </div>
           <div className="toolbar-right">
-            <button className="btn-primary" onClick={() => toast('Excel export coming soon')}>
+            <button className="btn-primary" onClick={exportToExcel}>
               Excel
             </button>
           </div>
