@@ -315,17 +315,78 @@ const Tasks = () => {
       }
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast.error('Failed to load tasks');
+      toast.error(getErrorMessage(error, 'Failed to load tasks'));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Helper function to extract error message from API error response
+  const getErrorMessage = (error, defaultMessage = 'An error occurred') => {
+    if (!error) return defaultMessage;
     
-    // Check for duplicate title
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      
+      // Handle FastAPI validation error array
+      if (Array.isArray(errorData.detail)) {
+        return errorData.detail
+          .map(err => {
+            if (typeof err === 'string') return err;
+            if (err.msg) return err.msg;
+            if (err.message) return err.message;
+            return JSON.stringify(err);
+          })
+          .join(', ');
+      }
+      
+      // Handle single error object or string
+      if (typeof errorData.detail === 'string') {
+        return errorData.detail;
+      }
+      
+      if (typeof errorData.detail === 'object' && errorData.detail.msg) {
+        return errorData.detail.msg;
+      }
+      
+      if (errorData.message) {
+        return errorData.message;
+      }
+      
+      if (typeof errorData.detail === 'object') {
+        return JSON.stringify(errorData.detail);
+      }
+    }
+    
+    if (error.message) {
+      return error.message;
+    }
+    
+    return defaultMessage;
+  };
+
+  const validateForm = () => {
+    // Validate title (letters/spaces only, max 40)
     const titleTrimmed = formData.title.trim();
+    if (!titleTrimmed) {
+      toast.error('Task title is required');
+      return false;
+    }
+    const titleRegex = /^[A-Za-z\s]+$/;
+    if (!titleRegex.test(titleTrimmed)) {
+      toast.error('Task title must contain only letters and spaces');
+      return false;
+    }
+    if (titleTrimmed.length < 3) {
+      toast.error('Task title must be at least 3 characters');
+      return false;
+    }
+    if (titleTrimmed.length > 40) {
+      toast.error('Task title must be 40 characters or less');
+      return false;
+    }
+
+    // Check for duplicate title
     const duplicateTask = tasks.find(task => 
       task.title.trim().toLowerCase() === titleTrimmed.toLowerCase() &&
       (!editingTask || task.id !== editingTask.id)
@@ -333,6 +394,197 @@ const Tasks = () => {
     
     if (duplicateTask) {
       toast.error('Task title already exists. Please use a different title.');
+      return false;
+    }
+
+    // Validate description (if provided, check length and content)
+    if (formData.description) {
+      const descTrimmed = formData.description.trim();
+      if (descTrimmed.length > 500) {
+        toast.error('Description must be 500 characters or less');
+        return false;
+      }
+      if (descTrimmed.length > 0 && descTrimmed.length < 5) {
+        toast.error('Description must be at least 5 characters if provided');
+        return false;
+      }
+    }
+
+    // Validate Project field
+    if (!useManualProject && !formData.project_id) {
+      // Project is optional, so this is fine
+    } else if (useManualProject) {
+      // Manual project name validation
+      const manualNameTrimmed = manualProjectName.trim();
+      if (!manualNameTrimmed) {
+        toast.error('Project name is required when entering manually');
+        return false;
+      }
+      if (manualNameTrimmed.length < 3) {
+        toast.error('Project name must be at least 3 characters');
+        return false;
+      }
+      if (manualNameTrimmed.length > 100) {
+        toast.error('Project name must be 100 characters or less');
+        return false;
+      }
+      // Validate manual project name contains only valid characters
+      const projectNameRegex = /^[A-Za-z0-9\s\-_]+$/;
+      if (!projectNameRegex.test(manualNameTrimmed)) {
+        toast.error('Project name can only contain letters, numbers, spaces, hyphens, and underscores');
+        return false;
+      }
+    } else if (formData.project_id) {
+      // Validate selected project exists
+      const selectedProject = projects.find((p) => p.id === parseInt(formData.project_id));
+      if (!selectedProject) {
+        toast.error('Selected project does not exist');
+        return false;
+      }
+    }
+
+    // Validate Assign To field (required, must be valid)
+    if (!formData.assigned_to_id) {
+      toast.error('Assign To field is required. Please select an employee');
+      return false;
+    }
+    
+    const assignedEmployee = employees.find(emp => emp.id === parseInt(formData.assigned_to_id));
+    if (!assignedEmployee) {
+      toast.error('Selected employee does not exist. Please select a valid employee');
+      return false;
+    }
+    
+    // If project is selected, validate assignee is in project team
+    if (formData.project_id && !useManualProject) {
+      const selectedProject = projects.find((p) => p.id === parseInt(formData.project_id));
+      if (selectedProject) {
+        const teamEmpids = selectedProject?.teams?.map((m) => m.empid).filter(Boolean) || [];
+        if (teamEmpids.length > 0 && !teamEmpids.includes(assignedEmployee.empid)) {
+          toast.error('Selected employee is not part of the selected project team. Please select an employee from the project team');
+          return false;
+        }
+      }
+    }
+
+    // Validate Assigned By (if Admin role and provided, must exist in managers)
+    if (user?.role === 'Admin') {
+      if (formData.assigned_by_id) {
+        const assignedManager = managers.find(m => m.id === parseInt(formData.assigned_by_id));
+        if (!assignedManager) {
+          toast.error('Selected manager does not exist');
+          return false;
+        }
+      }
+      // If employee is assigned but no manager assigned, warn (optional validation)
+      if (formData.assigned_to_id && !formData.assigned_by_id) {
+        // This is optional, just a warning could be shown, but we'll allow it
+      }
+    }
+
+    // Validate priority (must always be one of valid values)
+    const validPriorities = ['low', 'medium', 'high', 'urgent'];
+    if (!formData.priority) {
+      toast.error('Priority is required');
+      return false;
+    }
+    if (!validPriorities.includes(formData.priority)) {
+      toast.error('Invalid priority value. Please select a valid priority');
+      return false;
+    }
+
+    // Validate start date (if provided, must be valid date and not in past)
+    if (formData.start_date) {
+      const startDate = new Date(formData.start_date);
+      if (isNaN(startDate.getTime())) {
+        toast.error('Invalid start date format');
+        return false;
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const startDateOnly = new Date(startDate);
+      startDateOnly.setHours(0, 0, 0, 0);
+      if (startDateOnly < today) {
+        toast.error('Start date cannot be in the past');
+        return false;
+      }
+    }
+
+    // Validate due date (if provided, must be valid date and after start date)
+    if (formData.due_date) {
+      const dueDate = new Date(formData.due_date);
+      if (isNaN(dueDate.getTime())) {
+        toast.error('Invalid due date format');
+        return false;
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueDateOnly = new Date(dueDate);
+      dueDateOnly.setHours(0, 0, 0, 0);
+      
+      if (formData.start_date) {
+        const startDate = new Date(formData.start_date);
+        startDate.setHours(0, 0, 0, 0);
+        if (dueDateOnly < startDate) {
+          toast.error('Due date cannot be before start date');
+          return false;
+        }
+        // Check if due date is at least 1 day after start date
+        const diffTime = dueDateOnly - startDate;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays < 1) {
+          toast.error('Due date must be at least 1 day after start date');
+          return false;
+        }
+      } else {
+        if (dueDateOnly < today) {
+          toast.error('Due date cannot be in the past');
+          return false;
+        }
+      }
+    }
+
+    // Validate estimated days (if provided, must be positive number)
+    if (formData.estimated_days) {
+      const estimatedDaysStr = formData.estimated_days.toString().trim();
+      if (!estimatedDaysStr) {
+        // Empty is allowed since it's auto-calculated
+      } else {
+        const estimatedDays = parseInt(estimatedDaysStr);
+        if (isNaN(estimatedDays)) {
+          toast.error('Estimated days must be a valid number');
+          return false;
+        }
+        if (estimatedDays <= 0) {
+          toast.error('Estimated days must be a positive number');
+          return false;
+        }
+        if (estimatedDays > 365) {
+          toast.error('Estimated days cannot exceed 365 days');
+          return false;
+        }
+        // Validate estimated days matches date range if both dates are provided
+        if (formData.start_date && formData.due_date) {
+          const startDate = new Date(formData.start_date);
+          const dueDate = new Date(formData.due_date);
+          const diffTime = dueDate - startDate;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays > 0 && Math.abs(estimatedDays - diffDays) > 5) {
+            // Allow some tolerance, but warn if very different
+            // This is just a warning, not a hard error
+          }
+        }
+      }
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validate all fields
+    if (!validateForm()) {
       return;
     }
     
@@ -361,7 +613,7 @@ const Tasks = () => {
       resetForm();
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save task');
+      toast.error(getErrorMessage(error, 'Failed to save task'));
     }
   };
 
@@ -409,7 +661,7 @@ const Tasks = () => {
                 });
                 fetchData();
               } catch (error) {
-                toast.error(error.response?.data?.detail || 'Failed to delete task');
+                toast.error(getErrorMessage(error, 'Failed to delete task'));
               }
             }}
             style={{
@@ -484,7 +736,7 @@ const Tasks = () => {
       toast.success('Timer started');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to start timer');
+      toast.error(getErrorMessage(error, 'Failed to start timer'));
     }
   };
 
@@ -502,7 +754,7 @@ const Tasks = () => {
       toast.success('Timer stopped');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to stop timer');
+      toast.error(getErrorMessage(error, 'Failed to stop timer'));
     }
   };
 
@@ -603,7 +855,7 @@ const Tasks = () => {
       }));
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to submit rating');
+      toast.error(getErrorMessage(error, 'Failed to submit rating'));
     }
   };
 
@@ -1090,15 +1342,6 @@ const Tasks = () => {
                           Delayed by {task.delayed_days} day{task.delayed_days !== 1 ? 's' : ''}
                         </span>
                       )}
-                      <div className="task-actions">
-                        <button 
-                          className="btn-icon" 
-                          onClick={() => handleEdit(task)}
-                          title="Edit Task"
-                        >
-                          <FiEdit2 />
-                        </button>
-                      </div>
                     </div>
 
                     <Link to={`/tasks/${task.id}`} className="task-card-body" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -1180,9 +1423,14 @@ const Tasks = () => {
                             const newProgress = parseInt(e.target.value);
                             // Update immediately for visual feedback
                             const updatedTasks = tasksAssignedToManager.map(t => 
-                              t.id === task.id ? { ...t, percent_complete: newProgress } : t
+                              t.id === task.id ? { ...t, percent_complete: newProgress, status: newProgress === 100 ? 'done' : t.status } : t
                             );
                             setTasksAssignedToManager(updatedTasks);
+                            
+                            // If progress reached 100%, automatically update status to done
+                            if (newProgress === 100 && task.percent_complete !== 100) {
+                              handleStatusChange(task.id, 'done');
+                            }
                           }}
                           onMouseUp={(e) => {
                             e.stopPropagation();
@@ -1215,26 +1463,67 @@ const Tasks = () => {
 
                     {/* Timer Controls and Status for Manager */}
                     <div className="task-card-footer" style={{ padding: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {/* Status Dropdown */}
-                      <div>
-                        <select
-                          className="form-select"
-                          value={task.status}
-                          disabled={isTaskCompleted(task)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleStatusChange(task.id, e.target.value);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ width: '100%' }}
-                        >
-                          <option value="todo">To Do</option>
-                          <option value="in-progress">In Progress</option>
-                          <option value="blocked">Blocked</option>
-                          <option value="review">Review</option>
-                          <option value="done">Done</option>
-                        </select>
-                      </div>
+                      {/* Close Task Dropdown - Show when progress is 100% */}
+                      {task.percent_complete === 100 && !isTaskCompleted(task) && (
+                        <div>
+                          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px', display: 'block' }}>
+                            Close Task:
+                          </label>
+                          <select
+                            className="form-select"
+                            value={task.status}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleStatusChange(task.id, e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: '100%' }}
+                          >
+                            <option value="review">Mark as Review</option>
+                            <option value="done">Mark as Done (Close Task)</option>
+                          </select>
+                          <small className="form-hint" style={{ display: 'block', marginTop: '4px', color: '#64748b' }}>
+                            Progress is 100%. Please close the task using the dropdown above.
+                          </small>
+                        </div>
+                      )}
+                      
+                      {/* Status Dropdown - Show when progress is not 100% */}
+                      {task.percent_complete < 100 && (
+                        <div>
+                          <select
+                            className="form-select"
+                            value={task.status}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleStatusChange(task.id, e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: '100%' }}
+                          >
+                            <option value="todo">To Do</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="review">Review</option>
+                            <option value="done">Done</option>
+                          </select>
+                        </div>
+                      )}
+                      
+                      {/* Show message when task is completed */}
+                      {isTaskCompleted(task) && (
+                        <div style={{ 
+                          textAlign: 'center', 
+                          padding: '8px', 
+                          background: '#d1fae5', 
+                          color: '#065f46', 
+                          borderRadius: '6px',
+                          fontSize: '0.875rem',
+                          fontWeight: 600
+                        }}>
+                          ✓ Task Completed
+                        </div>
+                      )}
                       
                       {/* Timer Controls */}
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1403,9 +1692,15 @@ const Tasks = () => {
               type="text"
               className="form-input"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Only allow letters and spaces
+                if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                  setFormData({ ...formData, title: value });
+                }
+              }}
               placeholder="Enter task title"
-              required
+              maxLength={40}
             />
           </div>
 
@@ -1414,10 +1709,21 @@ const Tasks = () => {
             <textarea
               className="form-textarea"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Task description"
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value.length <= 500) {
+                  setFormData({ ...formData, description: value });
+                }
+              }}
+              placeholder="Task description (max 500 characters)"
               rows={3}
+              maxLength={500}
             />
+            {formData.description && (
+              <small className="form-hint" style={{ color: formData.description.length > 500 ? '#ef4444' : '#64748b' }}>
+                {formData.description.length}/500 characters
+              </small>
+            )}
           </div>
 
           <div className="form-group">
@@ -1474,8 +1780,14 @@ const Tasks = () => {
                     className="form-input"
                     style={{ flex: 1 }}
                     value={manualProjectName}
-                    onChange={(e) => setManualProjectName(e.target.value)}
-                    placeholder="Enter project name"
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.length <= 100) {
+                        setManualProjectName(value);
+                      }
+                    }}
+                    placeholder="Enter project name (max 100 characters)"
+                    maxLength={100}
                   />
                   <button
                     type="button"
@@ -1495,7 +1807,7 @@ const Tasks = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Assign To</label>
+              <label className="form-label">Assign To *</label>
               <SearchableSelect
                 value={formData.assigned_to_id}
                 onChange={(value) => {
@@ -1577,7 +1889,7 @@ const Tasks = () => {
               </div>
             )}
             <div className="form-group">
-              <label className="form-label">Priority</label>
+              <label className="form-label">Priority *</label>
               <select
                 className="form-select"
                 value={formData.priority}
@@ -1665,17 +1977,9 @@ const Tasks = () => {
               type="number"
               className="form-input"
               value={formData.estimated_days}
-              onChange={(e) => {
-                setEstimatedDaysManuallyEdited(true);
-                setFormData({ ...formData, estimated_days: e.target.value });
-              }}
-              onKeyDown={(e) => {
-                // Track manual edits via arrow keys
-                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                  setEstimatedDaysManuallyEdited(true);
-                }
-              }}
-              placeholder="Auto-calculated from dates or enter manually"
+              readOnly
+              disabled
+              placeholder="Auto-calculated from dates"
               min="1"
             />
             <small className="form-hint">

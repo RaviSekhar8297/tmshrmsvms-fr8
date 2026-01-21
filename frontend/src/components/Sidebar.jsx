@@ -109,15 +109,15 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/self/punch', icon: FiClock, label: 'Punch', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/hierarchy', icon: FiGitBranch, label: 'Hierarchy', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/self/apply-leave', icon: FiPlus, label: 'Apply Leave', roles: ['Manager', 'HR'] },
-    { path: '/self/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Manager', 'HR'] },
     { path: '/self/permission', icon: FiShield, label: 'Permission', roles: ['Manager', 'HR'] },
     { path: '/self/requests', icon: FiSend, label: 'Requests', roles: ['Manager', 'HR'] },
-    { path: '/self/resignation', icon: FiLogOut, label: 'Resignation', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/resignation', icon: FiLogOut, label: 'Resignation', roles: ['Manager', 'HR'] },
     { path: '/employee/apply-loan', icon: FiDollarSign, label: 'Apply Loan', roles: ['Manager', 'HR'] },
     { path: '/self/week-offs', icon: FiCalendar, label: 'Week-Offs', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/self/holidays', icon: FiGift, label: 'Holidays', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Admin', 'Manager', 'HR'] },
+    { path: '/self/holidays', icon: FiGift, label: 'Holidays', roles: ['Manager', 'HR'] },
+    { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Manager', 'HR'] },
+    { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Manager', 'HR'] },
     { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Admin', 'Manager', 'HR'] },
     { path: '/payroll/tax', icon: FiPercent, label: 'Tax', roles: ['Manager', 'HR'] },
   ];
@@ -135,7 +135,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   // Employees Section (for HR, Admin - managing employees)
   const employeesItems = [
     { path: '/employees/leaves-list', icon: FiList, label: 'Leaves List', roles: ['Admin', 'HR'] },
-    { path: '/employees/balance-leaves', icon: FiList, label: 'Balance Leaves', roles: ['HR'] },
+    { path: '/employees/balance-leaves', icon: FiList, label: 'Balance Leaves', roles: ['Admin', 'HR'] },
     { path: '/employees/data', icon: FiFileText, label: 'Data', roles: ['Admin', 'HR'] },
     { path: '/employees/letters', icon: FiMail, label: 'Letters', roles: ['HR'] },
     { path: '/employees/permission', icon: FiShield, label: 'Permission', roles: ['Admin', 'HR'] },
@@ -237,17 +237,22 @@ const Sidebar = ({ isOpen, onClose }) => {
         </button>
         {isExpanded && (
           <div className="nav-section-items">
-            {filteredItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                onClick={handleNavClick}
-              >
-                <item.icon className="nav-icon" />
-                <span className="nav-label">{item.label}</span>
-              </NavLink>
-            ))}
+            {filteredItems.map((item) => {
+              // For Admin role, check if item has adminRedirect and use it
+              const targetPath = (item.adminRedirect && user?.role === 'Admin') ? item.adminRedirect : item.path;
+              
+              return (
+                <NavLink
+                  key={item.path}
+                  to={targetPath}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  onClick={handleNavClick}
+                >
+                  <item.icon className="nav-icon" />
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              );
+            })}
           </div>
         )}
       </div>
@@ -266,7 +271,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               style={isDarkMode ? {} : { filter: 'none' }}
             />
           </div>
-          <span className="logo-text">TMS</span>
+          {/* <span className="logo-text">TMS</span> */}
         </div>
       </div>
 

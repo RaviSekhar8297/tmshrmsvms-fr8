@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FiDownload, FiFileText, FiFilter, FiPieChart } from 'react-icons/fi';
+import { useState, useEffect, useRef } from 'react';
+import { FiDownload, FiFileText, FiFilter, FiPieChart, FiSearch } from 'react-icons/fi';
 import { reportsAPI } from '../services/api';
 import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
@@ -16,9 +16,23 @@ const Reports = () => {
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const employeeDropdownRef = useRef(null);
 
   useEffect(() => {
     fetchFilterOptions();
+  }, []);
+
+  // Handle click outside to close employee dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
+        setShowEmployeeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchFilterOptions = async () => {
@@ -112,18 +126,98 @@ const Reports = () => {
             </select>
           </div>
 
-          <div className="form-group">
+          <div className="form-group" ref={employeeDropdownRef} style={{ position: 'relative' }}>
             <label className="form-label">Employee</label>
-            <select
-              className="form-select"
-              value={filters.employee_id}
-              onChange={(e) => setFilters({ ...filters, employee_id: e.target.value })}
-            >
-              <option value="">All Employees</option>
-              {filterOptions.employees.map((e) => (
-                <option key={e.id} value={e.id}>{e.name} ({e.empid})</option>
-              ))}
-            </select>
+            <div style={{ position: 'relative' }}>
+              <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }} />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search employee by name or ID..."
+                value={filters.employee_id ? (filterOptions.employees.find(e => e.id === parseInt(filters.employee_id))?.name || '') : employeeSearch}
+                onChange={(e) => {
+                  setEmployeeSearch(e.target.value);
+                  setShowEmployeeDropdown(true);
+                  if (!e.target.value) {
+                    setFilters({ ...filters, employee_id: '' });
+                  }
+                }}
+                onFocus={() => setShowEmployeeDropdown(true)}
+                style={{ paddingLeft: '40px' }}
+              />
+              {showEmployeeDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  zIndex: 1000,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  marginTop: '4px'
+                }}>
+                  {filterOptions.employees
+                    .filter(emp => {
+                      if (!employeeSearch.trim() && !filters.employee_id) return true;
+                      const search = employeeSearch.toLowerCase();
+                      const name = (emp.name || '').toLowerCase();
+                      const empid = (emp.empid || '').toLowerCase();
+                      const email = (emp.email || '').toLowerCase();
+                      return name.includes(search) || empid.includes(search) || email.includes(search);
+                    })
+                    .map((emp) => (
+                      <div
+                        key={emp.id}
+                        onClick={() => {
+                          setFilters({ ...filters, employee_id: emp.id.toString() });
+                          setEmployeeSearch('');
+                          setShowEmployeeDropdown(false);
+                        }}
+                        style={{
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid var(--border-color)',
+                          background: filters.employee_id === emp.id.toString() ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                          fontWeight: filters.employee_id === emp.id.toString() ? 600 : 400,
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (filters.employee_id !== emp.id.toString()) e.currentTarget.style.background = 'var(--bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (filters.employee_id !== emp.id.toString()) e.currentTarget.style.background = filters.employee_id === emp.id.toString() ? 'rgba(99, 102, 241, 0.1)' : 'transparent';
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>{emp.name}</div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {emp.empid} {emp.email ? `• ${emp.email}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  {filterOptions.employees.filter(emp => {
+                    if (!employeeSearch.trim() && !filters.employee_id) return false;
+                    const search = employeeSearch.toLowerCase();
+                    const name = (emp.name || '').toLowerCase();
+                    const empid = (emp.empid || '').toLowerCase();
+                    const email = (emp.email || '').toLowerCase();
+                    return name.includes(search) || empid.includes(search) || email.includes(search);
+                  }).length === 0 && (employeeSearch || filters.employee_id) && (
+                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No employees found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="form-group">

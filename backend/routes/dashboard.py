@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, cast, extract
 from sqlalchemy.dialects.postgresql import JSONB
 from database import get_db
-from models import Project, Task, Issue, Meeting, User, Activity
+from models import Project, Task, Issue, Meeting, User, Activity, PunchLog
 from schemas import DashboardStats, ActivityResponse
 from routes.auth import get_current_user
 from datetime import datetime, timedelta, date
-from typing import List
+from typing import List, Optional
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -300,6 +300,112 @@ def get_anniversaries(
             })
     
     return result
+
+@router.get("/monthly-attendance")
+def get_monthly_attendance(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get monthly attendance data for dashboard card
+    
+    Returns attendance count for each date from 1st of specified month to today (if current month) or end of month.
+    For each date, counts how many employees have punch records (Present).
+    Only accessible to HR and Admin roles.
+    """
+    # Check if user is HR or Admin
+    if current_user.role not in ['HR', 'Admin']:
+        raise HTTPException(status_code=403, detail="Access denied. HR or Admin role required.")
+    
+    try:
+        today = date.today()
+        # Use provided month/year or default to current month/year
+        if month and year:
+            current_month = month
+            current_year = year
+        else:
+            current_month = today.month
+            current_year = today.year
+        
+        # Get first day of the month
+        first_day = date(current_year, current_month, 1)
+        
+        # Get last day of the month
+        if current_month == 12:
+            last_day = date(current_year + 1, 1, 1) - timedelta(days=1)
+        else:
+            last_day = date(current_year, current_month + 1, 1) - timedelta(days=1)
+        
+        # Generate all dates from 1st to end of month (or today if current month)
+        end_date = min(today, last_day) if (current_month == today.month and current_year == today.year) else last_day
+        
+        dates = []
+        current_date = first_day
+        while current_date <= end_date:
+            dates.append(current_date)
+            current_date += timedelta(days=1)
+        
+        # Get all active users (all roles)
+        all_users = db.query(User).filter(User.is_active == True).all()
+        all_empids = [user.empid for user in all_users if user.empid]
+        
+        if not all_empids:
+            # Return empty data if no employees
+            return {
+                "dates": [d.isoformat() for d in dates],
+                "attendance": {d.isoformat(): {"present": 0, "absent": 0, "total": 0} for d in dates}
+            }
+        
+        # Get all punch logs for the date range
+        punch_logs = db.query(PunchLog).filter(
+            PunchLog.employee_id.in_(all_empids),
+            PunchLog.date >= first_day,
+            PunchLog.date <= end_date
+        ).all()
+        
+        # Group punch logs by date and employee_id
+        # For each date, track which employees have at least one punch record
+        attendance_by_date = {}
+        for d in dates:
+            date_str = d.isoformat()
+            attendance_by_date[date_str] = {
+                "present": 0,
+                "absent": 0,
+                "total": len(all_empids)
+            }
+        
+        # Process punch logs
+        employees_by_date = {}
+        for log in punch_logs:
+            if log.date and log.employee_id:
+                date_str = log.date.isoformat()
+                if date_str not in employees_by_date:
+                    employees_by_date[date_str] = set()
+                employees_by_date[date_str].add(log.employee_id)
+        
+        # Calculate present/absent for each date
+        for d in dates:
+            date_str = d.isoformat()
+            present_employees = employees_by_date.get(date_str, set())
+            present_count = len(present_employees)
+            absent_count = len(all_empids) - present_count
+            
+            attendance_by_date[date_str] = {
+                "present": present_count,
+                "absent": absent_count,
+                "total": len(all_empids)
+            }
+        
+        return {
+            "dates": [d.isoformat() for d in dates],
+            "attendance": attendance_by_date
+        }
+    except Exception as e:
+        print(f"Error in get_monthly_attendance: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching monthly attendance: {str(e)}")
 
 
 

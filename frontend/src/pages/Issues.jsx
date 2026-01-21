@@ -31,6 +31,50 @@ const Issues = () => {
     fetchData();
   }, [filter]);
 
+  // Helper function to extract error message from API error response
+  const getErrorMessage = (error, defaultMessage = 'An error occurred') => {
+    if (!error) return defaultMessage;
+    
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      
+      // Handle FastAPI validation error array
+      if (Array.isArray(errorData.detail)) {
+        return errorData.detail
+          .map(err => {
+            if (typeof err === 'string') return err;
+            if (err.msg) return err.msg;
+            if (err.message) return err.message;
+            return JSON.stringify(err);
+          })
+          .join(', ');
+      }
+      
+      // Handle single error object or string
+      if (typeof errorData.detail === 'string') {
+        return errorData.detail;
+      }
+      
+      if (typeof errorData.detail === 'object' && errorData.detail.msg) {
+        return errorData.detail.msg;
+      }
+      
+      if (errorData.message) {
+        return errorData.message;
+      }
+      
+      if (typeof errorData.detail === 'object') {
+        return JSON.stringify(errorData.detail);
+      }
+    }
+    
+    if (error.message) {
+      return error.message;
+    }
+    
+    return defaultMessage;
+  };
+
   const fetchData = async () => {
     try {
       const params = filter !== 'all' ? { status: filter } : {};
@@ -45,14 +89,79 @@ const Issues = () => {
       setTasks(tasksRes.data || []);
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast.error('Failed to load issues');
+      toast.error(getErrorMessage(error, 'Failed to load issues'));
     } finally {
       setLoading(false);
     }
   };
 
+  const validateForm = () => {
+    // Validate Title (only letters and spaces, max 40 characters)
+    const titleTrimmed = formData.title.trim();
+    if (!titleTrimmed) {
+      toast.error('Title is required');
+      return false;
+    }
+    
+    const titleRegex = /^[A-Za-z\s]+$/;
+    if (!titleRegex.test(titleTrimmed)) {
+      toast.error('Title must contain only letters and spaces');
+      return false;
+    }
+    
+    if (titleTrimmed.length < 3) {
+      toast.error('Title must be at least 3 characters');
+      return false;
+    }
+    
+    if (titleTrimmed.length > 40) {
+      toast.error('Title must be 40 characters or less');
+      return false;
+    }
+
+    // Validate Description (if provided, check length)
+    if (formData.description) {
+      const descTrimmed = formData.description.trim();
+      if (descTrimmed.length > 1000) {
+        toast.error('Description must be 1000 characters or less');
+        return false;
+      }
+      if (descTrimmed.length > 0 && descTrimmed.length < 5) {
+        toast.error('Description must be at least 5 characters if provided');
+        return false;
+      }
+    }
+
+    // Validate Priority (must be one of valid values)
+    const validPriorities = ['low', 'medium', 'high', 'urgent'];
+    if (!formData.priority) {
+      toast.error('Priority is required');
+      return false;
+    }
+    if (!validPriorities.includes(formData.priority)) {
+      toast.error('Invalid priority value. Please select a valid priority');
+      return false;
+    }
+
+    // Validate Related Task (if provided, must exist in tasks list)
+    if (formData.project_id) {
+      const selectedTask = tasks.find(task => task.id === parseInt(formData.project_id));
+      if (!selectedTask) {
+        toast.error('Selected task does not exist. Please select a valid task');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate all fields
+    if (!validateForm()) {
+      return;
+    }
     
     try {
       const data = {
@@ -72,7 +181,7 @@ const Issues = () => {
       resetForm();
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save issue');
+      toast.error(getErrorMessage(error, 'Failed to save issue'));
     }
   };
 
@@ -95,7 +204,7 @@ const Issues = () => {
       toast.success('Status updated');
       fetchData();
     } catch (error) {
-      toast.error('Failed to update status');
+      toast.error(getErrorMessage(error, 'Failed to update status'));
     }
   };
 
@@ -107,7 +216,7 @@ const Issues = () => {
       toast.success('Issue deleted successfully');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to delete issue');
+      toast.error(getErrorMessage(error, 'Failed to delete issue'));
     }
   };
 
@@ -331,10 +440,19 @@ const Issues = () => {
               type="text"
               className="form-input"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="Brief description of the issue"
-              required
+              onChange={(e) => {
+                const value = e.target.value;
+                // Only allow letters and spaces
+                if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                  setFormData({ ...formData, title: value });
+                }
+              }}
+              placeholder="Brief description of the issue (letters and spaces only)"
+              maxLength={40}
             />
+            <small className="form-hint" style={{ display: 'block', marginTop: '4px', color: '#64748b' }}>
+              Only letters and spaces, maximum 40 characters
+            </small>
           </div>
 
           <div className="form-group">
@@ -342,15 +460,30 @@ const Issues = () => {
             <textarea
               className="form-textarea"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Detailed description"
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value.length <= 1000) {
+                  setFormData({ ...formData, description: value });
+                }
+              }}
+              placeholder="Detailed description (max 1000 characters)"
               rows={4}
+              maxLength={1000}
             />
+            {formData.description && (
+              <small className="form-hint" style={{ 
+                display: 'block', 
+                marginTop: '4px', 
+                color: formData.description.length > 1000 ? '#ef4444' : '#64748b' 
+              }}>
+                {formData.description.length}/1000 characters
+              </small>
+            )}
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Priority</label>
+              <label className="form-label">Priority *</label>
               <select
                 className="form-select"
                 value={formData.priority}

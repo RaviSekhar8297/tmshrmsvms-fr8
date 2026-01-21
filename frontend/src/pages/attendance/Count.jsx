@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { FiDownload, FiUpload, FiRefreshCw, FiFileText, FiChevronLeft, FiChevronRight, FiSearch, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import '../employee/Employee.css';
 import './Attendance.css';
+import '../self/Punch.css';
 
 const AttendanceCount = () => {
   const { user } = useAuth();
@@ -39,6 +40,8 @@ const AttendanceCount = () => {
   const [generateMonthYear, setGenerateMonthYear] = useState(getPreviousMonth());
   const [showGenerateMonthPicker, setShowGenerateMonthPicker] = useState(false);
   const employeeDropdownRef = useRef(null);
+  const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
+  const monthYearPickerRef = useRef(null);
 
   // Initial load - fetch current month/year data on component mount
   useEffect(() => {
@@ -61,14 +64,17 @@ const AttendanceCount = () => {
       if (showGenerateMonthPicker && !event.target.closest('.month-picker-wrapper')) {
         setShowGenerateMonthPicker(false);
       }
+      if (showMonthYearPicker && monthYearPickerRef.current && !monthYearPickerRef.current.contains(event.target)) {
+        setShowMonthYearPicker(false);
+      }
     };
-    if (showEmployeeDropdown || showGenerateMonthPicker) {
+    if (showEmployeeDropdown || showGenerateMonthPicker || showMonthYearPicker) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showEmployeeDropdown, showGenerateMonthPicker]);
+  }, [showEmployeeDropdown, showGenerateMonthPicker, showMonthYearPicker]);
 
   const fetchEmployees = async () => {
     try {
@@ -196,24 +202,77 @@ const AttendanceCount = () => {
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           />
           <div className="month-year" style={{ display: 'flex', gap: '8px', flex: '0 0 auto' }}>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: parseInt(e.target.value) })}
-              className="form-select"
-            >
-              {monthNames.map((month, index) => (
-                <option key={index + 1} value={index + 1}>{month}</option>
-              ))}
-            </select>
-            <select
-              value={filters.year}
-              onChange={(e) => setFilters({ ...filters, year: parseInt(e.target.value) })}
-              className="form-select"
-            >
-              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
+            <div className="month-picker-wrapper" ref={monthYearPickerRef} style={{ width: '200px' }}>
+              <div 
+                className="month-picker-input"
+                onClick={() => setShowMonthYearPicker(!showMonthYearPicker)}
+              >
+                <FiCalendar size={18} />
+                <span>
+                  {new Date(filters.year, filters.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </span>
+                <FiChevronDown size={18} className={showMonthYearPicker ? 'rotate' : ''} />
+              </div>
+              {showMonthYearPicker && (
+                <div className="month-picker-dropdown" style={{ zIndex: 1000 }}>
+                  <div className="month-picker-header">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilters({ ...filters, year: filters.year - 1 });
+                      }}
+                      className="month-picker-nav"
+                    >
+                      ←
+                    </button>
+                    <span className="month-picker-year">{filters.year}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const currentDate = new Date();
+                        const maxYear = currentDate.getFullYear();
+                        if (filters.year < maxYear) {
+                          setFilters({ ...filters, year: filters.year + 1 });
+                        }
+                      }}
+                      className="month-picker-nav"
+                      disabled={filters.year >= new Date().getFullYear()}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div className="month-picker-grid">
+                    {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, index) => {
+                      const currentDate = new Date();
+                      const currentYearNow = currentDate.getFullYear();
+                      const currentMonthNow = currentDate.getMonth() + 1;
+                      const isCurrentMonth = filters.year === currentYearNow && (index + 1) === currentMonthNow;
+                      const isFutureMonth = filters.year > currentYearNow || (filters.year === currentYearNow && (index + 1) > currentMonthNow);
+                      
+                      return (
+                        <button
+                          key={month}
+                          type="button"
+                          className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${filters.month === (index + 1) ? 'selected' : ''} ${isFutureMonth ? 'disabled' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isFutureMonth) {
+                              setFilters({ ...filters, month: index + 1 });
+                              setShowMonthYearPicker(false);
+                            }
+                          }}
+                          disabled={isFutureMonth}
+                        >
+                          {month.substring(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="header-buttons" style={{ marginLeft: 'auto' }}>
             <button 

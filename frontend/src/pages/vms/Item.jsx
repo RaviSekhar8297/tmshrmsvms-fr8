@@ -486,7 +486,7 @@ const Item = () => {
     toast.success('Excel file downloaded successfully');
   };
 
-  const filteredEmployees = (user?.role === 'HR' || user?.role === 'Admin') 
+  const filteredEmployees = (user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') 
     ? (issuesMatrix?.employees?.filter(emp => 
         emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         emp.empid.toLowerCase().includes(searchTerm.toLowerCase())
@@ -827,7 +827,7 @@ const Item = () => {
           <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <h2>Issues Items</h2>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {(user?.role === 'HR' || user?.role === 'Admin') && (
+              {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') && (
                 <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
                   <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                   <input
@@ -840,7 +840,7 @@ const Item = () => {
                   />
                 </div>
               )}
-              {(user?.role === 'HR' || user?.role === 'Admin') && (
+              {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') && (
                 <button
                   className="btn btn-primary"
                   onClick={() => {
@@ -879,14 +879,14 @@ const Item = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {(user?.role === 'HR' || user?.role === 'Admin' ? filteredEmployees : issuesMatrix.employees).length === 0 ? (
+                    {((user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') ? filteredEmployees : issuesMatrix.employees).length === 0 ? (
                       <tr>
                         <td colSpan={(issuesMatrix.items?.length || 0) + 1} className="text-center">
-                          {user?.role === 'HR' || user?.role === 'Admin' ? 'No employees found' : 'No items assigned'}
+                          {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') ? 'No employees found' : 'No items assigned'}
                         </td>
                       </tr>
                     ) : (
-                      (user?.role === 'HR' || user?.role === 'Admin' ? filteredEmployees : issuesMatrix.employees).map((employee) => (
+                      ((user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') ? filteredEmployees : issuesMatrix.employees).map((employee) => (
                         <tr key={employee.empid}>
                           <td style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', fontWeight: '600' }}>
                             {employee.name}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiMail, 
-  FiPhone, FiUser, FiEye, FiGrid, FiList,
+  FiPhone, FiUser, FiEye, FiEyeOff, FiGrid, FiList,
   FiChevronLeft, FiChevronRight, FiUpload, FiX, FiImage,
   FiBriefcase, FiMapPin, FiCalendar, FiHash,
   FiBell, FiCheckCircle
@@ -32,6 +32,7 @@ const Users = () => {
   const [companies, setCompanies] = useState([]);
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     empid: '',
@@ -168,9 +169,9 @@ const Users = () => {
       return false;
     }
 
-    // Validate designation (max 25 characters if provided)
-    if (formData.designation && formData.designation.length > 25) {
-      toast.error('Designation must be 25 characters or less');
+    // Validate designation (max 40 characters if provided)
+    if (formData.designation && formData.designation.length > 40) {
+      toast.error('Designation must be 40 characters or less');
       return false;
     }
 
@@ -871,7 +872,7 @@ const Users = () => {
                 value={formData.designation}
                 onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
                 placeholder="Enter designation"
-                maxLength={25}
+                maxLength={40}
                 style={{ color: 'var(--text-primary)' }}
               />
             </div>
@@ -964,14 +965,47 @@ const Users = () => {
 
           <div className="form-group">
             <label className="form-label">Password {editingUser ? '(leave blank to keep current)' : '*'}</label>
-            <input
-              type="password"
-              className="form-input"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Password"
-              style={{ color: 'var(--text-primary)' }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="form-input"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Password"
+                style={{ 
+                  color: 'var(--text-primary)',
+                  paddingRight: '40px'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                  transition: 'color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--primary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+              </button>
+            </div>
           </div>
 
           <div className="form-group">

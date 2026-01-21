@@ -297,12 +297,12 @@ const ApplyLeave = () => {
     }
 
     // Validate reason length
-    if (formData.reason.trim().length < 50) {
-      toast.error('Reason must be at least 50 characters long');
+    if (formData.reason.trim().length < 10) {
+      toast.error('Reason must be at least 10 characters long');
       return;
     }
-    if (formData.reason.trim().length > 200) {
-      toast.error('Reason must not exceed 200 characters');
+    if (formData.reason.trim().length > 150) {
+      toast.error('Reason must not exceed 150 characters');
       return;
     }
 
@@ -596,10 +596,10 @@ const ApplyLeave = () => {
 
           <div className="form-group">
             <label>
-              Reason * (50-200 characters) 
+              Reason * (10-150 characters) 
               <span style={{ 
                 marginLeft: '8px',
-                color: formData.reason.length < 50 ? '#f59e0b' : formData.reason.length > 200 ? '#ef4444' : '#64748b',
+                color: formData.reason.length < 10 ? '#f59e0b' : formData.reason.length > 150 ? '#ef4444' : '#64748b',
                 fontWeight: '600',
                 fontSize: '0.9rem'
               }}>
@@ -612,20 +612,20 @@ const ApplyLeave = () => {
               onChange={handleChange}
               rows="5"
               className="form-input"
-              placeholder="Enter reason for leave (minimum 50 characters, maximum 200 characters)..."
-              minLength={50}
-              maxLength={200}
+              placeholder="Enter reason for leave (minimum 10 characters, maximum 150 characters)..."
+              minLength={10}
+              maxLength={150}
             />
             <small className="form-hint" style={{ 
-              color: formData.reason.length < 50 ? '#f59e0b' : formData.reason.length > 200 ? '#ef4444' : '#64748b',
+              color: formData.reason.length < 10 ? '#f59e0b' : formData.reason.length > 150 ? '#ef4444' : '#64748b',
               marginTop: '4px',
               display: 'block'
             }}>
-              {formData.reason.length < 50 
-                ? `${50 - formData.reason.length} more characters required (minimum 50)` 
-                : formData.reason.length > 200
-                ? `${formData.reason.length - 200} characters over limit (maximum 200)`
-                : `${formData.reason.length}/200 characters`}
+              {formData.reason.length < 10 
+                ? `${10 - formData.reason.length} more characters required (minimum 10)` 
+                : formData.reason.length > 150
+                ? `${formData.reason.length - 150} characters over limit (maximum 150)`
+                : `${formData.reason.length}/150 characters`}
             </small>
           </div>
 

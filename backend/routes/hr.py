@@ -2957,13 +2957,14 @@ def get_hr_leaves(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get leave requests for Manager and HR roles
+    """Get leave requests for Manager, HR, and Admin roles
     
     - Manager: Shows leaves of employees reporting to them
     - HR: Shows all leaves except logged-in HR person's leaves
+    - Admin: Shows all leaves (can see all employees' leaves)
     """
-    if current_user.role not in ["Manager", "HR"]:
-        raise HTTPException(status_code=403, detail="Access denied. Manager or HR role required.")
+    if current_user.role not in ["Manager", "HR", "Admin"]:
+        raise HTTPException(status_code=403, detail="Access denied. Manager, HR, or Admin role required.")
     
     query = db.query(Leave)
     
@@ -2973,6 +2974,7 @@ def get_hr_leaves(
     elif current_user.role == "HR":
         # HR can see all leaves except their own
         query = query.filter(Leave.empid != current_user.empid)
+    # Admin can see all leaves (no filter needed)
     
     if employee_id:
         query = query.filter(Leave.empid == employee_id)
@@ -3081,9 +3083,9 @@ def create_hr_leave(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a leave request - HR role only"""
-    if current_user.role != "HR":
-        raise HTTPException(status_code=403, detail="Access denied. HR role required.")
+    """Create a leave request - HR and Admin roles"""
+    if current_user.role not in ["HR", "Admin"]:
+        raise HTTPException(status_code=403, detail="Access denied. HR or Admin role required.")
     
     try:
         from_date = datetime.fromisoformat(leave_data.get("start_date") or leave_data.get("from_date")).date()
@@ -3132,9 +3134,9 @@ def update_hr_leave_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update leave status - Manager and HR roles"""
-    if current_user.role not in ["Manager", "HR"]:
-        raise HTTPException(status_code=403, detail="Access denied. Manager or HR role required.")
+    """Update leave status - Manager, HR, and Admin roles"""
+    if current_user.role not in ["Manager", "HR", "Admin"]:
+        raise HTTPException(status_code=403, detail="Access denied. Manager, HR, or Admin role required.")
     
     leave = db.query(Leave).filter(Leave.id == leave_id).first()
     if not leave:
@@ -3145,8 +3147,8 @@ def update_hr_leave_status(
         if leave.report_to != current_user.empid:
             raise HTTPException(status_code=403, detail="You can only approve leaves of employees reporting to you.")
     
-    # HR can approve any leave except their own
-    if current_user.role == "HR":
+    # HR and Admin can approve any leave except their own
+    if current_user.role in ["HR", "Admin"]:
         if leave.empid == current_user.empid:
             raise HTTPException(status_code=403, detail="You cannot approve your own leave request.")
     

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   FiPlus, FiSearch, FiFilter, FiUsers, FiCalendar, 
   FiMoreVertical, FiEdit2, FiTrash2, FiDollarSign, FiFolder
@@ -7,10 +7,12 @@ import {
 import { projectsAPI, usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
+import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
 import './Projects.css';
 
 const Projects = () => {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [managers, setManagers] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -39,28 +41,14 @@ const Projects = () => {
 
   const fetchData = async () => {
     try {
-      const params = filter !== 'all' && filter !== 'delayed' ? { status: filter } : {};
       const [projectsRes, managersRes, employeesRes] = await Promise.all([
-        projectsAPI.getAll(params),
+        // Always fetch all projects so we can show counts for every status tab
+        projectsAPI.getAll({}),
         isAdmin ? usersAPI.getManagers() : Promise.resolve({ data: [] }),
         usersAPI.getEmployees()
       ]);
       
-      let projectsData = projectsRes.data;
-      
-      // Filter for delayed projects if filter is 'delayed'
-      if (filter === 'delayed') {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        projectsData = projectsData.filter(project => {
-          if (!project.end_date || project.status === 'completed') return false;
-          const endDate = new Date(project.end_date);
-          endDate.setHours(0, 0, 0, 0);
-          return endDate < today;
-        });
-      }
-      
-      setProjects(projectsData);
+      setProjects(projectsRes.data || []);
       setManagers(managersRes.data);
       setEmployees(employeesRes.data);
     } catch (error) {
@@ -79,6 +67,28 @@ const Projects = () => {
       toast.error('Project name is required');
       return;
     }
+
+    // Validate project name (letters/spaces only, max 40)
+    const projectName = formData.name.trim();
+    const nameRegex = /^[A-Za-z\s]+$/;
+    if (!nameRegex.test(projectName)) {
+      toast.error('Project name must contain only letters and spaces');
+      return;
+    }
+    if (projectName.length > 40) {
+      toast.error('Project name must be 40 characters or less');
+      return;
+    }
+
+    // Validate dates
+    if (formData.start_date && formData.end_date) {
+      const start = new Date(formData.start_date);
+      const end = new Date(formData.end_date);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start > end) {
+        toast.error('Start date cannot be after end date');
+        return;
+      }
+    }
     
     try {
       // If manager is creating, set project_head_id to current user
@@ -90,7 +100,7 @@ const Projects = () => {
       const submitData = {
         ...formData,
         project_head_id: projectHeadId,
-        project_cost: formData.project_cost ? parseFloat(formData.project_cost) : 0
+        project_cost: Math.max(0, formData.project_cost ? parseFloat(formData.project_cost) : 0)
       };
       
       // Remove manual entry field from submit data
@@ -179,9 +189,28 @@ const Projects = () => {
     }
   };
 
-  const filteredProjects = projects.filter(project =>
-    project.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const isDelayedProject = (project) => {
+    if (!project?.end_date || project.status === 'completed') return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(project.end_date);
+    endDate.setHours(0, 0, 0, 0);
+    return endDate < today;
+  };
+
+  const getTabCount = (status) => {
+    if (status === 'all') return projects.length;
+    if (status === 'delayed') return projects.filter(isDelayedProject).length;
+    return projects.filter((p) => p.status === status).length;
+  };
+
+  const filteredProjects = projects
+    .filter((project) => {
+      if (filter === 'all') return true;
+      if (filter === 'delayed') return isDelayedProject(project);
+      return project.status === filter;
+    })
+    .filter((project) => project.name.toLowerCase().includes(search.toLowerCase()));
 
   if (loading) {
     return (
@@ -196,7 +225,7 @@ const Projects = () => {
     <div className="projects-page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">PROJECTS</h1>
+          <h1 className="page-title">PROJECTS!</h1>
           <p className="page-subtitle">Manage and track all your projects</p>
         </div>
         {(isAdmin || isManager) && (
@@ -226,7 +255,27 @@ const Projects = () => {
               className={`filter-tab ${filter === status ? 'active' : ''}`}
               onClick={() => setFilter(status)}
             >
-              {status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ')}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <span>{status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ')}</span>
+                <span
+                  style={{
+                    minWidth: '24px',
+                    height: '20px',
+                    padding: '0 8px',
+                    borderRadius: '999px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    background: filter === status ? 'rgba(255,255,255,0.25)' : 'var(--bg-hover)',
+                    color: filter === status ? 'white' : 'var(--text-secondary)',
+                    border: filter === status ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--border-color)'
+                  }}
+                >
+                  {getTabCount(status)}
+                </span>
+              </span>
             </button>
           ))}
         </div>
@@ -242,7 +291,20 @@ const Projects = () => {
           </div>
         ) : (
           filteredProjects.map((project) => (
-            <div key={project.id} className="project-card">
+            <div
+              key={project.id}
+              className="project-card"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/projects/${project.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(`/projects/${project.id}`);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <div className="project-card-header">
                 <span className={`badge badge-${getStatusColor(project.status)}`}>
                   {project.status.toUpperCase()}
@@ -256,11 +318,25 @@ const Projects = () => {
                   </span>
                 )}
                 <div className="project-actions">
-                  <button className="btn-icon" onClick={() => handleEdit(project)}>
+                  <button
+                    className="btn-icon"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleEdit(project);
+                    }}
+                  >
                     <FiEdit2 />
                   </button>
                   {isAdmin && (
-                    <button className="btn-icon" onClick={() => handleDelete(project.id)}>
+                    <button
+                      className="btn-icon"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDelete(project.id);
+                      }}
+                    >
                       <FiTrash2 />
                     </button>
                   )}
@@ -270,7 +346,8 @@ const Projects = () => {
               <Link 
                 to={`/projects/${project.id}`} 
                 className="project-card-body"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   console.log('=== PROJECT CLICKED ===');
                   console.log('Project ID:', project.id);
                   console.log('Project Name:', project.name);
@@ -345,7 +422,7 @@ const Projects = () => {
                       </div>
                     )}
                   </div>
-                  <Link to={`/projects/${project.id}`} className="team-count">
+                  <Link to={`/projects/${project.id}`} className="team-count" onClick={(e) => e.stopPropagation()}>
                     {project.teams?.length || 0} members
                   </Link>
                 </div>
@@ -372,8 +449,15 @@ const Projects = () => {
               type="text"
               className="form-input"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Only allow letters and spaces
+                if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                  setFormData({ ...formData, name: value });
+                }
+              }}
               placeholder="Enter project name"
+              maxLength={40}
             />
           </div>
 
@@ -391,20 +475,35 @@ const Projects = () => {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Start Date</label>
-              <input
-                type="date"
-                className="form-input"
+              <DatePicker
                 value={formData.start_date}
-                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                onChange={(date) => {
+                  // If start is set after end, clear end to keep a valid range
+                  if (formData.end_date && date && date > formData.end_date) {
+                    toast.error('Start date cannot be after end date');
+                    setFormData({ ...formData, start_date: date, end_date: '' });
+                    return;
+                  }
+                  setFormData({ ...formData, start_date: date });
+                }}
+                max={formData.end_date || undefined}
+                placeholder="Select start date"
               />
             </div>
             <div className="form-group">
               <label className="form-label">End Date</label>
-              <input
-                type="date"
-                className="form-input"
+              <DatePicker
                 value={formData.end_date}
-                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                onChange={(date) => {
+                  // Block selecting end before start
+                  if (formData.start_date && date && date < formData.start_date) {
+                    toast.error('End date cannot be before start date');
+                    return;
+                  }
+                  setFormData({ ...formData, end_date: date });
+                }}
+                min={formData.start_date || undefined}
+                placeholder="Select end date"
               />
             </div>
           </div>
@@ -429,7 +528,14 @@ const Projects = () => {
                 type="number"
                 className="form-input"
                 value={formData.project_cost}
-                onChange={(e) => setFormData({ ...formData, project_cost: parseFloat(e.target.value) || 0 })}
+                min={0}
+                onKeyDown={(e) => {
+                  if (e.key === '-') e.preventDefault();
+                }}
+                onChange={(e) => {
+                  const next = parseFloat(e.target.value);
+                  setFormData({ ...formData, project_cost: Number.isFinite(next) ? Math.max(0, next) : 0 });
+                }}
                 placeholder="0.00"
               />
             </div>

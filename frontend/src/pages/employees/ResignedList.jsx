@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { resignationsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiCheckCircle, FiXCircle, FiClock, FiEye, FiRefreshCw } from 'react-icons/fi';
+import { FiCheckCircle, FiXCircle, FiClock, FiEye } from 'react-icons/fi';
 import Modal from '../../components/Modal';
 import './ResignedList.css';
 
@@ -140,13 +140,9 @@ const ResignedList = () => {
     <div className="page-container">
       <div className="page-header">
         <div>
-          <h1>Resigned List</h1>
+          <h1>RESIGNED LIST</h1>
           <p className="page-subtitle">View and manage employee resignation applications</p>
         </div>
-        <button className="btn btn-secondary" onClick={fetchResignations} disabled={loading}>
-          <FiRefreshCw className={loading ? 'spinning' : ''} />
-          Refresh
-        </button>
       </div>
 
       {/* Filters */}

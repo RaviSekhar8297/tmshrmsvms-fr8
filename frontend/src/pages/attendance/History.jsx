@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { FiSearch, FiDownload, FiUpload, FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi';
+import { FiSearch, FiDownload, FiUpload, FiChevronLeft, FiChevronRight, FiX, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import './Attendance.css';
 import '../employee/Employee.css';
+import '../self/Punch.css';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 
@@ -29,6 +30,8 @@ const AttendanceHistory = () => {
   const [punchLogsMap, setPunchLogsMap] = useState({}); // Store punch logs by employee_id_date
   const [loadingPunchLogsMap, setLoadingPunchLogsMap] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const monthPickerRef = useRef(null);
 
   useEffect(() => {
     fetchAttendanceHistory();
@@ -42,6 +45,21 @@ const AttendanceHistory = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Close month picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showMonthPicker && monthPickerRef.current && !monthPickerRef.current.contains(event.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    if (showMonthPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMonthPicker]);
 
   const fetchAttendanceHistory = async () => {
     setLoading(true);
@@ -1040,62 +1058,114 @@ const AttendanceHistory = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           <div className="month-year" style={{ display: 'flex', gap: '8px', flex: '0 0 auto' }}>
-            <select
-              value={currentMonth}
-              onChange={(e) => {
-                setCurrentMonth(parseInt(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="form-select"
-            >
-              {monthNames.map((month, index) => (
-                <option key={index + 1} value={index + 1}>{month}</option>
-              ))}
-            </select>
-            <select
-              value={currentYear}
-              onChange={(e) => {
-                setCurrentYear(parseInt(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="form-select"
-            >
-              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
+            <div className="month-picker-wrapper" ref={monthPickerRef} style={{ width: '200px' }}>
+              <div 
+                className="month-picker-input"
+                onClick={() => setShowMonthPicker(!showMonthPicker)}
+              >
+                <FiCalendar size={18} />
+                <span>
+                  {new Date(currentYear, currentMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </span>
+                <FiChevronDown size={18} className={showMonthPicker ? 'rotate' : ''} />
+              </div>
+              {showMonthPicker && (
+                <div className="month-picker-dropdown" style={{ zIndex: 1000 }}>
+                  <div className="month-picker-header">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCurrentYear(prev => prev - 1);
+                        setCurrentPage(1);
+                      }}
+                      className="month-picker-nav"
+                    >
+                      ←
+                    </button>
+                    <span className="month-picker-year">{currentYear}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const currentDate = new Date();
+                        const maxYear = currentDate.getFullYear();
+                        if (currentYear < maxYear) {
+                          setCurrentYear(prev => prev + 1);
+                          setCurrentPage(1);
+                        }
+                      }}
+                      className="month-picker-nav"
+                      disabled={currentYear >= new Date().getFullYear()}
+                    >
+                      →
+                    </button>
+                  </div>
+                  <div className="month-picker-grid">
+                    {monthNames.map((month, index) => {
+                      const currentDate = new Date();
+                      const currentYearNow = currentDate.getFullYear();
+                      const currentMonthNow = currentDate.getMonth() + 1;
+                      const isCurrentMonth = currentYear === currentYearNow && (index + 1) === currentMonthNow;
+                      const isFutureMonth = currentYear > currentYearNow || (currentYear === currentYearNow && (index + 1) > currentMonthNow);
+                      
+                      return (
+                        <button
+                          key={month}
+                          type="button"
+                          className={`month-picker-option ${isCurrentMonth ? 'current' : ''} ${currentMonth === (index + 1) ? 'selected' : ''} ${isFutureMonth ? 'disabled' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isFutureMonth) {
+                              setCurrentMonth(index + 1);
+                              setCurrentPage(1);
+                              setShowMonthPicker(false);
+                            }
+                          }}
+                          disabled={isFutureMonth}
+                        >
+                          {month.substring(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="header-buttons" style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-            <button 
-              className="btn-primary" 
-              onClick={handleDownloadSampleExcel}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <FiDownload /> Download Sample
-            </button>
-            <label 
-              className="btn-primary" 
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}
-            >
-              <FiUpload /> {uploading ? 'Uploading...' : 'Upload Excel'}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleUploadExcel}
-                disabled={uploading}
-                style={{ display: 'none' }}
-              />
-            </label>
-            <button 
-              className="btn-primary" 
-              onClick={handleExportExcel}
-              disabled={exportingExcel}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <FiDownload /> {exportingExcel ? 'Downloading...' : 'Excel'}
-            </button>
-          </div>
+          {user?.role === 'HR' && (
+            <div className="header-buttons" style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+              <button 
+                className="btn-primary" 
+                onClick={handleDownloadSampleExcel}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <FiDownload /> Download Sample
+              </button>
+              <label 
+                className="btn-primary" 
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}
+              >
+                <FiUpload /> {uploading ? 'Uploading...' : 'Upload Excel'}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleUploadExcel}
+                  disabled={uploading}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              <button 
+                className="btn-primary" 
+                onClick={handleExportExcel}
+                disabled={exportingExcel}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <FiDownload /> {exportingExcel ? 'Downloading...' : 'Excel'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

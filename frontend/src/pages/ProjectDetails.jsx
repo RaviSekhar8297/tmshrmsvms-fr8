@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   FiArrowLeft, FiUsers, FiCalendar, FiDollarSign, 
-  FiPlus, FiEdit2, FiTrash2, FiCheckSquare
+  FiPlus, FiEdit2, FiTrash2, FiCheckSquare, FiSearch
 } from 'react-icons/fi';
 import { projectsAPI, usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -20,6 +20,7 @@ const ProjectDetails = () => {
   const [loading, setLoading] = useState(true);
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [memberSearch, setMemberSearch] = useState('');
   const { isAdmin, isManager, user } = useAuth();
 
   useEffect(() => {
@@ -434,14 +435,34 @@ const ProjectDetails = () => {
         onClose={() => {
           setShowAddMember(false);
           setSelectedEmployees([]);
+          setMemberSearch('');
         }}
         title="Add Team Member"
       >
         <div className="form-group">
           <label className="form-label">Select Employees</label>
+          <div style={{ position: 'relative', marginBottom: '12px' }}>
+            <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              className="form-input"
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              placeholder="Search by name or empid..."
+              style={{ paddingLeft: '40px' }}
+            />
+          </div>
           <div className="participants-selector">
             {employees
               .filter(emp => !teamMembers.some(m => m.empid === emp.empid))
+              .filter(emp => {
+                const q = memberSearch.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  (emp.name || '').toLowerCase().includes(q) ||
+                  (emp.empid || '').toLowerCase().includes(q)
+                );
+              })
               .map((emp) => {
                 const selected = selectedEmployees.includes(emp.empid);
                 return (

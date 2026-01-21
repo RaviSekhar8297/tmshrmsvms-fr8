@@ -36,8 +36,6 @@ def calculate_professional_tax(earned_gross: Decimal) -> Decimal:
         return Decimal(0)
     elif earned_gross <= 20000:
         return Decimal(150)
-    elif earned_gross <= 25000:
-        return Decimal(175)
     else:
         return Decimal(200)
 

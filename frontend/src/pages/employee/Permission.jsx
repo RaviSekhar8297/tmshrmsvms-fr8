@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import api from '../../services/api';
+import { attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import DatePicker from '../../components/DatePicker';
 import * as XLSX from 'xlsx';
@@ -19,6 +20,7 @@ const Permission = () => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [attendanceCycle, setAttendanceCycle] = useState(null);
   const [formData, setFormData] = useState({
     type: '',
     from_date: '',
@@ -30,7 +32,74 @@ const Permission = () => {
 
   useEffect(() => {
     fetchPermissions();
+    fetchAttendanceCycle();
   }, []);
+
+  const fetchAttendanceCycle = async () => {
+    try {
+      const response = await attendanceAPI.getCycle();
+      if (response.data) {
+        setAttendanceCycle(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching attendance cycle:', error);
+      // Default to 26-25 cycle if fetch fails
+      setAttendanceCycle({
+        attendance_cycle_start_date: 26,
+        attendance_cycle_end_date: 25
+      });
+    }
+  };
+
+  // Calculate valid date range based on attendance cycle (inclusive: 26th and 25th are both included)
+  const getValidDateRange = () => {
+    // Helper function to format date as YYYY-MM-DD in local timezone
+    const formatLocalDate = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (!attendanceCycle) {
+      // Default to 26-25 cycle
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      
+      // Previous month 26th (inclusive)
+      const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const minDate = new Date(prevYear, prevMonth, 26);
+      
+      // Current month 25th (inclusive)
+      const maxDate = new Date(currentYear, currentMonth, 25);
+      
+      return {
+        min: formatLocalDate(minDate), // Includes 26th
+        max: formatLocalDate(maxDate)  // Includes 25th
+      };
+    }
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const cycleStartDate = attendanceCycle.attendance_cycle_start_date || 26;
+    const cycleEndDate = attendanceCycle.attendance_cycle_end_date || 25;
+
+    // Previous month cycle start date (inclusive)
+    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const minDate = new Date(prevYear, prevMonth, cycleStartDate);
+    
+    // Current month cycle end date (inclusive)
+    const maxDate = new Date(currentYear, currentMonth, cycleEndDate);
+    
+    return {
+      min: formatLocalDate(minDate), // Includes cycle start date (e.g., 26th)
+      max: formatLocalDate(maxDate)  // Includes cycle end date (e.g., 25th)
+    };
+  };
 
   const fetchPermissions = async () => {
     setLoading(true);
@@ -445,13 +514,16 @@ const Permission = () => {
                     name="type"
                     value={formData.type}
                     onChange={handleChange}
-                    
                     className="form-select"
-                    style={{ width: '100%' }}
+                    style={{ 
+                      width: '100%',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
                   >
-                    <option value="">Select Type</option>
-                    <option value="morning-short-leave">Morning-Short Leave</option>
-                    <option value="evening-short-leave">Evening-Short Leave</option>
+                    <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Type</option>
+                    <option value="morning-short-leave" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Morning-Short Leave</option>
+                    <option value="evening-short-leave" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Evening-Short Leave</option>
                   </select>
                 </div>
                 <div className="form-row">
@@ -461,6 +533,8 @@ const Permission = () => {
                       value={formData.from_date}
                       onChange={handleFromDateChange}
                       placeholder="Select from date"
+                      min={getValidDateRange().min}
+                      max={getValidDateRange().max}
                     />
                   </div>
                   <div className="form-group">

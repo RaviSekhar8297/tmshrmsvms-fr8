@@ -1270,9 +1270,6 @@ def upload_payslip_excel(
                     errors.append(f"Row {row_num}: Missing emp_id, month, or year")
                     continue
                 
-                # Calculate net_salary: (netsalary + Arrear Salary) - Other Deductions
-                net_salary = (net_salary + arrear_salary) - other_deduction
-                
                 # Check if payslip exists (based on emp_id, month, year)
                 existing_payslip = db.query(PayslipData).filter(
                     and_(
@@ -1281,6 +1278,17 @@ def upload_payslip_excel(
                         PayslipData.year == year
                     )
                 ).first()
+                
+                # If record exists, calculate net_salary using formula: (netsalary + arrear) - (TDS + LoanAmount + otherdeduction)
+                # If record doesn't exist, use net_salary from Excel as is
+                if existing_payslip:
+                    # Use existing net_salary for calculation
+                    existing_net_salary = existing_payslip.net_salary if existing_payslip.net_salary else Decimal(0)
+                    # Formula: (netsalary + arrear) - (TDS + LoanAmount + otherdeduction)
+                    net_salary = (existing_net_salary + arrear_salary) - (tds + loan_amount + other_deduction)
+                else:
+                    # For new records, use net_salary from Excel directly
+                    pass  # net_salary is already set from row[18]
                 
                 # Prepare earnings and deductions JSONB
                 earnings = {

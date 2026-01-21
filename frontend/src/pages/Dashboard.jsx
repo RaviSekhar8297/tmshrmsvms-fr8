@@ -29,6 +29,10 @@ const Dashboard = () => {
   const [policySubmitted, setPolicySubmitted] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const acknowledgeSectionRef = useRef(null);
+  const [monthlyAttendance, setMonthlyAttendance] = useState(null);
+  const [attendanceViewType, setAttendanceViewType] = useState('bars'); // 'bars' or 'circles'
+  const [attendanceMonth, setAttendanceMonth] = useState(new Date().getMonth() + 1);
+  const [attendanceYear, setAttendanceYear] = useState(new Date().getFullYear());
 
   const todayMatches = (dateStr) => {
     if (!dateStr) return false;
@@ -79,15 +83,25 @@ const Dashboard = () => {
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, activitiesRes, progressRes] = await Promise.all([
+      const promises = [
         dashboardAPI.getStats(),
         dashboardAPI.getActivities(10),
         dashboardAPI.getProgress()
-      ]);
+      ];
       
-      setStats(statsRes.data);
-      setActivities(activitiesRes.data);
-      setProgress(progressRes.data);
+      // Only fetch attendance if user is HR or Admin
+      if (user?.role === 'HR' || user?.role === 'Admin') {
+        promises.push(dashboardAPI.getMonthlyAttendance(attendanceMonth, attendanceYear));
+      }
+      
+      const results = await Promise.all(promises);
+      setStats(results[0].data);
+      setActivities(results[1].data);
+      setProgress(results[2].data);
+      
+      if (user?.role === 'HR' || user?.role === 'Admin') {
+        setMonthlyAttendance(results[3].data);
+      }
       
       // Fetch birthdays and anniversaries separately to handle errors gracefully
       // Only fetch if user is authenticated
@@ -137,7 +151,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, attendanceMonth, attendanceYear]);
 
   const fetchUnreadPolicies = useCallback(async () => {
     if (!user) return;
@@ -166,7 +180,7 @@ const Dashboard = () => {
       fetchDashboardData();
       fetchUnreadPolicies();
     }
-  }, [user, fetchDashboardData, fetchUnreadPolicies]);
+  }, [user, fetchDashboardData, fetchUnreadPolicies, attendanceMonth, attendanceYear]);
 
   // Calculate current policy and page info
   const currentPolicy = unreadPolicies[currentPolicyIndex];
@@ -312,6 +326,208 @@ const Dashboard = () => {
           <FiTrendingUp className="welcome-icon" />
         </div>
       </div>
+
+      {/* Monthly Attendance Card - Only for HR and Admin */}
+      {monthlyAttendance && (user?.role === 'HR' || user?.role === 'Admin') && (
+        <div className="card monthly-attendance-card">
+          <div className="card-header attendance-card-header">
+            <div className="attendance-header-left">
+              <h3 className="card-title">Monthly Attendance</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <span className="attendance-subtitle">
+                  {new Date(attendanceYear, attendanceMonth - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </span>
+                {monthlyAttendance?.attendance && Object.keys(monthlyAttendance.attendance).length > 0 && (
+                  <span style={{ 
+                    fontSize: '0.875rem', 
+                    color: 'var(--text-secondary)', 
+                    fontWeight: '600',
+                    padding: '4px 12px',
+                    background: 'var(--bg-hover)',
+                    borderRadius: '6px'
+                  }}>
+                    Total: {monthlyAttendance.attendance[Object.keys(monthlyAttendance.attendance)[0]]?.total || 0} Employees
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="attendance-header-actions">
+              <div className="attendance-month-navigation">
+                <button
+                  className="month-nav-btn"
+                  onClick={() => {
+                    let newMonth = attendanceMonth - 1;
+                    let newYear = attendanceYear;
+                    if (newMonth < 1) {
+                      newMonth = 12;
+                      newYear--;
+                    }
+                    setAttendanceMonth(newMonth);
+                    setAttendanceYear(newYear);
+                  }}
+                  title="Previous Month"
+                >
+                  <FiChevronLeft />
+                </button>
+                <button
+                  className="month-nav-btn"
+                  onClick={() => {
+                    const today = new Date();
+                    setAttendanceMonth(today.getMonth() + 1);
+                    setAttendanceYear(today.getFullYear());
+                  }}
+                  title="Current Month"
+                >
+                  Today
+                </button>
+                <button
+                  className="month-nav-btn"
+                  onClick={() => {
+                    let newMonth = attendanceMonth + 1;
+                    let newYear = attendanceYear;
+                    if (newMonth > 12) {
+                      newMonth = 1;
+                      newYear++;
+                    }
+                    setAttendanceMonth(newMonth);
+                    setAttendanceYear(newYear);
+                  }}
+                  title="Next Month"
+                >
+                  <FiChevronRight />
+                </button>
+              </div>
+              <div className="attendance-view-toggle">
+                <button
+                  className={`toggle-btn ${attendanceViewType === 'bars' ? 'active' : ''}`}
+                  onClick={() => setAttendanceViewType('bars')}
+                  title="Bar View"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="2" y="10" width="3" height="4" rx="1" />
+                    <rect x="7" y="7" width="3" height="7" rx="1" />
+                    <rect x="12" y="4" width="3" height="10" rx="1" />
+                  </svg>
+                  Bars
+                </button>
+                <button
+                  className={`toggle-btn ${attendanceViewType === 'circles' ? 'active' : ''}`}
+                  onClick={() => setAttendanceViewType('circles')}
+                  title="Circle View"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="4" cy="8" r="2.5" />
+                    <circle cx="8" cy="8" r="2.5" />
+                    <circle cx="12" cy="8" r="2.5" />
+                  </svg>
+                  Circles
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className={`attendance-calendar ${attendanceViewType === 'circles' ? 'circle-view' : 'bar-view'}`}>
+            {monthlyAttendance.dates
+              .filter((dateStr) => {
+                // Filter out future dates - only show current month and previous months
+                const date = new Date(dateStr);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                date.setHours(0, 0, 0, 0);
+                return date <= today;
+              })
+              .map((dateStr) => {
+              const date = new Date(dateStr);
+              const dayOfMonth = date.getDate();
+              const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
+              const today = new Date();
+              const isToday = dateStr === today.toISOString().split('T')[0] && 
+                             attendanceMonth === today.getMonth() + 1 && 
+                             attendanceYear === today.getFullYear();
+              const attendance = monthlyAttendance.attendance[dateStr] || { present: 0, absent: 0, total: 0 };
+              const presentCount = attendance.present || 0;
+              const absentCount = attendance.absent || 0;
+              const totalCount = attendance.total || 0;
+              const presentPercentage = totalCount > 0 ? (presentCount / totalCount) * 100 : 0;
+              const absentPercentage = totalCount > 0 ? (absentCount / totalCount) * 100 : 0;
+              
+              // Determine status: Present (green) if presentCount > 0, Absent (red) if 0
+              const isPresent = presentCount > 0;
+              
+              if (attendanceViewType === 'circles') {
+                return (
+                  <div
+                    key={dateStr}
+                    className={`attendance-day circle-day ${isToday ? 'today' : ''} ${isPresent ? 'present' : 'absent'}`}
+                    title={`${dayOfWeek}, ${dayOfMonth} ${date.toLocaleDateString('en-US', { month: 'short' })}: ${presentCount} Present, ${absentCount} Absent`}
+                  >
+                    <div className="attendance-day-header">
+                      <span className="attendance-day-name">{dayOfWeek}</span>
+                      <span className="attendance-day-number">{dayOfMonth}</span>
+                    </div>
+                    <div className="attendance-circle-container">
+                      <div className={`attendance-circle ${isPresent ? 'circle-present' : 'circle-absent'}`}>
+                        <span className="circle-count circle-present-count">{presentCount}</span>
+                        {absentCount > 0 && (
+                          <span className="circle-count circle-absent-count">/{absentCount}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              
+              return (
+                <div
+                  key={dateStr}
+                  className={`attendance-day bar-day ${isToday ? 'today' : ''}`}
+                  title={`${dayOfWeek}, ${dayOfMonth} ${date.toLocaleDateString('en-US', { month: 'short' })}: ${presentCount} Present, ${absentCount} Absent`}
+                >
+                  <div className="attendance-day-header">
+                    <span className="attendance-day-name">{dayOfWeek}</span>
+                    <span className="attendance-day-number">{dayOfMonth}</span>
+                  </div>
+                  <div className="attendance-bar-container stacked">
+                    {absentPercentage > 0 && (
+                      <div 
+                        className="attendance-bar bar-absent"
+                        style={{ 
+                          height: `${absentPercentage}%`
+                        }}
+                        title={`Absent: ${absentCount}`}
+                      ></div>
+                    )}
+                    {presentPercentage > 0 && (
+                      <div 
+                        className="attendance-bar bar-present"
+                        style={{ 
+                          height: `${presentPercentage}%`
+                        }}
+                        title={`Present: ${presentCount}`}
+                      ></div>
+                    )}
+                  </div>
+                  <div className="attendance-count">
+                    <span className="count-present">{presentCount}</span>
+                    {absentCount > 0 && (
+                      <span className="count-absent">/{absentCount}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="attendance-legend">
+            <div className="legend-item">
+              <span className="legend-dot present"></span>
+              <span>Present</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-dot absent"></span>
+              <span>Absent</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* <div className="user-meta-strip">
         <div className="user-chip">

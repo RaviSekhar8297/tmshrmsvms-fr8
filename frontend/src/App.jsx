@@ -184,7 +184,7 @@ const AppRoutes = () => {
         {/* Employees Module Routes (Manager/HR/Admin - managing employees) */}
         <Route path="employees/apply-leave" element={<ApplyLeave />} />
         <Route path="employees/leaves-list" element={
-          <PrivateRoute allowedRoles={['Manager', 'HR']}>
+          <PrivateRoute allowedRoles={['Manager', 'HR', 'Admin']}>
             <EmpLeaves />
           </PrivateRoute>
         } />
@@ -195,7 +195,7 @@ const AppRoutes = () => {
         <Route path="employees/work-report" element={<WorkReport />} />
         <Route path="employees/contact-details" element={<ContactDetails />} />
         <Route path="employees/balance-leaves" element={
-          <PrivateRoute allowedRoles={['HR']}>
+          <PrivateRoute allowedRoles={['Admin', 'HR']}>
             <BalanceLeaves />
           </PrivateRoute>
         } />

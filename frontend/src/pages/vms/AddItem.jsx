@@ -18,8 +18,8 @@ const AddItem = () => {
   // Set default tab based on route and role
   // Front Desk and Employee roles have different defaults
   const [activeTab, setActiveTab] = useState(() => {
-    if (user?.role === 'Employee') {
-      return 'dashboard';
+    if (user?.role === 'Employee' || user?.role === 'Manager') {
+      return 'list'; // Employee and Manager only see Visitors List
     } else if (user?.role === 'Front Desk') {
       // Front Desk always starts with 'add' tab
       return location.pathname.includes('/vms/list') ? 'list' : 'add';
@@ -28,9 +28,9 @@ const AddItem = () => {
     }
   });
   
-  // Ensure Employee always sees list view (only run when user role changes, not when tab changes)
+  // Ensure Employee and Manager always sees list view (only run when user role changes, not when tab changes)
   useEffect(() => {
-    if (user?.role === 'Employee' && activeTab !== 'list') {
+    if ((user?.role === 'Employee' || user?.role === 'Manager') && activeTab !== 'list') {
       setActiveTab('list');
     }
   }, [user?.role]); // Removed activeTab from dependencies to prevent interference
@@ -350,20 +350,23 @@ const AddItem = () => {
         <h1>Visitor Management!</h1>
       </div>
 
-      {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee), then Visitors List */}
+      {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee and HR), then Visitors List */}
       <div className="filter-tabs" style={{ marginBottom: '24px' }}>
-        <button
-          type="button"
-          className={`filter-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setActiveTab('dashboard');
-          }}
-        >
-          Dashboard
-        </button>
-        {(user?.role !== 'Employee') && (
+        {/* Manager and Employee roles see only Visitors List tab */}
+        {user?.role !== 'Manager' && user?.role !== 'Employee' && (
+          <button
+            type="button"
+            className={`filter-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setActiveTab('dashboard');
+            }}
+          >
+            Dashboard
+          </button>
+        )}
+        {(user?.role !== 'Employee' && user?.role !== 'HR' && user?.role !== 'Manager') && (
           <button
             type="button"
             className={`filter-tab ${activeTab === 'add' ? 'active' : ''}`}

@@ -29,11 +29,11 @@ const EmpLeaves = () => {
 
   useEffect(() => {
     // Only fetch if user is loaded and has the correct role
-    if (user && (user.role === 'Manager' || user.role === 'HR')) {
+    if (user && (user.role === 'Manager' || user.role === 'HR' || user.role === 'Admin')) {
       // Fetch leaves first (this is critical)
     fetchLeaves();
       // Fetch employees separately and handle errors gracefully (this is optional)
-      if (user.role === 'HR') {
+      if (user.role === 'HR' || user.role === 'Admin') {
         // Delay to ensure authentication is fully ready
         const timer = setTimeout(() => {
     fetchEmployees();
@@ -45,7 +45,7 @@ const EmpLeaves = () => {
 
   const fetchLeaves = async () => {
     // Check if user is loaded and has correct role
-    if (!user || (user.role !== 'Manager' && user.role !== 'HR')) {
+    if (!user || (user.role !== 'Manager' && user.role !== 'HR' && user.role !== 'Admin')) {
       console.error('User not authorized to view employee leaves');
       return;
     }
@@ -70,8 +70,8 @@ const EmpLeaves = () => {
   };
 
   const fetchEmployees = async () => {
-    // Only fetch employees if user is HR and is loaded
-    if (!user || user.role !== 'HR') {
+    // Only fetch employees if user is HR or Admin and is loaded
+    if (!user || (user.role !== 'HR' && user.role !== 'Admin')) {
       return;
     }
     
@@ -96,8 +96,8 @@ const EmpLeaves = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (user?.role !== 'HR') {
-      toast.error('Only HR can create leave requests for employees');
+    if (user?.role !== 'HR' && user?.role !== 'Admin') {
+      toast.error('Only HR or Admin can create leave requests for employees');
       return;
     }
     setLoading(true);
@@ -293,7 +293,7 @@ const EmpLeaves = () => {
   }
 
   // Check if user has permission
-  if (user.role !== 'Manager' && user.role !== 'HR') {
+  if (user.role !== 'Manager' && user.role !== 'HR' && user.role !== 'Admin') {
     return (
       <div className="page-container">
         <div className="page-header">
@@ -376,7 +376,7 @@ const EmpLeaves = () => {
         </div>
       </div>
 
-      {showForm && user?.role === 'HR' && (
+      {showForm && (user?.role === 'HR' || user?.role === 'Admin') && (
         <div className="form-container">
           <form onSubmit={handleSubmit} className="leave-form">
             <div className="form-group">

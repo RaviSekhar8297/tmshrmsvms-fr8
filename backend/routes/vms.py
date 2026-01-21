@@ -596,12 +596,12 @@ def get_all_visitors(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all visitors - Employee role sees only visitors who came to meet them"""
+    """Get all visitors - Employee and Manager roles see only visitors who came to meet them"""
     try:
         query = db.query(Visitor)
         
-        # For Employee role, filter visitors who came to meet them
-        if current_user.role == "Employee":
+        # For Employee and Manager roles, filter visitors who came to meet them
+        if current_user.role in ["Employee", "Manager"]:
             query = query.filter(
                 or_(
                     Visitor.whometomeet == current_user.name,
@@ -645,8 +645,8 @@ def get_vms_dashboard(
         # Base query - filter by role
         query = db.query(Visitor)
         
-        # For Employee role, filter visitors who came to meet them
-        if current_user.role == "Employee":
+        # For Employee and Manager roles, filter visitors who came to meet them
+        if current_user.role in ["Employee", "Manager"]:
             query = query.filter(
                 or_(
                     Visitor.whometomeet == current_user.name,

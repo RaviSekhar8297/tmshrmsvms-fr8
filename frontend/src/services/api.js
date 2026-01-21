@@ -156,6 +156,7 @@ export const dashboardAPI = {
   getProgress: () => api.get('/dashboard/progress'),
   getBirthdays: () => api.get('/dashboard/birthdays'),
   getAnniversaries: () => api.get('/dashboard/anniversaries'),
+  getMonthlyAttendance: (month, year) => api.get('/dashboard/monthly-attendance', { params: { month, year } }),
 };
 
 export const reportsAPI = {
