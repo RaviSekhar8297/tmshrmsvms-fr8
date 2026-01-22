@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import { usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiBriefcase, FiMapPin, FiLayers, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiBriefcase, FiMapPin, FiLayers, FiSearch, FiChevronLeft, FiChevronRight, FiUser } from 'react-icons/fi';
 import './Company.css';
 
 const Company = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('company'); // 'company', 'branch', 'department'
+  const [activeTab, setActiveTab] = useState('company'); // 'company', 'branch', 'department', 'transfer'
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -52,9 +53,64 @@ const Company = () => {
     website: ''
   });
 
+  // Transfer form states
+  const [transferForm, setTransferForm] = useState({
+    employee_id: '',
+    company_id: '',
+    branch_id: '',
+    department_id: ''
+  });
+  const [employees, setEmployees] = useState([]);
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const [transferCompanies, setTransferCompanies] = useState([]);
+  const [transferBranches, setTransferBranches] = useState([]);
+  const [transferDepartments, setTransferDepartments] = useState([]);
+
   useEffect(() => {
-    fetchData();
+    if (activeTab !== 'transfer') {
+      fetchData();
+    } else {
+      // Fetch employees and companies for transfer tab
+      fetchEmployeesForTransfer();
+      fetchCompaniesForTransfer();
+    }
   }, [activeTab]);
+
+  useEffect(() => {
+    // Fetch branches when company is selected in transfer form
+    if (activeTab === 'transfer' && transferForm.company_id) {
+      fetchBranchesForTransfer(transferForm.company_id);
+    } else {
+      setTransferBranches([]);
+      setTransferDepartments([]);
+      if (!transferForm.company_id) {
+        setTransferForm(prev => ({ ...prev, branch_id: '', department_id: '' }));
+      }
+    }
+  }, [transferForm.company_id, activeTab]);
+
+  useEffect(() => {
+    // Fetch departments when branch is selected in transfer form
+    if (activeTab === 'transfer' && transferForm.branch_id) {
+      fetchDepartmentsForTransfer(transferForm.branch_id);
+    } else {
+      if (!transferForm.branch_id) {
+        setTransferForm(prev => ({ ...prev, department_id: '' }));
+      }
+    }
+  }, [transferForm.branch_id, activeTab]);
+
+  useEffect(() => {
+    // Close employee dropdown when clicking outside
+    const handleClickOutside = (event) => {
+      if (showEmployeeDropdown && !event.target.closest('.form-group')) {
+        setShowEmployeeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showEmployeeDropdown]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -94,6 +150,51 @@ const Company = () => {
     } catch (error) {
       console.error('Error fetching branches:', error);
       return [];
+    }
+  };
+
+  const fetchEmployeesForTransfer = async () => {
+    try {
+      const response = await usersAPI.getEmployees();
+      setEmployees(response.data || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      toast.error('Failed to load employees');
+    }
+  };
+
+  const fetchCompaniesForTransfer = async () => {
+    try {
+      const response = await api.get('/company/list');
+      setTransferCompanies(response.data || []);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+      toast.error('Failed to load companies');
+    }
+  };
+
+  const fetchBranchesForTransfer = async (companyId) => {
+    try {
+      const response = await api.get(`/department/branches/${companyId}`);
+      setTransferBranches(response.data || []);
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      toast.error('Failed to load branches');
+      setTransferBranches([]);
+    }
+  };
+
+  const fetchDepartmentsForTransfer = async (branchId) => {
+    try {
+      const response = await api.get(`/department/list`);
+      const allDepartments = response.data || [];
+      // Filter departments by branch_id
+      const filtered = allDepartments.filter(dept => dept.branch_id === parseInt(branchId));
+      setTransferDepartments(filtered);
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+      toast.error('Failed to load departments');
+      setTransferDepartments([]);
     }
   };
 
@@ -328,6 +429,65 @@ const Company = () => {
 
   const canEdit = user?.role === 'Admin' || user?.role === 'HR';
 
+  const handleTransferSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validate required fields
+    if (!transferForm.employee_id) {
+      toast.error('Employee is required');
+      return;
+    }
+    if (!transferForm.company_id) {
+      toast.error('Company is required');
+      return;
+    }
+    if (!transferForm.branch_id) {
+      toast.error('Branch is required');
+      return;
+    }
+    if (!transferForm.department_id) {
+      toast.error('Department is required');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      await usersAPI.update(parseInt(transferForm.employee_id), {
+        company_id: parseInt(transferForm.company_id),
+        branch_id: parseInt(transferForm.branch_id),
+        department_id: parseInt(transferForm.department_id)
+      });
+      toast.success('Employee transferred successfully');
+      setTransferForm({
+        employee_id: '',
+        company_id: '',
+        branch_id: '',
+        department_id: ''
+      });
+      setEmployeeSearchQuery('');
+      setShowEmployeeDropdown(false);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to transfer employee');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredEmployees = employees.filter(emp =>
+    emp.name?.toLowerCase().includes(employeeSearchQuery.toLowerCase()) ||
+    emp.empid?.toLowerCase().includes(employeeSearchQuery.toLowerCase()) ||
+    (emp.email && emp.email.toLowerCase().includes(employeeSearchQuery.toLowerCase()))
+  );
+
+  const handleEmployeeSelect = (selectedEmployee) => {
+    setTransferForm({
+      ...transferForm,
+      employee_id: selectedEmployee.id.toString()
+    });
+    setEmployeeSearchQuery(selectedEmployee.name || '');
+    setShowEmployeeDropdown(false);
+  };
+
   return (
     <div className="page-container">
       <div className="page-header">
@@ -337,7 +497,7 @@ const Company = () => {
             Manage companies, branches, and departments
           </p>
         </div>
-        {canEdit && (
+        {canEdit && activeTab !== 'transfer' && (
           <button className="btn-primary" onClick={() => {
             if (activeTab === 'company') setShowCompanyModal(true);
             else if (activeTab === 'branch') setShowBranchModal(true);
@@ -385,19 +545,32 @@ const Company = () => {
             <FiLayers style={{ marginRight: '8px' }} />
             Department
           </button>
+          <button
+            className={`filter-tab ${activeTab === 'transfer' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('transfer');
+              setSearch('');
+              setCurrentPage(1);
+            }}
+          >
+            <FiUser style={{ marginRight: '8px' }} />
+            Transfer
+          </button>
         </div>
 
-        {/* Search Bar */}
-        <div className="search-container">
-          <FiSearch className="search-icon" />
-          <input
-            type="text"
-            placeholder={`Search ${activeTab}...`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="search-input"
-          />
-        </div>
+        {/* Search Bar - Hidden for Transfer tab */}
+        {activeTab !== 'transfer' && (
+          <div className="search-container">
+            <FiSearch className="search-icon" />
+            <input
+              type="text"
+              placeholder={`Search ${activeTab}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="search-input"
+            />
+          </div>
+        )}
       </div>
 
       {/* Content Area */}
@@ -613,6 +786,194 @@ const Company = () => {
                   </div>
                 )}
               </>
+            )}
+
+            {/* Transfer Tab */}
+            {activeTab === 'transfer' && (
+              <div className="card" style={{ padding: '24px' }}>
+                <h2 style={{ marginBottom: '24px' }}>Transfer Employee</h2>
+                <form onSubmit={handleTransferSubmit}>
+                  <div className="form-row">
+                    <div className="form-group" style={{ position: 'relative' }}>
+                      <label>Employee *</label>
+                      <div style={{ position: 'relative' }}>
+                        <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }} />
+                        <input
+                          type="text"
+                          value={employeeSearchQuery}
+                          onChange={(e) => {
+                            setEmployeeSearchQuery(e.target.value);
+                            setShowEmployeeDropdown(true);
+                            if (!e.target.value) {
+                              setTransferForm({ ...transferForm, employee_id: '' });
+                            }
+                          }}
+                          onFocus={() => setShowEmployeeDropdown(true)}
+                          placeholder="Search employee by name, ID or email..."
+                          className="form-input"
+                          style={{ paddingLeft: '40px' }}
+                          autoComplete="off"
+                        />
+                        {showEmployeeDropdown && filteredEmployees.length > 0 && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            maxHeight: '200px',
+                            overflowY: 'auto',
+                            zIndex: 1000,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                            marginTop: '4px'
+                          }}>
+                            {filteredEmployees.map((emp) => (
+                              <div
+                                key={emp.id}
+                                onClick={() => handleEmployeeSelect(emp)}
+                                style={{
+                                  padding: '12px',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid var(--border-color)',
+                                  transition: 'background 0.2s',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '12px'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
+                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                              >
+                                <div style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  borderRadius: '50%',
+                                  overflow: 'hidden',
+                                  background: 'var(--bg-hover)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                  border: '2px solid var(--border-color)'
+                                }}>
+                                  {emp.image_base64 ? (
+                                    <img 
+                                      src={emp.image_base64} 
+                                      alt={emp.name}
+                                      style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover'
+                                      }}
+                                    />
+                                  ) : (
+                                    <span style={{
+                                      fontSize: '1.2rem',
+                                      fontWeight: 600,
+                                      color: 'var(--primary)'
+                                    }}>
+                                      {emp.name?.charAt(0).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>{emp.name}</div>
+                                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{emp.empid} {emp.email ? `• ${emp.email}` : ''}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Company *</label>
+                      <select
+                        className="form-select"
+                        value={transferForm.company_id}
+                        onChange={(e) => {
+                          setTransferForm({
+                            ...transferForm,
+                            company_id: e.target.value,
+                            branch_id: '',
+                            department_id: ''
+                          });
+                        }}
+                      >
+                        <option value="">Select Company</option>
+                        {transferCompanies.map((company) => (
+                          <option key={company.id} value={company.id}>
+                            {company.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Branch *</label>
+                      <select
+                        className="form-select"
+                        value={transferForm.branch_id}
+                        onChange={(e) => {
+                          setTransferForm({
+                            ...transferForm,
+                            branch_id: e.target.value,
+                            department_id: ''
+                          });
+                        }}
+                        disabled={!transferForm.company_id}
+                      >
+                        <option value="">Select Branch</option>
+                        {transferBranches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Department *</label>
+                      <select
+                        className="form-select"
+                        value={transferForm.department_id}
+                        onChange={(e) => {
+                          setTransferForm({
+                            ...transferForm,
+                            department_id: e.target.value
+                          });
+                        }}
+                        disabled={!transferForm.branch_id}
+                      >
+                        <option value="">Select Department</option>
+                        {transferDepartments.map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="modal-actions" style={{ marginTop: '24px' }}>
+                    <button type="button" className="btn-secondary" onClick={() => {
+                      setTransferForm({
+                        employee_id: '',
+                        company_id: '',
+                        branch_id: '',
+                        department_id: ''
+                      });
+                      setEmployeeSearchQuery('');
+                      setShowEmployeeDropdown(false);
+                    }}>
+                      Clear
+                    </button>
+                    <button type="submit" className="btn-primary" disabled={loading}>
+                      {loading ? 'Transferring...' : 'Transfer Employee'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             )}
 
             {/* Department Table */}

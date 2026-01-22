@@ -156,21 +156,47 @@ const Dashboard = () => {
   const fetchUnreadPolicies = useCallback(async () => {
     if (!user) return;
     
-    try {
-      const response = await policiesAPI.getUnread();
-      const policies = response.data || [];
-      
-      // Backend already filters by current user's empid, so use directly
-      setUnreadPolicies(policies);
-      
-      // Show modal if there are unread policies
-      if (policies.length > 0) {
-        setShowPolicyModal(true);
+    // For Employee and Manager roles, delay policy fetching to show after initial page load
+    const shouldDelay = user?.role === 'Employee' || user?.role === 'Manager';
+    
+    if (shouldDelay) {
+      // Wait for page to load first, then fetch policies
+      setTimeout(async () => {
+        try {
+          const response = await policiesAPI.getUnread();
+          const policies = response.data || [];
+          
+          // Backend already filters by current user's empid, so use directly
+          setUnreadPolicies(policies);
+          
+          // Show modal if there are unread policies
+          if (policies.length > 0) {
+            setShowPolicyModal(true);
+          }
+        } catch (error) {
+          // Silently handle errors - don't show popup if API fails
+          console.error('Error fetching unread policies:', error);
+          setUnreadPolicies([]);
+        }
+      }, 1000); // Delay 1 second after page load
+    } else {
+      // For other roles, fetch immediately
+      try {
+        const response = await policiesAPI.getUnread();
+        const policies = response.data || [];
+        
+        // Backend already filters by current user's empid, so use directly
+        setUnreadPolicies(policies);
+        
+        // Show modal if there are unread policies
+        if (policies.length > 0) {
+          setShowPolicyModal(true);
+        }
+      } catch (error) {
+        // Silently handle errors - don't show popup if API fails
+        console.error('Error fetching unread policies:', error);
+        setUnreadPolicies([]);
       }
-    } catch (error) {
-      // Silently handle errors - don't show popup if API fails
-      console.error('Error fetching unread policies:', error);
-      setUnreadPolicies([]);
     }
   }, [user]);
 

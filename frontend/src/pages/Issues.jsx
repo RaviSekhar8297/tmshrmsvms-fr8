@@ -165,8 +165,11 @@ const Issues = () => {
     
     try {
       const data = {
-        ...formData,
-        project_id: formData.project_id ? parseInt(formData.project_id) : null
+        title: formData.title,
+        description: formData.description || null,
+        priority: formData.priority,
+        task_id: formData.project_id ? parseInt(formData.project_id) : null,
+        project_id: null
       };
 
       if (editingIssue) {
@@ -211,12 +214,14 @@ const Issues = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this issue?')) return;
     
+    const deleteToast = toast.loading('Deleting issue...');
+    
     try {
       await issuesAPI.delete(id);
-      toast.success('Issue deleted successfully');
+      toast.success('Issue deleted successfully', { id: deleteToast });
       fetchData();
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to delete issue'));
+      toast.error(getErrorMessage(error, 'Failed to delete issue'), { id: deleteToast });
     }
   };
 

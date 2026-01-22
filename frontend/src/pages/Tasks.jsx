@@ -167,12 +167,14 @@ const Tasks = () => {
 
   useEffect(() => {
     // Fetch ratings for completed tasks to check if already rated
+    // Only show rating button to task creator (assigned_by_id)
     const fetchRatings = async () => {
-      if (!isEmployee && user) {
+      if (user) {
         try {
           const ratingsRes = await ratingsAPI.getAll();
           const ratingsMap = {};
           ratingsRes.data.forEach(rating => {
+            // Check if current user (task creator) has rated this task
             if (rating.rater_id === user.id) {
               ratingsMap[rating.task_id] = true;
             }
@@ -184,7 +186,7 @@ const Tasks = () => {
       }
     };
     fetchRatings();
-  }, [filter, user, isEmployee]);
+  }, [filter, user]);
 
   useEffect(() => {
     // Create a set of current task IDs for quick lookup
@@ -270,7 +272,7 @@ const Tasks = () => {
       
       const [tasksRes, projectsRes, employeesRes, managersRes] = await Promise.all([
         tasksAPI.getAll(params),
-        projectsAPI.getAll(),
+        projectsAPI.getAll({}), // Explicitly fetch all projects including completed
         usersAPI.getEmployees(),
         user?.role === 'Admin' ? usersAPI.getManagers() : Promise.resolve({ data: [] })
       ]);
@@ -838,10 +840,12 @@ const Tasks = () => {
     if (!selectedTaskForRating) return;
     
     try {
-      // Rate the manager who assigned the task (assigned_by_id)
+      // Rate the person who completed the task (assigned_to_id)
+      // Admin creates task → Manager completes → Admin rates Manager
+      // Manager creates task → Employee completes → Manager rates Employee
       await ratingsAPI.create({
         task_id: selectedTaskForRating.id,
-        ratee_id: selectedTaskForRating.assigned_by_id,
+        ratee_id: selectedTaskForRating.assigned_to_id, // Rate the person who completed it
         score: ratingFormData.score,
         comments: ratingFormData.comments
       });
@@ -1201,8 +1205,8 @@ const Tasks = () => {
                   </div>
                 </Link>
 
-                {/* Rating Button for Completed Tasks - Only show if not already rated */}
-                {isTaskCompleted(task) && !isEmployee && (
+                {/* Rating Button for Completed Tasks - Only show to task creator (assigned_by_id) */}
+                {isTaskCompleted(task) && user?.id === task.assigned_by_id && (
                   <div className="task-card-footer" style={{ padding: '12px', borderTop: '1px solid #e2e8f0' }}>
                     {taskRatings[task.id] ? (
                       <div style={{ 
@@ -1226,7 +1230,7 @@ const Tasks = () => {
                         }}
                         style={{ width: '100%' }}
                       >
-                        <FiStar /> Rate Manager
+                        <FiStar /> Rate {task.assigned_to_name || 'Assignee'}
                       </button>
                     )}
                   </div>
@@ -1755,11 +1759,13 @@ const Tasks = () => {
                     }}
                   >
                     <option value="">No Project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
+                    {projects
+                      .filter(project => project) // Filter out any null/undefined projects
+                      .map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} {project.status === 'completed' ? '(Completed)' : ''}
+                        </option>
+                      ))}
                   </select>
                   <button
                     type="button"
@@ -2010,7 +2016,7 @@ const Tasks = () => {
           setShowRatingModal(false);
           setSelectedTaskForRating(null);
         }}
-        title="Rate Manager for Task"
+        title="Rate Task Completion"
       >
         {selectedTaskForRating && (
           <form onSubmit={handleSubmitRating}>
@@ -2025,14 +2031,18 @@ const Tasks = () => {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Manager to Rate</label>
+              <label className="form-label">Person to Rate</label>
               <input
                 type="text"
                 className="form-input"
-                value={selectedTaskForRating.assigned_by_name || 'N/A'}
+                value={selectedTaskForRating.assigned_to_name || 'N/A'}
                 disabled
               />
-              <small className="form-hint">You are rating the manager who assigned this task</small>
+              <small className="form-hint">
+                {user?.id === selectedTaskForRating.assigned_by_id 
+                  ? `You are rating ${selectedTaskForRating.assigned_to_name || 'the person'} who completed this task`
+                  : 'You are rating the person who completed this task'}
+              </small>
             </div>
 
             <div className="form-group">

@@ -165,8 +165,8 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   // VMS Module Items
   const vmsItems = [
-    { path: '/vms/list', icon: FiList, label: 'Visitors', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
-    { path: '/vms/item', icon: FiPackage, label: 'Stationery', roles: ['Manager', 'Employee', 'HR', 'Front Desk'] },
+    { path: '/vms/list', icon: FiList, label: 'Visitors', roles: ['Admin', 'Manager', 'Employee', 'HR', 'Front Desk'] },
+    { path: '/vms/item', icon: FiPackage, label: 'Stationery', roles: ['Admin', 'Manager', 'Employee', 'HR', 'Front Desk'] },
   ];
 
   const filterItems = (items) => {

@@ -17,6 +17,7 @@ const AddItem = () => {
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'table'
   // Set default tab based on route and role
   // Front Desk and Employee roles have different defaults
+  // Admin and HR roles see Dashboard and Visitors List (default to Dashboard)
   const [activeTab, setActiveTab] = useState(() => {
     if (user?.role === 'Employee' || user?.role === 'Manager') {
       return 'list'; // Employee and Manager only see Visitors List
@@ -24,6 +25,7 @@ const AddItem = () => {
       // Front Desk always starts with 'add' tab
       return location.pathname.includes('/vms/list') ? 'list' : 'add';
     } else {
+      // Admin, HR, and other roles default to Dashboard (or 'list' if path includes '/vms/list')
       return location.pathname.includes('/vms/list') ? 'list' : 'dashboard';
     }
   });
@@ -307,11 +309,14 @@ const AddItem = () => {
     }
   };
 
-  const filteredUsers = users.filter(u =>
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.empid.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Show all users when dropdown is open, filter only when searching
+  const filteredUsers = searchQuery.trim() 
+    ? users.filter(u =>
+        u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.empid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : users; // Show all employees when no search query
 
   const handleUserSelect = (selectedUser) => {
     setFormData({
@@ -350,9 +355,10 @@ const AddItem = () => {
         <h1>Visitor Management!</h1>
       </div>
 
-      {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee and HR), then Visitors List */}
+      {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee, HR, Manager, and Admin), then Visitors List */}
       <div className="filter-tabs" style={{ marginBottom: '24px' }}>
         {/* Manager and Employee roles see only Visitors List tab */}
+        {/* Admin and HR roles see Dashboard and Visitors List tabs */}
         {user?.role !== 'Manager' && user?.role !== 'Employee' && (
           <button
             type="button"
@@ -366,7 +372,7 @@ const AddItem = () => {
             Dashboard
           </button>
         )}
-        {(user?.role !== 'Employee' && user?.role !== 'HR' && user?.role !== 'Manager') && (
+        {(user?.role !== 'Employee' && user?.role !== 'HR' && user?.role !== 'Manager' && user?.role !== 'Admin') && (
           <button
             type="button"
             className={`filter-tab ${activeTab === 'add' ? 'active' : ''}`}
@@ -490,13 +496,58 @@ const AddItem = () => {
                         setFormData({ ...formData, whometomeet: '', whometomeet_id: '' });
                       }
                     }}
-                    onFocus={() => setShowUserDropdown(true)}
-                    placeholder="Search employee by name, ID or email..."
+                    onFocus={() => {
+                      if (!formData.whometomeet) {
+                        setShowUserDropdown(true);
+                      }
+                    }}
+                    placeholder={formData.whometomeet ? formData.whometomeet : "Search employee by name, ID or email..."}
                     className="form-input"
-                    style={{ paddingLeft: '40px' }}
+                    style={{ paddingLeft: formData.whometomeet ? '40px' : '40px', paddingRight: formData.whometomeet ? '40px' : '12px' }}
                     autoComplete="off"
+                    readOnly={!!formData.whometomeet}
                   />
-                  {showUserDropdown && filteredUsers.length > 0 && (
+                  {formData.whometomeet && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setFormData({ ...formData, whometomeet: '', whometomeet_id: '' });
+                        setSearchQuery('');
+                        setShowUserDropdown(false);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-secondary)',
+                        padding: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 2,
+                        borderRadius: '4px',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'var(--bg-hover)';
+                        e.target.style.color = 'var(--text-primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'transparent';
+                        e.target.style.color = 'var(--text-secondary)';
+                      }}
+                      title="Clear selection"
+                    >
+                      <FiX size={18} />
+                    </button>
+                  )}
+                  {showUserDropdown && !formData.whometomeet && filteredUsers.length > 0 && (
                     <div style={{
                       position: 'absolute',
                       top: '100%',
@@ -1296,7 +1347,10 @@ const AddItem = () => {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div className="contact-avatar contact-avatar-small">
                                 {visitor.selfie ? (
-                                  <img src={visitor.selfie} alt={visitor.fullname} />
+                                  <img 
+                                    src={visitor.selfie} 
+                                    alt={visitor.fullname}
+                                  />
                                 ) : (
                                   <span>{visitor.fullname?.slice(0, 2).toUpperCase() || 'NA'}</span>
                                 )}

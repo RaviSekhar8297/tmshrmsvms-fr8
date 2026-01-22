@@ -47,17 +47,15 @@ const Meetings = () => {
   }, [filter]);
 
   // Auto-connect Google Calendar when user logs in (only once, after calendar status is checked)
+  // Only if the connected email matches the logged in user's email
   useEffect(() => {
     if (user?.email && !autoConnectAttempted && !checkingCalendar && !calendarConnected) {
       // Small delay to ensure page is fully loaded and calendar status is checked
       const timer = setTimeout(() => {
         setAutoConnectAttempted(true);
-        // Automatically connect with user's email
-        console.log(`Auto-connecting Google Calendar for ${user.email}...`);
-        handleConnectCalendar().catch(err => {
-          console.log('Auto-connect failed, user can connect manually:', err);
-          // Don't show error toast for auto-connect failures - user can connect manually
-        });
+        // Don't auto-connect - let user connect manually if needed
+        // This prevents redirecting to email access if email doesn't match
+        console.log(`Calendar not connected for ${user.email}. User can connect manually if needed.`);
       }, 2000); // Wait 2 seconds after page load
       return () => clearTimeout(timer);
     }
@@ -75,7 +73,9 @@ const Meetings = () => {
           setCalendarConnected(true);
         } else {
           // Email doesn't match - not connected for this user
+          // Don't redirect to email access, just leave it disconnected
           setCalendarConnected(false);
+          console.log(`Calendar connected to different email (${connectedEmail}), not connecting for ${user.email}`);
         }
       } else {
         setCalendarConnected(isConnected);

@@ -170,30 +170,32 @@ const Salary = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>SALARY MANAGEMENT</h1>
-        <div className="header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button
-            onClick={handleExportExcel}
-            className="btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-          >
-            <FiDownload /> Excel
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="btn-primary"
-            disabled={uploading}
-            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-          >
-            <FiUpload /> {uploading ? 'Uploading...' : 'Upload'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileUpload}
-            style={{ display: 'none' }}
-          />
-        </div>
+        {user?.role !== 'Admin' && (
+          <div className="header-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={handleExportExcel}
+              className="btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <FiDownload /> Excel
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-primary"
+              disabled={uploading}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <FiUpload /> {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Search Bar with Month/Year */}

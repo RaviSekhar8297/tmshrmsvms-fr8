@@ -209,11 +209,13 @@ const Requests = () => {
       updatedFormData.outtime_time = '';
     }
     
-    // For overtime-comp-off: When intime_date is selected, automatically set outtime_date to the same date
-    if (name === 'intime_date' && formData.type === 'overtime-comp-off' && value) {
+    // When intime_date is selected, automatically set outtime_date to the same date (for all request types)
+    if (name === 'intime_date' && value) {
       updatedFormData.outtime_date = value;
       // Check for duplicate requests
-      checkDuplicateRequest(value, formData.type);
+      if (formData.type === 'overtime-comp-off') {
+        checkDuplicateRequest(value, formData.type);
+      }
     }
     
     setFormData(updatedFormData);
@@ -572,15 +574,21 @@ const Requests = () => {
                             }}
                           >
                             <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Available Date</option>
-                            {getCompOffDates().map((item, idx) => (
-                              <option 
-                                key={idx} 
-                                value={item.date}
-                                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
-                              >
-                                {new Date(item.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} ({item.type === 'holiday' ? 'H' : 'WO'})
-                              </option>
-                            ))}
+                            {getCompOffDates().map((item, idx) => {
+                              const dateObj = new Date(item.date);
+                              const day = String(dateObj.getDate()).padStart(2, '0');
+                              const month = dateObj.toLocaleDateString('en-GB', { month: 'short' });
+                              const year = dateObj.getFullYear();
+                              return (
+                                <option 
+                                  key={idx} 
+                                  value={item.date}
+                                  style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                                >
+                                  {day} {month} {year} ({item.type === 'holiday' ? 'H' : 'WO'})
+                                </option>
+                              );
+                            })}
                           </select>
                         ) : (
                           // For Admin: Show regular date input
@@ -704,15 +712,21 @@ const Requests = () => {
                           value={formData.outtime_date}
                           onChange={handleChange}
                           required={isOuttimeEnabled()}
-                          disabled={!isOuttimeEnabled()}
+                          disabled={!isOuttimeEnabled() || formData.type === 'full-day'}
+                          readOnly={formData.type === 'full-day'}
                           className="form-input"
-                          style={!isOuttimeEnabled() ? { 
+                          style={(!isOuttimeEnabled() || formData.type === 'full-day') ? { 
                             width: '100%',
                             background: 'var(--bg-hover)', 
                             cursor: 'not-allowed',
                             color: 'var(--text-secondary)'
                           } : { width: '100%' }}
                         />
+                        {formData.type === 'full-day' && formData.intime_date && (
+                          <small style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+                            Same as In Time Date: {new Date(formData.intime_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </small>
+                        )}
                         {!isOuttimeEnabled() && (
                           <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>-/00:00</span>
                         )}

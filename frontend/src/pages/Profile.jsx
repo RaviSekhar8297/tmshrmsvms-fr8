@@ -39,6 +39,15 @@ const Profile = () => {
   const [reportToUser, setReportToUser] = useState(null);
   const [loadingReportTo, setLoadingReportTo] = useState(false);
 
+  // Calculate today's date in YYYY-MM-DD format for max date restriction
+  const getTodayDateString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Helper function to format date for input
   const formatDateForInput = (date) => {
     if (!date) return '';
@@ -1189,8 +1198,21 @@ const Profile = () => {
                     {editing ? (
                       <DatePicker
                         value={formData.dob}
-                        onChange={(date) => setFormData({ ...formData, dob: date || null })}
+                        onChange={(date) => {
+                          // Validate that selected date is not in the future
+                          if (date) {
+                            const selectedDate = new Date(date);
+                            const today = new Date();
+                            today.setHours(23, 59, 59, 999); // Set to end of today
+                            if (selectedDate > today) {
+                              toast.error('Date of birth cannot be in the future');
+                              return;
+                            }
+                          }
+                          setFormData({ ...formData, dob: date || null });
+                        }}
                         placeholder="Select date of birth"
+                        max={getTodayDateString()}
                       />
                     ) : (
                       user?.dob ? new Date(user.dob).toLocaleDateString() : 'Pending'

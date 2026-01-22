@@ -496,7 +496,7 @@ const Users = () => {
           <h1 className="page-title">USERS</h1>
           <p className="page-subtitle">Manage all users in the system</p>
         </div>
-        {canManageUsers && (
+        {canManageUsers && !isAdmin && (
           <button className="btn btn-primary" onClick={() => {
             resetForm();
             setShowModal(true);
@@ -603,7 +603,7 @@ const Users = () => {
                   <button className="btn-icon" onClick={() => handleView(user)}>
                     <FiEye />
                   </button>
-                  {canManageUsers && (
+                  {canManageUsers && !isAdmin && (
                     <>
                       <button className="btn-icon" onClick={() => handleEdit(user)}>
                         <FiEdit2 />
@@ -689,7 +689,7 @@ const Users = () => {
                           <button className="btn-icon btn-sm" onClick={() => handleView(user)}>
                             <FiEye />
                           </button>
-                          {canManageUsers && (
+                          {canManageUsers && !isAdmin && (
                             <>
                               <button className="btn-icon btn-sm" onClick={() => handleEdit(user)}>
                                 <FiEdit2 />

@@ -151,14 +151,14 @@ const Permission = () => {
       return;
     }
     
-    // Validate time range (09:30 to 17:00)
+    // Validate time range (09:30 to 17:30)
     const [hours, minutes] = formData.from_time.split(':').map(Number);
     const totalMinutes = hours * 60 + minutes;
     const minMinutes = 9 * 60 + 30; // 09:30
-    const maxMinutes = 17 * 60; // 17:00
+    const maxMinutes = 17 * 60 + 30; // 17:30
     
     if (totalMinutes < minMinutes || totalMinutes > maxMinutes) {
-      toast.error('From Time must be between 09:30 and 17:00');
+      toast.error('From Time must be between 09:30 and 17:30');
       setLoading(false);
       return;
     }
@@ -545,24 +545,22 @@ const Permission = () => {
                       value={formData.from_time}
                       onChange={(e) => {
                         const selectedTime = e.target.value;
-                        // Validate time range (09:30 to 17:00)
+                        // Validate time range (09:30 to 17:30)
                         if (selectedTime) {
                           const [hours, minutes] = selectedTime.split(':').map(Number);
                           const totalMinutes = hours * 60 + minutes;
                           const minMinutes = 9 * 60 + 30; // 09:30
-                          const maxMinutes = 17 * 60; // 17:00
+                          const maxMinutes = 17 * 60 + 30; // 17:30
                           
                           if (totalMinutes < minMinutes || totalMinutes > maxMinutes) {
-                            toast.error('Time must be between 09:30 and 17:00');
+                            toast.error('Time must be between 09:30 and 17:30');
                             return;
                           }
                         }
                         handleChange(e);
                       }}
-                      
                       min="09:30"
-                      max="17:00"
-                      step="1800"
+                      max="17:30"
                       className="form-input"
                       style={{ width: '100%' }}
                     />
@@ -576,7 +574,6 @@ const Permission = () => {
                       name="to_date"
                       value={formData.to_date}
                       onChange={handleChange}
-                      required
                       className="form-input"
                       readOnly
                       style={{ 

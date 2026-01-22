@@ -388,6 +388,270 @@ BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED"""
         print(f"Email error: {str(e)}")
         return False
 
+def send_visitor_email_notification(visitor_name: str, visitor_email: str, visit_purpose: str, address: str, date_of_visit: str, employee_name: str, image_data: str = None):
+    """Send email notification to visitor with their captured image"""
+    try:
+        if not is_valid_email(visitor_email):
+            print(f"Invalid visitor email: {visitor_email}")
+            return False
+        
+        msg = MIMEMultipart('alternative')
+        msg['From'] = EMAIL_FROM
+        msg['To'] = visitor_email
+        msg['Subject'] = f"Your Visitor Pass - {visitor_name}"
+        
+        # Get image data
+        image_to_use = image_data
+        if not image_data:
+            image_to_use = DEFAULT_IMAGE_URL
+        
+        img_data, is_url = get_image_data(image_to_use)
+        image_cid = None
+        
+        # Download image if URL, or use base64
+        if is_url:
+            try:
+                img_response = requests.get(image_to_use, timeout=10)
+                if img_response.status_code == 200:
+                    img_data = img_response.content
+                else:
+                    img_response = requests.get(DEFAULT_IMAGE_URL, timeout=10)
+                    if img_response.status_code == 200:
+                        img_data = img_response.content
+                    else:
+                        img_data = None
+            except:
+                try:
+                    img_response = requests.get(DEFAULT_IMAGE_URL, timeout=10)
+                    if img_response.status_code == 200:
+                        img_data = img_response.content
+                    else:
+                        img_data = None
+                except:
+                    img_data = None
+        
+        # Create HTML email body
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }}
+        .email-wrapper {{
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }}
+        .email-header {{
+            background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }}
+        .email-header h2 {{
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }}
+        .email-body {{
+            padding: 30px;
+        }}
+        .visitor-image {{
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            border-radius: 12px;
+            margin: 0 auto 30px;
+            display: block;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }}
+        .visitor-details {{
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }}
+        .detail-row {{
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }}
+        .detail-row:last-child {{
+            border-bottom: none;
+        }}
+        .detail-label {{
+            font-weight: 600;
+            color: #666;
+        }}
+        .detail-value {{
+            color: #333;
+        }}
+        .footer {{
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="email-header">
+            <h2>Your Visitor Pass</h2>
+        </div>
+        <div class="email-body">
+            <p class="greeting">Dear {visitor_name},</p>
+            <p style="margin-bottom: 20px;">Thank you for visiting us! Here is your visitor pass:</p>
+"""
+        
+        # Add image if available
+        if img_data:
+            image_cid = "visitor_image"
+            image_part = MIMEImage(img_data)
+            image_part.add_header('Content-ID', f'<{image_cid}>')
+            image_part.add_header('Content-Disposition', 'inline', filename='visitor_image.jpg')
+            msg.attach(image_part)
+            html_body += f'            <img src="cid:{image_cid}" alt="Your Visitor Photo" class="visitor-image" />\n'
+        
+        html_body += f"""
+            <div class="visitor-details">
+                <div class="detail-row">
+                    <span class="detail-label">Name:</span>
+                    <span class="detail-value">{visitor_name}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Purpose:</span>
+                    <span class="detail-value">{visit_purpose or 'Not specified'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Meeting With:</span>
+                    <span class="detail-value">{employee_name or 'Not specified'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Date of Visit:</span>
+                    <span class="detail-value">{date_of_visit}</span>
+                </div>
+            </div>
+            <p style="margin-top: 20px;">Please keep this email for your records.</p>
+        </div>
+        <div class="footer">
+            <p><strong>Best regards,</strong></p>
+            <p>HRMS System</p>
+            <p>BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        # Create plain text version
+        text_body = f"""Dear {visitor_name},
+
+Thank you for visiting us! Here is your visitor pass:
+
+Visitor Details:
+- Name: {visitor_name}
+- Purpose: {visit_purpose or 'Not specified'}
+- Meeting With: {employee_name or 'Not specified'}
+- Date of Visit: {date_of_visit}
+
+Please keep this email for your records.
+
+Best regards,
+HRMS System
+BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED"""
+        
+        # Attach both plain text and HTML
+        part1 = MIMEText(text_body, 'plain')
+        part2 = MIMEText(html_body, 'html')
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_FROM, visitor_email, msg.as_string())
+        server.quit()
+        print(f"Visitor email sent to {visitor_email}")
+        return True
+    except Exception as e:
+        print(f"Visitor email error: {str(e)}")
+        return False
+
+def send_visitor_whatsapp_notification(visitor_name: str, visit_purpose: str, date_of_visit: str, employee_name: str, phone: str, image_data: str = None):
+    """Send WhatsApp notification to visitor with their captured image"""
+    try:
+        if not is_valid_phone(phone):
+            print(f"Invalid visitor phone number: {phone}")
+            return False
+        
+        phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        
+        # Use provided image or default
+        image_to_use = image_data
+        if not image_data:
+            image_to_use = DEFAULT_IMAGE_URL
+        
+        # Get image data
+        img_data, is_url = get_image_data(image_to_use)
+        if not img_data and not is_url:
+            image_to_use = DEFAULT_IMAGE_URL
+            is_url = True
+        
+        # Build payload for visitor notification
+        payload = {
+            "campaignName": WHATSAPP_CAMPAIGN,
+            "destination": phone_clean,
+            "userName": "BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED",
+            "templateParams": [visitor_name, visit_purpose or 'Not specified', employee_name or 'Not specified', date_of_visit],
+            "source": "visitor-pass"
+        }
+        
+        # If image is a URL, add it to payload
+        if is_url:
+            payload["imageUrl"] = image_to_use
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {WHATSAPP_API_KEY}"
+        }
+        
+        print(f"Visitor WhatsApp API Request:")
+        print(f"  URL: {WHATSAPP_API_URL}")
+        print(f"  Phone: {phone_clean}")
+        print(f"  Payload: {payload}")
+        
+        response = requests.post(WHATSAPP_API_URL, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            print(f"Visitor WhatsApp notification sent to {phone}")
+            return True
+        else:
+            print(f"Visitor WhatsApp API error: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"Visitor WhatsApp error: {str(e)}")
+        return False
+
 router = APIRouter()
 
 class VMSItemCreate(BaseModel):
@@ -568,6 +832,46 @@ def add_visitor(
                 print(f"Error sending notifications: {str(e)}")
                 import traceback
                 traceback.print_exc()
+        
+        # Send notifications to the visitor with their captured image
+        try:
+            from utils import get_ist_now
+            date_of_visit = get_ist_now().strftime("%d/%m/%Y %H:%M:%S")
+            employee_name = visitor_data.whometomeet or 'Not specified'
+            
+            # Send WhatsApp to visitor if phone is provided
+            if visitor_data.phone and is_valid_phone(visitor_data.phone):
+                try:
+                    send_visitor_whatsapp_notification(
+                        visitor_name=visitor_data.fullname,
+                        visit_purpose=visitor_data.purpose or 'Not specified',
+                        date_of_visit=date_of_visit,
+                        employee_name=employee_name,
+                        phone=visitor_data.phone,
+                        image_data=image_url
+                    )
+                except Exception as wa_error:
+                    print(f"Visitor WhatsApp notification error: {str(wa_error)}")
+            
+            # Send Email to visitor if email is provided
+            if visitor_data.email and is_valid_email(visitor_data.email):
+                try:
+                    send_visitor_email_notification(
+                        visitor_name=visitor_data.fullname,
+                        visitor_email=visitor_data.email,
+                        visit_purpose=visitor_data.purpose or 'Not specified',
+                        address=visitor_data.address or 'Not provided',
+                        date_of_visit=date_of_visit,
+                        employee_name=employee_name,
+                        image_data=image_url
+                    )
+                except Exception as email_error:
+                    print(f"Visitor email notification error: {str(email_error)}")
+        except Exception as e:
+            # Log error but don't fail the visitor creation
+            print(f"Error sending visitor notifications: {str(e)}")
+            import traceback
+            traceback.print_exc()
         
         return {
             "message": "Visitor added successfully",

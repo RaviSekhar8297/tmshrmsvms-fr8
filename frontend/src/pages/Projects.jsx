@@ -80,6 +80,24 @@ const Projects = () => {
       return;
     }
 
+    // Validate description (0-500 characters, all characters and numbers acceptable)
+    if (formData.description && formData.description.length > 500) {
+      toast.error('Description must be 500 characters or less');
+      return;
+    }
+
+    // Validate start date (required)
+    if (!formData.start_date) {
+      toast.error('Start date is required');
+      return;
+    }
+
+    // Validate end date (required)
+    if (!formData.end_date) {
+      toast.error('End date is required');
+      return;
+    }
+
     // Validate dates
     if (formData.start_date && formData.end_date) {
       const start = new Date(formData.start_date);
@@ -88,6 +106,18 @@ const Projects = () => {
         toast.error('Start date cannot be after end date');
         return;
       }
+    }
+
+    // Validate Project Manager (required for Admin)
+    if (isAdmin && !formData.project_head_id && !formData.project_head_manual) {
+      toast.error('Project Manager is required');
+      return;
+    }
+
+    // Validate Priority (required)
+    if (!formData.priority) {
+      toast.error('Priority is required');
+      return;
     }
     
     try {
@@ -462,19 +492,23 @@ const Projects = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Description</label>
+            <label className="form-label">Description (0-500 characters)</label>
             <textarea
               className="form-textarea"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Project description"
               rows={3}
+              maxLength={500}
             />
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              {formData.description.length}/500 characters
+            </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Start Date</label>
+              <label className="form-label">Start Date *</label>
               <DatePicker
                 value={formData.start_date}
                 onChange={(date) => {
@@ -491,7 +525,7 @@ const Projects = () => {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">End Date</label>
+              <label className="form-label">End Date *</label>
               <DatePicker
                 value={formData.end_date}
                 onChange={(date) => {
@@ -510,12 +544,13 @@ const Projects = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Priority</label>
+              <label className="form-label">Priority *</label>
               <select
                 className="form-select"
                 value={formData.priority}
                 onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
               >
+                <option value="">Select Priority</option>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
@@ -543,7 +578,7 @@ const Projects = () => {
 
           {isAdmin && (
             <div className="form-group">
-              <label className="form-label">Project Manager</label>
+              <label className="form-label">Project Manager *</label>
               {managers.length > 0 ? (
                 <select
                   className="form-select"

@@ -168,35 +168,47 @@ def create_issue(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    issue = Issue(
-        title=issue_data.title,
-        description=issue_data.description,
-        priority=issue_data.priority,
-        status="open",
-        project_id=issue_data.project_id,
-        task_id=issue_data.task_id,
-        raised_by=current_user.id,
-        raised_by_name=current_user.name
-    )
-    
-    db.add(issue)
-    db.commit()
-    db.refresh(issue)
-    
-    # Log activity
-    activity = Activity(
-        user_id=current_user.id,
-        user_name=current_user.name,
-        action="raised",
-        entity_type="issue",
-        entity_id=issue.id,
-        entity_name=issue.title,
-        details=f"Raised issue: {issue.title}"
-    )
-    db.add(activity)
-    db.commit()
-    
-    return issue
+    try:
+        issue = Issue(
+            title=issue_data.title,
+            description=issue_data.description,
+            priority=issue_data.priority,
+            status="open",
+            project_id=issue_data.project_id,
+            task_id=issue_data.task_id,
+            raised_by=current_user.id,
+            raised_by_name=current_user.name if current_user.name else "Unknown"
+        )
+        
+        db.add(issue)
+        db.commit()
+        db.refresh(issue)
+        
+        # Log activity
+        try:
+            activity = Activity(
+                user_id=current_user.id,
+                user_name=current_user.name if current_user.name else "Unknown",
+                action="raised",
+                entity_type="issue",
+                entity_id=issue.id,
+                entity_name=issue.title,
+                details=f"Raised issue: {issue.title}"
+            )
+            db.add(activity)
+            db.commit()
+        except Exception as activity_error:
+            # If activity logging fails, don't fail the whole request
+            print(f"Error logging activity: {activity_error}")
+            db.rollback()
+        
+        return issue
+    except Exception as e:
+        db.rollback()
+        print(f"Error in create_issue: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error creating issue: {str(e)}")
 
 @router.put("/{issue_id}", response_model=IssueResponse)
 def update_issue(
@@ -250,16 +262,46 @@ def delete_issue(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role == "Employee":
-        raise HTTPException(status_code=403, detail="Employees cannot delete issues")
-    
-    issue = db.query(Issue).filter(Issue.id == issue_id).first()
-    if not issue:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    
-    db.delete(issue)
-    db.commit()
-    
-    return {"message": "Issue deleted successfully"}
+    try:
+        if current_user.role == "Employee":
+            raise HTTPException(status_code=403, detail="Employees cannot delete issues")
+        
+        issue = db.query(Issue).filter(Issue.id == issue_id).first()
+        if not issue:
+            raise HTTPException(status_code=404, detail="Issue not found")
+        
+        issue_title = issue.title  # Store title before deletion for activity log
+        
+        db.delete(issue)
+        db.commit()
+        
+        # Log activity
+        try:
+            activity = Activity(
+                user_id=current_user.id,
+                user_name=current_user.name if current_user.name else "Unknown",
+                action="deleted",
+                entity_type="issue",
+                entity_id=issue_id,
+                entity_name=issue_title,
+                details=f"Deleted issue: {issue_title}"
+            )
+            db.add(activity)
+            db.commit()
+        except Exception as activity_error:
+            # If activity logging fails, don't fail the whole request
+            print(f"Error logging activity: {activity_error}")
+            db.rollback()
+        
+        return {"message": "Issue deleted successfully"}
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 403, 404) as-is
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error in delete_issue: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error deleting issue: {str(e)}")
 
 

@@ -219,7 +219,7 @@ const PayrollStructure = () => {
 
         {/* Actions - Right aligned */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
-          {(user?.role === 'Admin' || user?.role === 'HR') && (
+          {user?.role === 'HR' && (
             <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FiUpload />
               Upload Excel
@@ -232,10 +232,12 @@ const PayrollStructure = () => {
               />
             </label>
           )}
-          <button className="btn btn-secondary" onClick={handleDownloadExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FiDownload />
-            Download Excel
-          </button>
+          {user?.role !== 'Admin' && (
+            <button className="btn btn-secondary" onClick={handleDownloadExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FiDownload />
+              Download Excel
+            </button>
+          )}
 
           {/* View Toggle */}
           <div className="view-toggle">

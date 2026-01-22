@@ -159,16 +159,18 @@ const BalanceLeaves = () => {
               ))}
             </select>
           </div>
-          <div>
-            <button
-              className="btn-primary"
-              onClick={handleGenerate}
-              disabled={generating}
-              style={{ marginBottom: 0, height: '45px', padding: '0 20px', boxSizing: 'border-box', lineHeight: '45px' }}
-            >
-              {generating ? 'Generating...' : 'Generate'}
-            </button>
-          </div>
+          {user?.role !== 'Admin' && (
+            <div>
+              <button
+                className="btn-primary"
+                onClick={handleGenerate}
+                disabled={generating}
+                style={{ marginBottom: 0, height: '45px', padding: '0 20px', boxSizing: 'border-box', lineHeight: '45px' }}
+              >
+                {generating ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

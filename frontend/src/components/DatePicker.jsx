@@ -163,6 +163,7 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
 
   const handleToday = () => {
     const today = new Date();
+    // Check if today is within the allowed range (respects min and max)
     if (!isDateDisabled(today)) {
       setSelectedDate(today);
       // Format date as YYYY-MM-DD using local timezone (IST) instead of UTC
@@ -351,6 +352,10 @@ const DatePicker = ({ value, onChange, min, max, placeholder = "Select date", di
               type="button" 
               className="date-picker-today-btn"
               onClick={handleToday}
+              disabled={(() => {
+                const today = new Date();
+                return isDateDisabled(today);
+              })()}
             >
               Today
             </button>

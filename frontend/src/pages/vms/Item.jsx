@@ -10,8 +10,17 @@ import './VMS.css';
 const Item = () => {
   const { user } = useAuth();
   // Manager and Employee roles should default to 'issues' tab
-  const defaultTab = (user?.role === 'Manager' || user?.role === 'Employee') ? 'issues' : 'dashboard';
-  const [activeTab, setActiveTab] = useState(defaultTab);
+  // HR role should default to 'stationery' tab instead of 'dashboard'
+  const getDefaultTab = () => {
+    if (user?.role === 'Manager' || user?.role === 'Employee') {
+      return 'issues';
+    } else if (user?.role === 'HR') {
+      return 'stationery';
+    } else {
+      return 'dashboard';
+    }
+  };
+  const [activeTab, setActiveTab] = useState(getDefaultTab());
   const [loading, setLoading] = useState(false);
   
   // Dashboard data
@@ -64,7 +73,29 @@ const Item = () => {
   // Removed quantity from form - it will be calculated from employees and clients
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
 
+  // Update activeTab when user becomes available (only on initial load)
   useEffect(() => {
+    if (user?.role) {
+      const expectedTab = getDefaultTab();
+      // Set the correct default tab based on role (only if not already set correctly)
+      setActiveTab(prevTab => {
+        // If current tab is 'dashboard' and user is HR, switch to 'stationery'
+        if (user?.role === 'HR' && prevTab === 'dashboard') {
+          return 'stationery';
+        }
+        // If current tab doesn't match expected default, update it
+        if (prevTab !== expectedTab && (prevTab === 'dashboard' || prevTab === 'stationery' || prevTab === 'issues')) {
+          return expectedTab;
+        }
+        return prevTab;
+      });
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    // Don't fetch if user is not loaded yet
+    if (!user?.role) return;
+
     // For Manager/Employee, always fetch issues data
     if (user?.role === 'Manager' || user?.role === 'Employee') {
       if (activeTab === 'issues') {
@@ -182,6 +213,32 @@ const Item = () => {
 
   const handleItemSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate item name - check for duplicates (case-insensitive)
+    if (!editingItem) {
+      const trimmedName = itemForm.item_name.trim();
+      const duplicateItem = items.find(item => 
+        item.item_name.toLowerCase().trim() === trimmedName.toLowerCase()
+      );
+      
+      if (duplicateItem) {
+        toast.error(`Item name "${itemForm.item_name}" already exists. Please use a different name.`);
+        return;
+      }
+    } else {
+      // When editing, check if name changed and if new name already exists (excluding current item)
+      const trimmedName = itemForm.item_name.trim();
+      const duplicateItem = items.find(item => 
+        item.item_id !== editingItem.item_id &&
+        item.item_name.toLowerCase().trim() === trimmedName.toLowerCase()
+      );
+      
+      if (duplicateItem) {
+        toast.error(`Item name "${itemForm.item_name}" already exists. Please use a different name.`);
+        return;
+      }
+    }
+    
     setLoading(true);
     try {
       if (editingItem) {
@@ -748,7 +805,7 @@ const Item = () => {
         <div>
           <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2>Stationery Items</h2>
-            {(user?.role === 'HR' || user?.role === 'Admin') && (
+            {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99') && (
               <button
                 className="btn btn-primary"
                 onClick={() => {
@@ -770,13 +827,13 @@ const Item = () => {
                     <th>Item Name</th>
                     <th>Available Quantity</th>
                     <th>Description</th>
-                    {(user?.role === 'HR' || user?.role === 'Admin') && <th>Actions</th>}
+                    {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99') && <th>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={(user?.role === 'HR' || user?.role === 'Admin') ? 4 : 3} className="text-center">No items found</td>
+                      <td colSpan={(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99') ? 4 : 3} className="text-center">No items found</td>
                     </tr>
                   ) : (
                     items.map((item) => (
@@ -785,7 +842,7 @@ const Item = () => {
                         <td>{item.available_quantity}</td>
                         <td>{item.description || '-'}</td>
                         <td>
-                          {(user?.role === 'HR' || user?.role === 'Admin') && (
+                          {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99') && (
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button
                                 className="btn-sm btn-primary"
