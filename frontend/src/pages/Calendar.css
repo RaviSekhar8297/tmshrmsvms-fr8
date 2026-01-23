@@ -271,7 +271,7 @@
 
 .day-cards-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 24px;
   width: 100%;
 }
@@ -891,7 +891,7 @@
 /* Add Type Selector */
 .add-type-selector {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
   padding: 20px 0;
 }
@@ -929,7 +929,7 @@
 
 @media (max-width: 1200px) {
   .day-cards-grid {
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -1286,8 +1286,14 @@
   }
 
   .day-cards-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 16px;
+  }
+  
+  @media (max-width: 768px) {
+    .day-cards-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .day-card {

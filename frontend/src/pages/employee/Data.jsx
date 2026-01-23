@@ -47,6 +47,8 @@ const Data = () => {
   const [alertsCurrentPage, setAlertsCurrentPage] = useState(1);
   const [overtimeCurrentPage, setOvertimeCurrentPage] = useState(1);
   const [overtimeYear, setOvertimeYear] = useState(new Date().getFullYear());
+  const [weekOffDates, setWeekOffDates] = useState(new Set());
+  const [holidayDates, setHolidayDates] = useState(new Set());
   const recordsPerPage = 50;
   const [loanInstallments, setLoanInstallments] = useState([]);
   const [loadingInstallments, setLoadingInstallments] = useState(false);
@@ -723,14 +725,22 @@ const Data = () => {
         }
       });
 
-      const weekOffDates = new Set((weekOffsRes.data || []).map(wo => {
+      const weekOffDatesSet = new Set((weekOffsRes.data || []).map(wo => {
         const date = wo.date ? (wo.date.split('T')[0] || wo.date) : wo.date;
         return date;
       }));
-      const holidayDates = new Set((holidaysRes.data || []).map(h => {
+      const holidayDatesSet = new Set((holidaysRes.data || []).map(h => {
         const date = h.date ? (h.date.split('T')[0] || h.date) : h.date;
         return date;
       }));
+      
+      // Store in state for use in rendering
+      setWeekOffDates(weekOffDatesSet);
+      setHolidayDates(holidayDatesSet);
+      
+      // Use local variables for filtering
+      const weekOffDates = weekOffDatesSet;
+      const holidayDates = holidayDatesSet;
       const punchLogs = punchLogsRes.data || [];
       const requests = requestsRes.data || [];
       
@@ -2369,7 +2379,24 @@ const Data = () => {
                                   </td>
                                   <td>{record.empid}</td>
                                   <td>{record.name}</td>
-                                  <td>{new Date(record.date).toLocaleDateString()}</td>
+                                  <td>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span>{new Date(record.date).toLocaleDateString()}</span>
+                                      {(() => {
+                                        const dateStr = record.date;
+                                        const isWeekOff = weekOffDates.has(dateStr);
+                                        const isHoliday = holidayDates.has(dateStr);
+                                        if (isWeekOff && isHoliday) {
+                                          return <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.85rem' }}>WO H</span>;
+                                        } else if (isWeekOff) {
+                                          return <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.85rem' }}>WO</span>;
+                                        } else if (isHoliday) {
+                                          return <span style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '0.85rem' }}>H</span>;
+                                        }
+                                        return null;
+                                      })()}
+                                    </div>
+                                  </td>
                                   <td>{record.intime || '-'}</td>
                                   <td>{record.outtime || '-'}</td>
                                   <td>

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   FiClock, FiVideo, FiCalendar, FiChevronLeft, FiChevronRight, 
-  FiPlus, FiCheckSquare, FiX, FiSearch, FiChevronDown
+  FiPlus, FiCheckSquare, FiX, FiSearch, FiChevronDown, FiBriefcase
 } from 'react-icons/fi';
 import { meetingsAPI, tasksAPI, usersAPI, projectsAPI } from '../services/api';
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import DatePicker from '../components/DatePicker';
@@ -105,6 +106,7 @@ const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarData, setCalendarData] = useState({}); // Meetings by date
   const [tasksData, setTasksData] = useState({}); // Tasks by date
+  const [workReportsData, setWorkReportsData] = useState({}); // Work reports by date
   const [upcomingMeetings, setUpcomingMeetings] = useState([]);
   const [selectedDate, setSelectedDate] = useState(() => {
     // Initialize with current date
@@ -117,9 +119,10 @@ const Calendar = () => {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalDate, setAddModalDate] = useState(null);
-  const [addModalType, setAddModalType] = useState(null); // 'meeting' or 'task'
+  const [addModalType, setAddModalType] = useState(null); // 'meeting', 'task', or 'work'
   const [creatingMeeting, setCreatingMeeting] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
+  const [creatingWork, setCreatingWork] = useState(false);
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [managers, setManagers] = useState([]);
@@ -153,12 +156,21 @@ const Calendar = () => {
     estimated_days: ''
   });
   const [estimatedDaysManuallyEdited, setEstimatedDaysManuallyEdited] = useState(false);
+  
+  // Work report form data
+  const [workFormData, setWorkFormData] = useState({
+    work_date: new Date().toISOString().split('T')[0],
+    works: [{ work_name: '', description: '', hours_spent: '' }],
+    status: 'PENDING',
+    employee_remarks: ''
+  });
 
   useEffect(() => {
     fetchCalendarData();
     fetchUpcoming();
     fetchProjects();
     fetchEmployees();
+    fetchWorkReports();
     if (user?.role === 'Admin') {
       fetchManagers();
     }
@@ -224,6 +236,29 @@ const Calendar = () => {
       setUpcomingMeetings(response.data);
     } catch (error) {
       console.error('Error fetching upcoming:', error);
+    }
+  };
+
+  const fetchWorkReports = async () => {
+    try {
+      const response = await api.get('/work-reports/self');
+      const reports = response.data || [];
+      
+      // Group work reports by date
+      const reportsByDate = {};
+      reports.forEach(report => {
+        if (report.work_date) {
+          const dateKey = report.work_date.split('T')[0];
+          if (!reportsByDate[dateKey]) {
+            reportsByDate[dateKey] = [];
+          }
+          reportsByDate[dateKey].push(report);
+        }
+      });
+      
+      setWorkReportsData(reportsByDate);
+    } catch (error) {
+      console.error('Error fetching work reports:', error);
     }
   };
 
@@ -327,6 +362,13 @@ const Calendar = () => {
         ...taskFormData,
         due_date: addModalDate
       });
+    } else if (type === 'work') {
+      setWorkFormData({
+        work_date: addModalDate,
+        works: [{ work_name: '', description: '', hours_spent: '' }],
+        status: 'PENDING',
+        employee_remarks: ''
+      });
     }
   };
 
@@ -368,6 +410,7 @@ const Calendar = () => {
       resetMeetingForm();
       setParticipantSearch('');
       fetchCalendarData();
+      fetchWorkReports();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create meeting');
     } finally {
@@ -404,6 +447,7 @@ const Calendar = () => {
       setAddModalDate(null);
       resetTaskForm();
       fetchCalendarData();
+      fetchWorkReports();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create task');
     } finally {
@@ -462,14 +506,135 @@ const Calendar = () => {
     setManualProjectName('');
   };
 
+  const handleAddWork = () => {
+    setWorkFormData({
+      ...workFormData,
+      works: [...workFormData.works, { work_name: '', description: '', hours_spent: '' }]
+    });
+  };
+
+  const handleRemoveWork = (index) => {
+    if (workFormData.works.length > 1) {
+      const newWorks = workFormData.works.filter((_, i) => i !== index);
+      setWorkFormData({ ...workFormData, works: newWorks });
+    } else {
+      toast.error('At least one work item is required');
+    }
+  };
+
+  const handleWorkChange = (index, field, value) => {
+    const newWorks = [...workFormData.works];
+    newWorks[index][field] = value;
+    setWorkFormData({ ...workFormData, works: newWorks });
+  };
+
+  const handleCreateWork = async (e) => {
+    e.preventDefault();
+    
+    // Validate work date
+    if (!workFormData.work_date || !workFormData.work_date.trim()) {
+      toast.error('Work date is required');
+      return;
+    }
+
+    // Validate status
+    if (!workFormData.status || !workFormData.status.trim()) {
+      toast.error('Status is required');
+      return;
+    }
+    
+    // Validate works array
+    if (!workFormData.works || workFormData.works.length === 0) {
+      toast.error('Please add at least one work item');
+      return;
+    }
+
+    // Validate each work item
+    for (let i = 0; i < workFormData.works.length; i++) {
+      const work = workFormData.works[i];
+      if (!work.work_name || !work.work_name.trim()) {
+        toast.error(`Work item ${i + 1}: Work name is required`);
+        return;
+      }
+      if (!work.hours_spent || work.hours_spent === '') {
+        toast.error(`Work item ${i + 1}: Hours spent is required`);
+        return;
+      }
+      const hours = parseFloat(work.hours_spent);
+      if (isNaN(hours) || hours < 0 || hours > 16) {
+        toast.error(`Work item ${i + 1}: Hours spent must be between 0 and 16`);
+        return;
+      }
+    }
+
+    // Check for duplicate report (same work_date)
+    const workDate = new Date(workFormData.work_date);
+    const existingReport = workReportsData[workFormData.work_date]?.[0];
+    if (existingReport) {
+      toast.error('A work report already exists for this date. Please edit the existing report or choose a different date.');
+      return;
+    }
+
+    // Get current date and time
+    const now = new Date();
+    const currentDateTime = now.toISOString();
+
+    // Format works array with current date and time
+    const formattedWorks = workFormData.works.map(work => ({
+      work_name: work.work_name.trim(),
+      description: work.description?.trim() || '',
+      hours_spent: parseFloat(work.hours_spent),
+      date: currentDateTime
+    }));
+
+    const payload = {
+      work_date: workFormData.work_date,
+      works: formattedWorks,
+      status: workFormData.status,
+      employee_remarks: workFormData.employee_remarks?.trim() || null
+    };
+
+    setCreatingWork(true);
+    try {
+      await api.post('/work-reports/', payload);
+      toast.success('Work report created successfully');
+      setShowAddModal(false);
+      setAddModalType(null);
+      setAddModalDate(null);
+      resetWorkForm();
+      fetchWorkReports();
+    } catch (error) {
+      console.error('Error saving work report:', error);
+      toast.error(error.response?.data?.detail || 'Failed to save work report');
+    } finally {
+      setCreatingWork(false);
+    }
+  };
+
+  const resetWorkForm = () => {
+    setWorkFormData({
+      work_date: new Date().toISOString().split('T')[0],
+      works: [{ work_name: '', description: '', hours_spent: '' }],
+      status: 'PENDING',
+      employee_remarks: ''
+    });
+  };
+
+  const calculateTotalHours = (works) => {
+    if (!works || !Array.isArray(works)) return 0;
+    return works.reduce((total, work) => total + (parseFloat(work.hours_spent) || 0), 0).toFixed(2);
+  };
+
   const renderCalendarDays = () => {
     return calendarDays.map((dayObj, index) => {
       const dateKey = getDateKeyFromDate(dayObj.date);
       const dayMeetings = calendarData[dateKey] || [];
       const dayTasks = tasksData[dateKey] || [];
+      const dayWorks = workReportsData[dateKey] || [];
       const meetingsCount = dayMeetings.length;
       const tasksCount = dayTasks.length;
-      const totalEvents = meetingsCount + tasksCount;
+      const worksCount = dayWorks.length;
+      const totalEvents = meetingsCount + tasksCount + worksCount;
       const hasEvents = totalEvents > 0;
       const isTodayDate = isToday(dayObj.day);
       const isSelected = selectedDate === dateKey;
@@ -497,6 +662,12 @@ const Calendar = () => {
                   {tasksCount}
                 </div>
               )}
+              {worksCount > 0 && (
+                <div className="event-count-badge works-badge" title={`${worksCount} Work Report${worksCount !== 1 ? 's' : ''}`} style={{ background: '#8b5cf6' }}>
+                  <FiBriefcase size={10} />
+                  {worksCount}
+                </div>
+              )}
             </div>
           )}
           {user?.role !== 'Employee' && (
@@ -515,6 +686,7 @@ const Calendar = () => {
 
   const selectedMeetings = selectedDate ? (calendarData[selectedDate] || []) : [];
   const selectedTasks = selectedDate ? (tasksData[selectedDate] || []) : [];
+  const selectedWorks = selectedDate ? (workReportsData[selectedDate] || []) : [];
   const selectedList = selectedDate ? getMeetingsByDateKey(selectedDate) : [];
   const selectedDateLabel = selectedDate
     ? new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -665,6 +837,55 @@ const Calendar = () => {
                 )}
               </div>
             </div>
+
+            {/* Work Reports Card */}
+            <div className="day-card current">
+              <div className="day-card-header">
+                <div className="day-info">
+                  <span className="day-name">Work Reports</span>
+                </div>
+                <div className="meeting-count">
+                  <span className="count">{selectedWorks.length}</span>
+                  <span className="label">Work Report{selectedWorks.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              <div className="day-card-body">
+                {selectedWorks.length === 0 ? (
+                  <p className="no-events">No work reports for this date</p>
+                ) : (
+                  <div className="day-works-list">
+                    {selectedWorks.map((work, idx) => (
+                      <div key={idx} className="day-work-item" style={{
+                        padding: '12px',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        marginBottom: '8px',
+                        background: 'var(--bg-card)'
+                      }}>
+                        <div style={{ marginBottom: '8px' }}>
+                          <strong style={{ color: 'var(--text-primary)' }}>Work Items</strong>
+                          <div style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            {work.works && Array.isArray(work.works) && work.works.length > 0 ? (
+                              work.works.map((w, i) => (
+                                <div key={i} style={{ marginBottom: '4px' }}>
+                                  {w.work_name} ({w.hours_spent} hrs)
+                                </div>
+                              ))
+                            ) : '-'}
+                          </div>
+                        </div>
+                        <div>
+                          <strong style={{ color: 'var(--text-primary)' }}>Total Hours</strong>
+                          <div style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            {calculateTotalHours(work.works)} hrs
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -678,8 +899,9 @@ const Calendar = () => {
           setAddModalDate(null);
           resetMeetingForm();
           resetTaskForm();
+          resetWorkForm();
         }}
-        title={addModalType ? (addModalType === 'meeting' ? 'Add Meeting' : 'Add Task') : 'Add Event'}
+        title={addModalType ? (addModalType === 'meeting' ? 'Add Meeting' : addModalType === 'task' ? 'Add Task' : 'Add Work Report') : 'Add Event'}
         size="large"
       >
         {!addModalType ? (
@@ -697,6 +919,13 @@ const Calendar = () => {
             >
               <FiCheckSquare size={24} />
               <span>Add Task</span>
+            </button>
+            <button
+              className="add-type-btn"
+              onClick={() => handleAddTypeSelect('work')}
+            >
+              <FiBriefcase size={24} />
+              <span>Add Work</span>
             </button>
           </div>
         ) : addModalType === 'meeting' ? (
@@ -886,7 +1115,7 @@ const Calendar = () => {
               </button>
             </div>
           </form>
-        ) : (
+        ) : addModalType === 'task' ? (
           <form onSubmit={handleCreateTask}>
             <div className="form-group">
               <label className="form-label">Task Title *</label>
@@ -1138,6 +1367,147 @@ const Calendar = () => {
               </button>
               <button type="submit" className="btn-primary" disabled={creatingTask}>
                 {creatingTask ? 'Creating...' : 'Create Task'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleCreateWork} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="form-group">
+              <label>Work Date *</label>
+              <DatePicker
+                value={workFormData.work_date}
+                onChange={(date) => setWorkFormData({ ...workFormData, work_date: date })}
+                placeholder="Select work date"
+                max={new Date().toISOString().split('T')[0]}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <label>Work Items *</label>
+                <button
+                  type="button"
+                  onClick={handleAddWork}
+                  className="btn-sm btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <FiPlus size={14} /> Add Work
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '400px', overflowY: 'auto', padding: '8px' }}>
+                {workFormData.works.map((work, index) => (
+                  <div key={index} style={{ 
+                    padding: '12px', 
+                    border: '1px solid var(--border-color)', 
+                    borderRadius: '8px',
+                    background: 'var(--bg-hover)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <strong style={{ color: 'var(--text-primary)' }}>Work Item {index + 1}</strong>
+                      {workFormData.works.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveWork(index)}
+                          style={{
+                            padding: '4px 8px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <FiX size={16} />
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div>
+                        <label style={{ fontSize: '0.85rem', marginBottom: '4px', display: 'block' }}>Work Name *</label>
+                        <input
+                          type="text"
+                          value={work.work_name}
+                          onChange={(e) => handleWorkChange(index, 'work_name', e.target.value)}
+                          placeholder="e.g., API Development"
+                          className="form-input"
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.85rem', marginBottom: '4px', display: 'block' }}>Description</label>
+                        <textarea
+                          value={work.description}
+                          onChange={(e) => handleWorkChange(index, 'description', e.target.value)}
+                          placeholder="Describe the work done..."
+                          className="form-input"
+                          rows="2"
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.85rem', marginBottom: '4px', display: 'block' }}>Hours Spent * (0-16 hours)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="16"
+                          value={work.hours_spent}
+                          onChange={(e) => handleWorkChange(index, 'hours_spent', e.target.value)}
+                          placeholder="3.5"
+                          className="form-input"
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Status *</label>
+              <select
+                value={workFormData.status}
+                onChange={(e) => setWorkFormData({ ...workFormData, status: e.target.value })}
+                className="form-select"
+                style={{ width: '100%' }}
+              >
+                <option value="PENDING">Pending</option>
+                <option value="INPROGRESS">In Progress</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Employee Remarks</label>
+              <textarea
+                value={workFormData.employee_remarks}
+                onChange={(e) => setWorkFormData({ ...workFormData, employee_remarks: e.target.value })}
+                placeholder="Add any additional remarks..."
+                className="form-input"
+                rows="3"
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => { setShowAddModal(false); setAddModalType(null); resetWorkForm(); }}
+                className="btn-secondary"
+                disabled={creatingWork}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={creatingWork}
+              >
+                {creatingWork ? 'Saving...' : 'Submit'}
               </button>
             </div>
           </form>

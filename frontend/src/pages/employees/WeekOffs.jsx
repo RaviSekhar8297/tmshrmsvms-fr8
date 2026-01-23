@@ -855,7 +855,8 @@ const WeekOffs = () => {
                       setModalDate(date);
                     }}
                     placeholder="Select date"
-                    min={new Date().toISOString().split('T')[0]}
+                    min={`${new Date().getFullYear()}-01-01`}
+                    max={`${new Date().getFullYear()}-12-31`}
                   />
                 </div>
 

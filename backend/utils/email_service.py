@@ -13,7 +13,7 @@ EMAIL_FROM = "hrms@brihaspathi.com"
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 EMAIL_PASSWORD = "aakbcohigtogpyrl"  # 12-digit App Password
-BTL_LOGO_URL = "https://www.brihaspathi.com/highbtlogo%20tm%20(1).png"
+BTL_LOGO_URL = "https://www.brihaspathi.com/highbtlogo%20white-%20tm.png"
 
 
 def send_email(
@@ -87,7 +87,6 @@ def send_email(
         .logo-container img {{
             max-width: 250px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 40px;
@@ -212,7 +211,6 @@ def send_leave_email_to_manager(
         .logo-container img {{
             max-width: 200px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 40px 30px;
@@ -405,7 +403,6 @@ def send_request_email_to_manager(
         .logo-container img {{
             max-width: 200px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 40px 30px;
@@ -579,7 +576,6 @@ def send_permission_email_to_manager(
         .logo-container img {{
             max-width: 200px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 40px 30px;
@@ -739,7 +735,6 @@ def send_birthday_email(
         .logo-container img {{
             max-width: 200px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 50px 40px;
@@ -849,7 +844,6 @@ def send_anniversary_email(
         .logo-container img {{
             max-width: 200px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 50px 40px;
@@ -1028,7 +1022,6 @@ def send_weekly_attendance_email(
         .logo-container img {{
             max-width: 200px;
             height: auto;
-            filter: brightness(0) invert(1);
         }}
         .email-body {{
             padding: 40px 30px;

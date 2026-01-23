@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api, { usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiFilter } from 'react-icons/fi';
 import DatePicker from '../../components/DatePicker';
 import * as XLSX from 'xlsx';
 import './HR.css';
@@ -26,22 +26,121 @@ const EmpLeaves = () => {
   const [employees, setEmployees] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const recordsPerPage = 50;
+  const [approversMap, setApproversMap] = useState({});
+  const [showStartDateFilter, setShowStartDateFilter] = useState(false);
+  const [showEndDateFilter, setShowEndDateFilter] = useState(false);
+  const [showEmployeeFilter, setShowEmployeeFilter] = useState(false);
+  const [employeeFilter, setEmployeeFilter] = useState('');
 
   useEffect(() => {
+    // Always fetch approvers first to build the mapping
+    fetchApprovers();
+    
     // Only fetch if user is loaded and has the correct role
     if (user && (user.role === 'Manager' || user.role === 'HR' || user.role === 'Admin')) {
-      // Fetch leaves first (this is critical)
-    fetchLeaves();
+      // Fetch leaves
+      fetchLeaves();
       // Fetch employees separately and handle errors gracefully (this is optional)
       if (user.role === 'HR' || user.role === 'Admin') {
         // Delay to ensure authentication is fully ready
         const timer = setTimeout(() => {
-    fetchEmployees();
+          fetchEmployees();
         }, 300);
         return () => clearTimeout(timer);
       }
     }
   }, [user]);
+
+  // Close filter dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showStartDateFilter || showEndDateFilter || showEmployeeFilter) {
+        const target = event.target;
+        if (!target.closest('[data-date-filter]') && !target.closest('[data-employee-filter]')) {
+          setShowStartDateFilter(false);
+          setShowEndDateFilter(false);
+          setShowEmployeeFilter(false);
+        }
+      }
+    };
+
+    if (showStartDateFilter || showEndDateFilter || showEmployeeFilter) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showStartDateFilter, showEndDateFilter, showEmployeeFilter]);
+
+  const fetchApprovers = async () => {
+    try {
+      const response = await usersAPI.getAll();
+      const users = response.data || [];
+      const map = {};
+      
+      users.forEach(user => {
+        if (user.empid && user.name) {
+          // Store empid exactly as it appears in the database (as string)
+          const empid = String(user.empid).trim();
+          
+          // Store with exact empid (primary key)
+          map[empid] = user.name;
+          
+          // If empid is numeric, also store variations for lookup
+          if (!isNaN(empid) && empid !== '' && !empid.includes('-')) {
+            const numValue = Number(empid);
+            // Store as number (JavaScript converts to string key anyway, but explicit for clarity)
+            map[numValue] = user.name;
+            // Store as normalized string (removes leading zeros if any)
+            const normalizedStr = String(numValue);
+            if (normalizedStr !== empid) {
+              map[normalizedStr] = user.name;
+            }
+          }
+        }
+      });
+      
+      setApproversMap(map);
+      console.log('✅ Approvers map created:', Object.keys(map).length, 'entries');
+      // Show sample of empids in the map for debugging
+      const sampleEmpids = Object.keys(map).slice(0, 10);
+      console.log('📋 Sample empids in map:', sampleEmpids);
+    } catch (error) {
+      console.error('❌ Error fetching approvers:', error);
+    }
+  };
+
+  // Helper function to get approver name from empid
+  const getApproverName = (approvedBy) => {
+    if (!approvedBy) return 'Pending';
+    
+    const approvedByStr = String(approvedBy).trim();
+    
+    // Try direct string lookup first
+    if (approversMap[approvedByStr]) {
+      return approversMap[approvedByStr];
+    }
+    
+    // If numeric, try as number
+    if (!isNaN(approvedByStr) && approvedByStr !== '') {
+      const numValue = Number(approvedByStr);
+      if (approversMap[numValue]) {
+        return approversMap[numValue];
+      }
+      // Try normalized string
+      const normalized = String(numValue);
+      if (normalized !== approvedByStr && approversMap[normalized]) {
+        return approversMap[normalized];
+      }
+    }
+    
+    // Not found - return empid as fallback
+    console.warn('⚠️ Approver name not found for empid:', approvedByStr, 
+      '| Map size:', Object.keys(approversMap).length,
+      '| Has key as string?', approvedByStr in approversMap,
+      '| Has key as number?', !isNaN(approvedByStr) ? (Number(approvedByStr) in approversMap) : false);
+    return approvedByStr;
+  };
 
   const fetchLeaves = async () => {
     // Check if user is loaded and has correct role
@@ -160,6 +259,16 @@ const EmpLeaves = () => {
         leave.status?.toLowerCase().includes(searchLower)
       );
       if (!matchesSearch) return false;
+    }
+    
+    // Employee filter
+    if (employeeFilter) {
+      const filterLower = employeeFilter.toLowerCase();
+      const matchesEmployee = (
+        leave.employee_name?.toLowerCase().includes(filterLower) ||
+        leave.employee_id?.toLowerCase().includes(filterLower)
+      );
+      if (!matchesEmployee) return false;
     }
     
     // Date range filter
@@ -496,25 +605,214 @@ const EmpLeaves = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Employee</th>
+                  <th>
+                    <div style={{ position: 'relative' }} data-employee-filter>
+                      <div 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px',
+                          cursor: 'pointer',
+                          userSelect: 'none'
+                        }}
+                        onClick={() => {
+                          setShowEmployeeFilter(!showEmployeeFilter);
+                          setShowStartDateFilter(false);
+                          setShowEndDateFilter(false);
+                        }}
+                      >
+                        <span>Employee</span>
+                        <FiFilter 
+                          size={12} 
+                          style={{ 
+                            color: showEmployeeFilter ? 'var(--primary)' : 'var(--text-secondary)',
+                            transition: 'color 0.2s'
+                          }} 
+                        />
+                      </div>
+                      {showEmployeeFilter && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '8px',
+                          padding: '12px',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                          zIndex: 100,
+                          minWidth: '280px'
+                        }}>
+                          <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Filter by Employee
+                          </div>
+                          <input
+                            type="text"
+                            value={employeeFilter}
+                            onChange={(e) => setEmployeeFilter(e.target.value)}
+                            placeholder="Search employee name or ID..."
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              fontSize: '0.85rem',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              background: 'var(--bg-primary)',
+                              color: 'var(--text-primary)',
+                              outline: 'none'
+                            }}
+                            autoFocus
+                          />
+                          {employeeFilter && (
+                            <button
+                              type="button"
+                              onClick={() => setEmployeeFilter('')}
+                              style={{
+                                marginTop: '8px',
+                                padding: '6px 12px',
+                                fontSize: '0.8rem',
+                                border: 'none',
+                                borderRadius: '4px',
+                                background: 'var(--bg-hover)',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                width: '100%'
+                              }}
+                            >
+                              Clear Filter
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </th>
                   <th>Leave Type</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
+                  <th>
+                    <div style={{ position: 'relative' }} data-date-filter>
+                      <div 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px',
+                          cursor: 'pointer',
+                          userSelect: 'none'
+                        }}
+                        onClick={() => {
+                          setShowStartDateFilter(!showStartDateFilter);
+                          setShowEndDateFilter(false);
+                          setShowEmployeeFilter(false);
+                        }}
+                      >
+                        <span>Start Date</span>
+                        <FiFilter 
+                          size={12} 
+                          style={{ 
+                            color: showStartDateFilter ? 'var(--primary)' : 'var(--text-secondary)',
+                            transition: 'color 0.2s'
+                          }} 
+                        />
+                      </div>
+                      {showStartDateFilter && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '8px',
+                          padding: '12px',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                          zIndex: 100,
+                          minWidth: '280px'
+                        }}>
+                          <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Filter by Start Date
+                          </div>
+                          <DatePicker
+                            value={fromDate}
+                            onChange={(date) => {
+                              setFromDate(date);
+                            }}
+                            placeholder="Select start date"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </th>
+                  <th>
+                    <div style={{ position: 'relative' }} data-date-filter>
+                      <div 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px',
+                          cursor: 'pointer',
+                          userSelect: 'none'
+                        }}
+                        onClick={() => {
+                          setShowEndDateFilter(!showEndDateFilter);
+                          setShowStartDateFilter(false);
+                          setShowEmployeeFilter(false);
+                        }}
+                      >
+                        <span>End Date</span>
+                        <FiFilter 
+                          size={12} 
+                          style={{ 
+                            color: showEndDateFilter ? 'var(--primary)' : 'var(--text-secondary)',
+                            transition: 'color 0.2s'
+                          }} 
+                        />
+                      </div>
+                      {showEndDateFilter && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '8px',
+                          padding: '12px',
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                          zIndex: 100,
+                          minWidth: '280px'
+                        }}>
+                          <div style={{ marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Filter by End Date
+                          </div>
+                          <DatePicker
+                            value={toDate}
+                            onChange={(date) => {
+                              setToDate(date);
+                            }}
+                            placeholder="Select end date"
+                            min={fromDate || undefined}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </th>
                   <th>Days</th>
                   <th>Status</th>
+                  <th>Approved By</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {currentRecords.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="text-center">No leave requests found</td>
+                    <td colSpan="8" className="text-center">No leave requests found</td>
                   </tr>
                 ) : (
-                  currentRecords.map((leave) => {
+                  currentRecords.map(leave => {
                     const start = new Date(leave.start_date);
                     const end = new Date(leave.end_date);
                     const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+                    // Use helper function to get approver name
+                    const approverName = getApproverName(leave.approved_by);
                     
                     return (
                       <tr key={leave.id}>
@@ -527,6 +825,14 @@ const EmpLeaves = () => {
                         <td>{new Date(leave.end_date).toLocaleDateString()}</td>
                         <td>{days} days</td>
                         <td>{getStatusBadge(leave.status)}</td>
+                        <td>
+                          <span style={{ 
+                            color: approverName === 'Pending' ? 'var(--text-secondary)' : 'var(--text-primary)',
+                            fontStyle: approverName === 'Pending' ? 'italic' : 'normal'
+                          }}>
+                            {approverName}
+                          </span>
+                        </td>
                         <td>
                           <div className="action-buttons">
                             {leave.status === 'pending' && (

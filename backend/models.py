@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Date, Time, Numeric, ForeignKey, CheckConstraint, Index, Sequence
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Date, Time, Numeric, ForeignKey, CheckConstraint, Index, Sequence, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, date, timezone, timedelta
@@ -795,6 +795,27 @@ class EmployeeLoan(Base):
     __table_args__ = (
         Index('idx_employee_loans_empid', 'empid'),
         Index('idx_employee_loans_status', 'status'),
+    )
+
+class TodayWorkReport(Base):
+    __tablename__ = "today_work_report"
+    
+    report_id = Column(Integer, primary_key=True, index=True)
+    empid = Column(Integer, nullable=False)
+    work_date = Column(Date, nullable=False, default=date.today)
+    works = Column(JSONB, nullable=False)
+    status = Column(String(20), default='PENDING')
+    reported_to = Column(Integer, nullable=True)
+    employee_remarks = Column(Text, nullable=True)
+    manager_remarks = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=get_ist_now)
+    updated_at = Column(DateTime, default=get_ist_now, onupdate=get_ist_now)
+    
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING', 'COMPLETED', 'INPROGRESS')", name='check_work_report_status'),
+        Index('idx_work_report_empid', 'empid'),
+        Index('idx_work_report_date', 'work_date'),
+        UniqueConstraint('empid', 'work_date', name='uq_emp_work_date'),
     )
 
 # LoanInstallment Model

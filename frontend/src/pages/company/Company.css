@@ -306,10 +306,35 @@
 }
 
 .form-select option:hover,
-.form-select option:checked,
 .form-select option:focus {
   background-color: var(--bg-hover) !important;
   color: var(--text-primary) !important;
+}
+
+.form-select option:checked {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Remove white background from selected option in dropdown list */
+.form-select option[selected] {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Override browser default for selected option in open dropdown - remove white background */
+select.form-select option:checked,
+select.form-select option[selected],
+select.form-select option[selected="selected"] {
+  background: var(--bg-primary) !important;
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Remove white background when hovering over selected option in dropdown */
+select.form-select option:checked:hover {
+  background: var(--bg-hover) !important;
+  background-color: var(--bg-hover) !important;
 }
 
 .form-row {

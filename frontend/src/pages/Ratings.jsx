@@ -26,7 +26,7 @@ const Ratings = () => {
   const [viewMode, setViewMode] = useState('list');
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const itemsPerPage = 40;
   const { isEmployee, user } = useAuth();
 
   const [formData, setFormData] = useState({

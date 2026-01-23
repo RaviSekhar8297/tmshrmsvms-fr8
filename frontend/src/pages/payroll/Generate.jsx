@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiLock, FiUnlock, FiCalendar, FiChevronDown } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiCalendar, FiChevronDown } from 'react-icons/fi';
 import './Payroll.css';
 
 const Generate = () => {
@@ -65,11 +65,11 @@ const Generate = () => {
     const currentMonth = today.getMonth(); // 0-11
     const currentYear = today.getFullYear();
     
-    // Start from current month
-    let month = currentMonth; // 0-11
-    let year = currentYear;
+    // Start from previous month (not current month)
+    let month = currentMonth === 0 ? 11 : currentMonth - 1; // Previous month
+    let year = currentMonth === 0 ? currentYear - 1 : currentYear;
     
-    // Generate 7 months (current month + 6 previous months)
+    // Generate 7 months (only previous months, excluding current month)
     for (let i = 0; i < 7; i++) {
       const monthNames = [
         'January', 'February', 'March', 'April', 'May', 'June',
@@ -144,8 +144,8 @@ const Generate = () => {
       
       toast.success(
         response.data.freaze_status
-          ? 'Payslips frozen (visible to employees)'
-          : 'Payslips unfrozen (not visible to employees)'
+          ? 'Payslips viewed (visible to employees)'
+          : 'Payslips unviewed (not visible to employees)'
       );
     } catch (error) {
       console.error('Error toggling freeze status:', error);
@@ -317,12 +317,12 @@ const Generate = () => {
             >
               <div className="month-card-header">
                 {card.freaze_status ? (
-                  <FiLock className="freeze-icon" />
+                  <FiEye className="freeze-icon" />
                 ) : (
-                  <FiUnlock className="freeze-icon" />
+                  <FiEyeOff className="freeze-icon" />
                 )}
                 <span className="freeze-status">
-                  {card.freaze_status ? 'Frozen' : 'Unfrozen'}
+                  {card.freaze_status ? 'Viewed' : 'Unviewed'}
                 </span>
               </div>
               <div className="month-card-body">

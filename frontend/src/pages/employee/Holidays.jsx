@@ -156,8 +156,8 @@ const Holidays = () => {
       }
     }
     
-    // Refresh holidays after all updates complete
-    fetchHolidays();
+    // Don't refresh holidays - optimistic updates already handled in handlePermissionToggle
+    // Only refresh if there was an error to sync state
     processingRef.current = false;
     
     // Check if more items were added while processing
@@ -374,14 +374,18 @@ const Holidays = () => {
                         <td style={{ color: isPast ? '#6b7280' : 'inherit' }}>{holiday.description || '-'}</td>
                         {isAdminOrHR && (
                           <td>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button className="btn-sm btn-secondary" onClick={() => handleEdit(holiday)}>
-                                <FiEdit2 />
-                              </button>
-                              <button className="btn-sm btn-secondary" onClick={() => handleDelete(holiday.id)} style={{ background: '#ef4444', color: 'white' }}>
-                                <FiTrash2 />
-                              </button>
-                            </div>
+                            {!isPast ? (
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button className="btn-sm btn-secondary" onClick={() => handleEdit(holiday)}>
+                                  <FiEdit2 />
+                                </button>
+                                <button className="btn-sm btn-secondary" onClick={() => handleDelete(holiday.id)} style={{ background: '#ef4444', color: 'white' }}>
+                                  <FiTrash2 />
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ color: '#6b7280', fontSize: '0.85rem' }}>Past holiday</span>
+                            )}
                           </td>
                         )}
                       </tr>

@@ -765,24 +765,26 @@
 }
 
 .month-card.frozen {
-  border-color: var(--primary);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.03) 100%);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  border-color: #10b981;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.03) 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
 }
 
 .month-card.frozen::before {
   opacity: 1;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
 }
 
 .month-card.unfrozen {
-  border-color: var(--border-color);
+  border-color: #ef4444;
   opacity: 0.85;
-  background: linear-gradient(135deg, rgba(107, 114, 128, 0.05) 0%, rgba(107, 114, 128, 0.02) 100%);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.02) 100%);
 }
 
 .month-card.unfrozen:hover {
   opacity: 1;
   background: var(--bg-card);
+  border-color: #ef4444;
 }
 
 /* Toggling state - highlight and animation */
@@ -795,13 +797,15 @@
 }
 
 .month-card.toggling.frozen {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(99, 102, 241, 0.1) 100%);
-  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.4) !important;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%);
+  box-shadow: 0 12px 32px rgba(16, 185, 129, 0.4) !important;
+  border-color: #10b981 !important;
 }
 
 .month-card.toggling.unfrozen {
-  background: linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(107, 114, 128, 0.08) 100%);
-  box-shadow: 0 12px 32px rgba(107, 114, 128, 0.3) !important;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.08) 100%);
+  box-shadow: 0 12px 32px rgba(239, 68, 68, 0.3) !important;
+  border-color: #ef4444 !important;
 }
 
 @keyframes togglePulse {
@@ -849,11 +853,11 @@
 }
 
 .month-card.frozen .freeze-icon {
-  color: var(--primary);
+  color: #10b981;
 }
 
 .month-card.unfrozen .freeze-icon {
-  color: var(--text-muted);
+  color: #ef4444;
 }
 
 .freeze-status {
@@ -863,11 +867,11 @@
 }
 
 .month-card.frozen .freeze-status {
-  color: var(--primary);
+  color: #10b981;
 }
 
 .month-card.unfrozen .freeze-status {
-  color: var(--text-muted);
+  color: #ef4444;
 }
 
 .month-card-body {
@@ -888,7 +892,7 @@
 }
 
 .month-card.frozen .month-name {
-  color: var(--primary);
+  color: #10b981;
 }
 
 .month-year {

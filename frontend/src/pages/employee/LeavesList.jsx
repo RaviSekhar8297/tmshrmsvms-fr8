@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import api, { usersAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import DatePicker from '../../components/DatePicker';
@@ -17,10 +17,47 @@ const LeavesList = () => {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const recordsPerPage = 25;
+  const [approversMap, setApproversMap] = useState({});
 
   useEffect(() => {
     fetchLeaves();
+    fetchApprovers();
   }, [filter, fromDate, toDate]);
+
+  const fetchApprovers = async () => {
+    try {
+      const response = await usersAPI.getAll();
+      const users = response.data || [];
+      const map = {};
+      users.forEach(user => {
+        if (user.empid && user.name) {
+          // Normalize empid to string and trim
+          const empid = String(user.empid).trim();
+          // Store with exact empid (handles both "355" and 355)
+          map[empid] = user.name;
+          // Also store numeric version if empid is numeric string
+          if (!isNaN(empid) && !empid.includes('-')) {
+            map[String(Number(empid))] = user.name;
+          }
+          // Also store without BT- prefix if it exists
+          if (empid.startsWith('BT-')) {
+            const withoutPrefix = empid.substring(3).trim();
+            map[withoutPrefix] = user.name;
+            // Also store numeric version
+            if (!isNaN(withoutPrefix)) {
+              map[String(Number(withoutPrefix))] = user.name;
+            }
+          } else {
+            // Also store with BT- prefix for reverse lookup
+            map[`BT-${empid}`] = user.name;
+          }
+        }
+      });
+      setApproversMap(map);
+    } catch (error) {
+      console.error('Error fetching approvers:', error);
+    }
+  };
 
   const fetchLeaves = async () => {
     setLoading(true);
@@ -176,7 +213,6 @@ const LeavesList = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Emp ID</th>
                   <th>Name</th>
                   <th>Applied Date</th>
                   <th>From Date</th>
@@ -185,6 +221,7 @@ const LeavesList = () => {
                   <th>Leave Type</th>
                   <th>Status</th>
                   <th>Reason</th>
+                  <th>Approved By</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -194,18 +231,37 @@ const LeavesList = () => {
                     <td colSpan="10" className="text-center">No leaves found</td>
                   </tr>
                 ) : (
-                  currentRecords.map((leave) => (
-                    <tr key={leave.id}>
-                      <td>{leave.employee_id || leave.empid || '-'}</td>
-                      <td>{leave.employee_name || leave.name || '-'}</td>
-                      <td>{new Date(leave.applied_date).toLocaleDateString()}</td>
-                      <td>{new Date(leave.from_date).toLocaleDateString()}</td>
-                      <td>{new Date(leave.to_date).toLocaleDateString()}</td>
-                      <td>{leave.duration} days</td>
-                      <td>{leave.leave_type}</td>
-                      <td>{getStatusBadge(leave.status)}</td>
-                      <td>{leave.reason}</td>
-                      <td>
+                  currentRecords.map((leave) => {
+                    let approverName = 'Pending';
+                    if (leave.approved_by) {
+                      // Normalize approved_by to string
+                      const approvedBy = String(leave.approved_by).trim();
+                      // Try multiple lookup strategies
+                      approverName = approversMap[approvedBy] 
+                        || approversMap[String(Number(approvedBy))] // Try numeric version
+                        || approversMap[`BT-${approvedBy}`] 
+                        || (approvedBy.startsWith('BT-') ? approversMap[approvedBy.substring(3).trim()] : null)
+                        || approvedBy; // Fallback to empid if name not found
+                    }
+                    return (
+                      <tr key={leave.id}>
+                        <td>{leave.employee_name || leave.name || '-'}</td>
+                        <td>{new Date(leave.applied_date).toLocaleDateString()}</td>
+                        <td>{new Date(leave.from_date).toLocaleDateString()}</td>
+                        <td>{new Date(leave.to_date).toLocaleDateString()}</td>
+                        <td>{leave.duration} days</td>
+                        <td>{leave.leave_type}</td>
+                        <td>{getStatusBadge(leave.status)}</td>
+                        <td>{leave.reason}</td>
+                        <td>
+                          <span style={{ 
+                            color: approverName === 'Pending' ? 'var(--text-secondary)' : 'var(--text-primary)',
+                            fontStyle: approverName === 'Pending' ? 'italic' : 'normal'
+                          }}>
+                            {approverName}
+                          </span>
+                        </td>
+                        <td>
                         {leave.status === 'pending' ? (
                           <button
                             className="btn-sm btn-danger"
@@ -228,9 +284,10 @@ const LeavesList = () => {
                             Cannot delete
                           </span>
                         )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
