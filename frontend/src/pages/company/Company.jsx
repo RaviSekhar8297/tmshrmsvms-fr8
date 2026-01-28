@@ -900,13 +900,29 @@ const Company = () => {
                             department_id: ''
                           });
                         }}
-                      >
-                        <option value="">Select Company</option>
-                        {transferCompanies.map((company) => (
-                          <option key={company.id} value={company.id}>
-                            {company.name}
-                          </option>
-                        ))}
+                style={{ 
+                  backgroundColor: 'var(--bg-card)', 
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none'
+                }}
+              >
+                <option value="" style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Company</option>
+                {transferCompanies.map((company) => (
+                  <option 
+                    key={company.id} 
+                    value={company.id}
+                    style={{ 
+                      backgroundColor: 'var(--bg-card)', 
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    {company.name}
+                  </option>
+                ))}
                       </select>
                     </div>
                   </div>
@@ -924,13 +940,29 @@ const Company = () => {
                           });
                         }}
                         disabled={!transferForm.company_id}
-                      >
-                        <option value="">Select Branch</option>
-                        {transferBranches.map((branch) => (
-                          <option key={branch.id} value={branch.id}>
-                            {branch.name}
-                          </option>
-                        ))}
+                style={{ 
+                  backgroundColor: 'var(--bg-card)', 
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none'
+                }}
+              >
+                <option value="" style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Branch</option>
+                {transferBranches.map((branch) => (
+                  <option 
+                    key={branch.id} 
+                    value={branch.id}
+                    style={{ 
+                      backgroundColor: 'var(--bg-card)', 
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    {branch.name}
+                  </option>
+                ))}
                       </select>
                     </div>
                     <div className="form-group">
@@ -945,10 +977,22 @@ const Company = () => {
                           });
                         }}
                         disabled={!transferForm.branch_id}
+                        style={{ 
+                          backgroundColor: 'var(--bg-card)', 
+                          background: 'var(--bg-card)',
+                          color: 'var(--text-primary)',
+                          WebkitAppearance: 'none',
+                          MozAppearance: 'none',
+                          appearance: 'none'
+                        }}
                       >
-                        <option value="">Select Department</option>
+                        <option value="" style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Department</option>
                         {transferDepartments.map((dept) => (
-                          <option key={dept.id} value={dept.id}>
+                          <option 
+                            key={dept.id} 
+                            value={dept.id}
+                            style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                          >
                             {dept.name}
                           </option>
                         ))}
@@ -1315,10 +1359,26 @@ const BranchModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loading
                 className="form-select"
                 value={formData.company_id}
                 onChange={(e) => setFormData({ ...formData, company_id: e.target.value })}
+                style={{ 
+                  backgroundColor: 'var(--bg-card)', 
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none'
+                }}
               >
-                <option value="">Select Company</option>
+                <option value="" style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Company</option>
                 {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
+                  <option 
+                    key={company.id} 
+                    value={company.id}
+                    style={{ 
+                      backgroundColor: 'var(--bg-card)', 
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
                     {company.name}
                   </option>
                 ))}
@@ -1396,10 +1456,26 @@ const DepartmentModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loa
                 onChange={(e) => {
                   setFormData({ ...formData, company_id: e.target.value, branch_id: '' });
                 }}
+                style={{ 
+                  backgroundColor: 'var(--bg-card)', 
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none'
+                }}
               >
-                <option value="">Select Company</option>
+                <option value="" style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Company</option>
                 {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
+                  <option 
+                    key={company.id} 
+                    value={company.id}
+                    style={{ 
+                      backgroundColor: 'var(--bg-card)', 
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
                     {company.name}
                   </option>
                 ))}
@@ -1412,10 +1488,26 @@ const DepartmentModal = ({ isOpen, onClose, onSubmit, formData, setFormData, loa
                 value={formData.branch_id}
                 onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
                 disabled={!formData.company_id}
+                style={{ 
+                  backgroundColor: 'var(--bg-card)', 
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  appearance: 'none'
+                }}
               >
-                <option value="">Select Branch</option>
+                <option value="" style={{ backgroundColor: 'var(--bg-card)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Branch</option>
                 {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
+                  <option 
+                    key={branch.id} 
+                    value={branch.id}
+                    style={{ 
+                      backgroundColor: 'var(--bg-card)', 
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
                     {branch.name}
                   </option>
                 ))}

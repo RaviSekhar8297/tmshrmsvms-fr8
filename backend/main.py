@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from database import engine, Base
 import os
 
@@ -19,6 +21,59 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # Add security headers to all responses
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        
+        # Content-Security-Policy: More restrictive but allows necessary features
+        # Note: 'unsafe-inline' and 'unsafe-eval' are required for React/Vite build
+        # In production, consider using nonces for better security
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "img-src 'self' data: https: blob:; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "connect-src 'self' https: wss: ws:; "
+            "frame-src 'self' https://maps.googleapis.com; "
+            "frame-ancestors 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "object-src 'none'; "
+            "upgrade-insecure-requests"
+        )
+        
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        
+        # Referrer-Policy: Control referrer information
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Permissions-Policy: Allow necessary features for the application
+        # geolocation: Required for punch in/out location tracking
+        # camera: Required for selfie capture in attendance
+        # microphone: Not currently used but may be needed for future features
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(self), "
+            "camera=(self), "
+            "microphone=(self), "
+            "payment=(), "
+            "usb=(), "
+            "magnetometer=(), "
+            "gyroscope=(), "
+            "accelerometer=()"
+        )
+        
+        return response
+
+# Add security headers middleware (should be added before CORS)
+app.add_middleware(SecurityHeadersMiddleware)
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +83,8 @@ app.add_middleware(
         "http://127.0.0.1:3000", 
         "http://127.0.0.1:5173",
         "http://172.21.7.183:3000",  # Local system IP for network access
+        "https://tms.brihaspathi.com",  # Production frontend
+        "https://tmsbackend.brihaspathi.com",  # Production backend (if needed)
     ],
     allow_credentials=True,
     allow_methods=["*"],

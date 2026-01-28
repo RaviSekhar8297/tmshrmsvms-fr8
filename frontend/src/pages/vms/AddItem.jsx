@@ -4,7 +4,9 @@ import { useLocation } from 'react-router-dom';
 import { visitorsAPI, usersAPI } from '../../services/api';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiCamera, FiX, FiUser, FiMail, FiPhone, FiClock, FiSearch, FiGrid, FiList } from 'react-icons/fi';
+import { FiCamera, FiX, FiUser, FiMail, FiPhone, FiClock, FiSearch, FiGrid, FiList, FiFilter, FiDownload } from 'react-icons/fi';
+import * as XLSX from 'xlsx';
+import DatePicker from '../../components/DatePicker';
 import './VMS.css';
 import '../Users.css';
 
@@ -47,6 +49,13 @@ const AddItem = () => {
   const addressInputRef = useRef(null);
   const autocompleteRef = useRef(null);
   
+  // Filter states
+  const [filterPurpose, setFilterPurpose] = useState('');
+  const [filterFromDate, setFilterFromDate] = useState('');
+  const [filterToDate, setFilterToDate] = useState('');
+  const [filteredVisitors, setFilteredVisitors] = useState([]);
+  const [isFilterApplied, setIsFilterApplied] = useState(false);
+  
   const [formData, setFormData] = useState({
     fullname: '',
     email: '',
@@ -60,7 +69,11 @@ const AddItem = () => {
 
   useEffect(() => {
     if (activeTab === 'list') {
-      fetchVisitors();
+      // Initially load current date's visitors with all purposes
+      const today = new Date().toISOString().split('T')[0];
+      setFilterFromDate(today);
+      setFilterToDate(today);
+      fetchVisitors({ from_date: today, to_date: today });
     }
     if (activeTab === 'add') {
       fetchUsers();
@@ -172,12 +185,134 @@ const AddItem = () => {
     }
   };
 
-  const fetchVisitors = async () => {
+  const fetchVisitors = async (params = {}) => {
     try {
-      const response = await visitorsAPI.getAll();
-      setVisitors(response.data);
+      const filterParams = {};
+      if (params.purpose) filterParams.purpose = params.purpose;
+      if (params.from_date) filterParams.from_date = params.from_date;
+      if (params.to_date) filterParams.to_date = params.to_date;
+      
+      const response = await visitorsAPI.getAll(filterParams);
+      const visitorsData = response.data || [];
+      setVisitors(visitorsData);
+      setFilteredVisitors(visitorsData);
     } catch (error) {
       console.error('Error fetching visitors:', error);
+      toast.error('Failed to fetch visitors');
+      setVisitors([]);
+      setFilteredVisitors([]);
+    }
+  };
+
+  const handleFilter = () => {
+    if (!filterFromDate && !filterToDate && !filterPurpose) {
+      // Reset to current date if no filters
+      const today = new Date().toISOString().split('T')[0];
+      setFilterFromDate(today);
+      setFilterToDate(today);
+      setIsFilterApplied(false);
+      fetchVisitors({ from_date: today, to_date: today });
+      return;
+    }
+
+    if (filterFromDate && filterToDate && filterFromDate > filterToDate) {
+      toast.error('From date cannot be greater than To date');
+      return;
+    }
+
+    setIsFilterApplied(true);
+    fetchVisitors({
+      purpose: filterPurpose || undefined,
+      from_date: filterFromDate || undefined,
+      to_date: filterToDate || undefined
+    });
+  };
+
+  const handleExportExcel = () => {
+    const dataToExport = filteredVisitors;
+    
+    if (dataToExport.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    try {
+      const data = [];
+      
+      // Header row
+      const headerRow = [
+        'Sl.No',
+        'VT ID',
+        'Full Name',
+        'Email',
+        'Phone',
+        'Purpose',
+        'Whom to Meet',
+        'Address',
+        'Check In',
+        'Check Out',
+        'Status'
+      ];
+      data.push(headerRow);
+      
+      // Data rows
+      dataToExport.forEach((visitor, index) => {
+        const row = [
+          index + 1,
+          visitor.vtid || '-',
+          visitor.fullname || '-',
+          visitor.email || '-',
+          visitor.phone || '-',
+          visitor.purpose || '-',
+          visitor.whometomeet || '-',
+          visitor.address || '-',
+          visitor.checkintime ? formatDateTime(visitor.checkintime) : '-',
+          visitor.checkouttime ? formatDateTime(visitor.checkouttime) : '-',
+          visitor.status || '-'
+        ];
+        data.push(row);
+      });
+      
+      // Create workbook and worksheet
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Visitors List');
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 8 },   // Sl.No
+        { wch: 12 },  // VT ID
+        { wch: 25 },  // Full Name
+        { wch: 30 },  // Email
+        { wch: 15 },  // Phone
+        { wch: 15 },  // Purpose
+        { wch: 25 },  // Whom to Meet
+        { wch: 40 },  // Address
+        { wch: 18 },  // Check In
+        { wch: 18 },  // Check Out
+        { wch: 12 }   // Status
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename with date range if filters are applied
+      let filename = 'visitors_list';
+      if (filterFromDate || filterToDate) {
+        const from = filterFromDate || 'all';
+        const to = filterToDate || 'all';
+        filename += `_${from}_to_${to}`;
+      } else {
+        filename += `_${new Date().toISOString().split('T')[0]}`;
+      }
+      if (filterPurpose) {
+        filename += `_${filterPurpose}`;
+      }
+      
+      // Download
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+      toast.success('Excel file downloaded successfully');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast.error('Failed to export Excel file');
     }
   };
 
@@ -251,6 +386,16 @@ const AddItem = () => {
     const value = e.target.value;
     // Only allow digits
     const digitsOnly = value.replace(/\D/g, '');
+    
+    // If first digit is entered, validate it must be 6, 7, 8, or 9
+    if (digitsOnly.length > 0) {
+      const firstDigit = digitsOnly[0];
+      if (!['6', '7', '8', '9'].includes(firstDigit)) {
+        toast.error('Phone number must start with 6, 7, 8, or 9', { position: 'top-center', duration: 2000 });
+        return; // Don't update if first digit is invalid
+      }
+    }
+    
     // Limit to 10 digits
     const limited = digitsOnly.slice(0, 10);
     setFormData({ ...formData, phone: limited });
@@ -274,9 +419,15 @@ const AddItem = () => {
     }
     
     // Validate phone if provided
-    if (formData.phone && !validatePhone(formData.phone)) {
-      toast.error('Phone must be exactly 10 digits starting with 6, 7, 8, or 9', { position: 'top-center' });
-      return;
+    if (formData.phone) {
+      if (formData.phone.length !== 10) {
+        toast.error('Phone number must be exactly 10 digits', { position: 'top-center' });
+        return;
+      }
+      if (!validatePhone(formData.phone)) {
+        toast.error('Phone number must start with 6, 7, 8, or 9', { position: 'top-center' });
+        return;
+      }
     }
     
     setLoading(true);
@@ -352,7 +503,7 @@ const AddItem = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Visitor Management!</h1>
+        <h1>Visitor Management</h1>
       </div>
 
       {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee, HR, Manager, and Admin), then Visitors List */}
@@ -406,15 +557,27 @@ const AddItem = () => {
           <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
             <div className="form-row">
               <div className="form-group">
-                <label className="form-label">Full Name *</label>
+                <label className="form-label">Full Name * (max 50 characters)</label>
                 <input
                   type="text"
                   name="fullname"
                   value={formData.fullname}
-                  onChange={(e) => setFormData({ ...formData, fullname: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 50) {
+                      setFormData({ ...formData, fullname: value });
+                    }
+                  }}
                   className="form-input"
                   placeholder="Enter full name"
+                  maxLength={50}
+                  autoComplete="off"
                 />
+                {formData.fullname.length > 0 && (
+                  <small style={{ color: formData.fullname.length >= 50 ? '#ef4444' : 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+                    {formData.fullname.length}/50 characters
+                  </small>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Purpose *</label>
@@ -455,9 +618,20 @@ const AddItem = () => {
                   value={formData.phone}
                   onChange={handlePhoneChange}
                   className="form-input"
-                  placeholder="Enter 10 digit phone (6-9)"
-                  maxLength="10"
+                  placeholder="Enter 10 digit phone (starts with 6, 7, 8, or 9)"
+                  maxLength={10}
+                  autoComplete="off"
                 />
+                {formData.phone.length > 0 && formData.phone.length < 10 && (
+                  <small style={{ color: '#f59e0b', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+                    {formData.phone.length}/10 digits
+                  </small>
+                )}
+                {formData.phone.length === 10 && !validatePhone(formData.phone) && (
+                  <small style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+                    Phone number must start with 6, 7, 8, or 9
+                  </small>
+                )}
               </div>
             </div>
 
@@ -941,27 +1115,133 @@ const AddItem = () => {
             marginBottom: '24px' 
           }}>
             <h2 style={{ margin: 0 }}>Visitors List</h2>
-            <div className="view-toggle">
-              <button
-                type="button"
-                className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                onClick={() => setViewMode('grid')}
-                title="Grid view"
-              >
-                <FiGrid />
-              </button>
-              <button
-                type="button"
-                className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                onClick={() => setViewMode('table')}
-                title="Table view"
-              >
-                <FiList />
-              </button>
+          </div>
+
+          {/* Filter Section */}
+          <div className="card" style={{ marginBottom: '24px', padding: '16px' }}>
+            <div style={{ 
+              display: 'flex', 
+              flexWrap: 'wrap',
+              gap: '12px',
+              alignItems: 'flex-end'
+            }}>
+              <div className="form-group" style={{ marginBottom: 0, minWidth: '140px', flex: '0 0 auto' }}>
+                <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>Purpose</label>
+                <select
+                  value={filterPurpose}
+                  onChange={(e) => setFilterPurpose(e.target.value)}
+                  className="form-input"
+                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.9rem' }}
+                >
+                  <option value="">All Purposes</option>
+                  <option value="Business">Business</option>
+                  <option value="Vendor">Vendor</option>
+                  <option value="Client">Client</option>
+                  <option value="Interview">Interview</option>
+                  <option value="Family">Family</option>
+                  <option value="Friend">Friend</option>
+                </select>
+              </div>
+              
+              <div className="form-group" style={{ marginBottom: 0, minWidth: '150px', flex: '0 0 auto' }}>
+                <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>From Date</label>
+                <DatePicker
+                  value={filterFromDate}
+                  onChange={(date) => {
+                    setFilterFromDate(date);
+                    // If to date is before new from date, clear it
+                    if (filterToDate && date && filterToDate < date) {
+                      setFilterToDate('');
+                    }
+                  }}
+                  max={new Date().toISOString().split('T')[0]}
+                  placeholder="Select from date"
+                />
+              </div>
+              
+              <div className="form-group" style={{ marginBottom: 0, minWidth: '150px', flex: '0 0 auto' }}>
+                <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>To Date</label>
+                <DatePicker
+                  value={filterToDate}
+                  onChange={(date) => setFilterToDate(date)}
+                  min={filterFromDate || undefined}
+                  max={new Date().toISOString().split('T')[0]}
+                  placeholder="Select to date"
+                />
+              </div>
+              
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleFilter}
+                  className="btn btn-primary"
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <FiFilter size={16} />
+                  Filter
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="btn btn-secondary"
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <FiDownload size={16} />
+                  Excel
+                </button>
+                <div className="view-toggle" style={{ display: 'flex', gap: '4px', marginLeft: '4px' }}>
+                  <button
+                    type="button"
+                    className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                    onClick={() => setViewMode('grid')}
+                    title="Grid view"
+                    style={{ 
+                      width: '36px', 
+                      height: '36px', 
+                      padding: '0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <FiGrid size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                    onClick={() => setViewMode('table')}
+                    title="Table view"
+                    style={{ 
+                      width: '36px', 
+                      height: '36px', 
+                      padding: '0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <FiList size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          {visitors.length === 0 ? (
+          {filteredVisitors.length === 0 ? (
             <div className="empty-state" style={{ textAlign: 'center', padding: '60px 20px' }}>
               <FiUser className="empty-state-icon" style={{ fontSize: '3rem', marginBottom: '16px', color: 'var(--text-secondary)' }} />
               <h3>No visitors found</h3>
@@ -970,7 +1250,7 @@ const AddItem = () => {
             <>
               {viewMode === 'grid' ? (
                 <div className="users-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-                  {visitors.map((visitor) => (
+                  {filteredVisitors.map((visitor) => (
                 <div 
                   key={visitor.id} 
                   className="user-card"
@@ -1341,7 +1621,7 @@ const AddItem = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {visitors.map((visitor) => (
+                      {filteredVisitors.map((visitor) => (
                         <tr key={visitor.id}>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -33,6 +33,7 @@ const Dashboard = () => {
   const [attendanceViewType, setAttendanceViewType] = useState('bars'); // 'bars' or 'circles'
   const [attendanceMonth, setAttendanceMonth] = useState(new Date().getMonth() + 1);
   const [attendanceYear, setAttendanceYear] = useState(new Date().getFullYear());
+  const [pdfLoading, setPdfLoading] = useState(true);
 
   const todayMatches = (dateStr) => {
     if (!dateStr) return false;
@@ -156,47 +157,28 @@ const Dashboard = () => {
   const fetchUnreadPolicies = useCallback(async () => {
     if (!user) return;
     
-    // For Employee and Manager roles, delay policy fetching to show after initial page load
-    const shouldDelay = user?.role === 'Employee' || user?.role === 'Manager';
-    
-    if (shouldDelay) {
-      // Wait for page to load first, then fetch policies
-      setTimeout(async () => {
-        try {
-          const response = await policiesAPI.getUnread();
-          const policies = response.data || [];
-          
-          // Backend already filters by current user's empid, so use directly
-          setUnreadPolicies(policies);
-          
-          // Show modal if there are unread policies
-          if (policies.length > 0) {
+    try {
+      const response = await policiesAPI.getUnread();
+      const policies = response.data || [];
+      
+      // Backend already filters by current user's empid, so use directly
+      setUnreadPolicies(policies);
+      
+      // Show modal if there are unread policies (with delay to ensure page is ready and prevent blur)
+      if (policies.length > 0) {
+        // Wait for next frame to ensure DOM is ready, then show modal
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
             setShowPolicyModal(true);
-          }
-        } catch (error) {
-          // Silently handle errors - don't show popup if API fails
-          console.error('Error fetching unread policies:', error);
-          setUnreadPolicies([]);
-        }
-      }, 1000); // Delay 1 second after page load
-    } else {
-      // For other roles, fetch immediately
-      try {
-        const response = await policiesAPI.getUnread();
-        const policies = response.data || [];
-        
-        // Backend already filters by current user's empid, so use directly
-        setUnreadPolicies(policies);
-        
-        // Show modal if there are unread policies
-        if (policies.length > 0) {
-          setShowPolicyModal(true);
-        }
-      } catch (error) {
-        // Silently handle errors - don't show popup if API fails
-        console.error('Error fetching unread policies:', error);
-        setUnreadPolicies([]);
+            // Reset PDF loading state when modal opens
+            setPdfLoading(true);
+          });
+        });
       }
+    } catch (error) {
+      // Silently handle errors - don't show popup if API fails
+      console.error('Error fetching unread policies:', error);
+      setUnreadPolicies([]);
     }
   }, [user]);
 
@@ -219,8 +201,45 @@ const Dashboard = () => {
       setCurrentPage(1);
       setAcknowledged(false);
       setPolicySubmitted(false);
+      setPdfLoading(true); // Reset PDF loading state when policy changes
     }
   }, [currentPolicyIndex, unreadPolicies, currentPolicy]);
+
+  // Handle PDF iframe load
+  const handlePdfLoad = () => {
+    setPdfLoading(false);
+  };
+
+  // Handle PDF iframe error
+  const handlePdfError = () => {
+    console.error('Error loading PDF');
+    setPdfLoading(false);
+  };
+
+  // Timeout fallback to hide loading if iframe doesn't fire onLoad
+  useEffect(() => {
+    if (pdfLoading && currentPolicy && showPolicyModal) {
+      // Shorter timeout - iframe should load quickly
+      const timeout = setTimeout(() => {
+        console.warn('PDF load timeout - hiding loading overlay');
+        setPdfLoading(false);
+      }, 2000); // 2 second timeout
+
+      return () => clearTimeout(timeout);
+    }
+  }, [pdfLoading, currentPolicy, showPolicyModal]);
+
+  // Also hide loading when modal first opens after a short delay
+  useEffect(() => {
+    if (showPolicyModal && currentPolicy && pdfLoading) {
+      // Give iframe a moment to start loading, then hide overlay
+      const initialTimeout = setTimeout(() => {
+        setPdfLoading(false);
+      }, 1500); // Hide loading after 1.5 seconds even if onLoad doesn't fire
+
+      return () => clearTimeout(initialTimeout);
+    }
+  }, [showPolicyModal, currentPolicy]);
 
   // Auto-scroll to acknowledge section when reaching last page
   useEffect(() => {
@@ -270,17 +289,20 @@ const Dashboard = () => {
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
+      setPdfLoading(true);
       setCurrentPage(prev => prev + 1);
     }
   };
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
+      setPdfLoading(true);
       setCurrentPage(prev => prev - 1);
     }
   };
 
   const handlePageClick = (pageNum) => {
+    setPdfLoading(true);
     setCurrentPage(pageNum);
   };
 
@@ -945,6 +967,7 @@ const Dashboard = () => {
         allowClose={false}
         title=""
         size="full"
+        className="policy-modal"
       >
         {policySubmitted ? (
           <div className="policy-success-animation">
@@ -982,14 +1005,35 @@ const Dashboard = () => {
 
             {/* PDF Viewer */}
             <div className="policy-pdf-viewer">
-              <iframe
-                src={`${currentPolicy.policy.file_url}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                className="policy-iframe"
-                title={`Page ${currentPage} of ${totalPages}`}
-                style={{ border: 'none' }}
-                key={`pdf-${currentPolicy.id}-${currentPage}`}
-                scrolling="no"
-              />
+              {pdfLoading && (
+                <div className="pdf-loading-overlay">
+                  <div className="spinner"></div>
+                  <p>Loading policy document...</p>
+                </div>
+              )}
+              {currentPolicy.policy.file_url ? (
+                <iframe
+                  src={`${currentPolicy.policy.file_url}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                  className="policy-iframe"
+                  title={`Page ${currentPage} of ${totalPages}`}
+                  style={{ 
+                    border: 'none',
+                    opacity: pdfLoading ? 0.3 : 1,
+                    transition: 'opacity 0.3s ease',
+                    display: 'block',
+                    visibility: pdfLoading ? 'hidden' : 'visible'
+                  }}
+                  key={`pdf-${currentPolicy.id}-${currentPage}`}
+                  scrolling="no"
+                  onLoad={handlePdfLoad}
+                  onError={handlePdfError}
+                  allow="fullscreen"
+                />
+              ) : (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <p>Policy document URL not available</p>
+                </div>
+              )}
             </div>
 
             {/* Page Navigation - Always visible */}

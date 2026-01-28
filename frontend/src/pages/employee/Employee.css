@@ -1313,6 +1313,67 @@
   color: #9ca3af;
 }
 
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-action-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 0.85rem;
+  min-width: 80px;
+}
+
+.btn-action-edit:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+  color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.btn-action-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  font-size: 0.85rem;
+  min-width: 80px;
+}
+
+.btn-action-delete:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.btn-action-edit svg,
+.btn-action-delete svg {
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .holiday-permissions-matrix {
     margin: 0 -24px;
@@ -1347,6 +1408,25 @@
   
   .holiday-toggle-status {
     font-size: 0.7rem;
+  }
+
+  .btn-action-edit,
+  .btn-action-delete {
+    min-width: 70px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .btn-action-edit span,
+  .btn-action-delete span {
+    display: none;
+  }
+
+  .btn-action-edit,
+  .btn-action-delete {
+    min-width: auto;
+    width: 36px;
+    padding: 8px;
   }
 }
 

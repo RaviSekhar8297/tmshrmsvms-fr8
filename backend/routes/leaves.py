@@ -54,14 +54,38 @@ def validate_leave_dates(
     ).all()
     week_off_dates = {wo.date for wo in week_off_records}
     
-    # Get holidays in the date range
+    # Get holidays in the date range - filter by user's branch_id matching holiday_permissions
     holiday_records = db.query(Holiday).filter(
         and_(
             Holiday.date >= from_date_obj,
             Holiday.date <= to_date_obj
         )
     ).all()
-    holiday_dates = {h.date for h in holiday_records}
+    
+    # Filter holidays by user's branch_id (default to 1 if null/empty)
+    user_branch_id = current_user.branch_id if current_user.branch_id else 1
+    holiday_dates = set()
+    
+    for holiday in holiday_records:
+        # If holiday has no permissions, skip it
+        if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+            continue
+        
+        # Check if user's branch_id exists in the holiday's holiday_permissions array
+        # Normalize branch_id to int for comparison
+        match = False
+        for perm in holiday.holiday_permissions:
+            if perm and perm.get('branch_id') is not None:
+                try:
+                    perm_branch_id = int(perm.get('branch_id'))
+                    if perm_branch_id == user_branch_id:
+                        match = True
+                        break
+                except (ValueError, TypeError):
+                    continue
+        
+        if match:
+            holiday_dates.add(holiday.date)
     
     # Check for holidays and week-offs - only check from_date and to_date (not middle dates)
     invalid_dates = []
@@ -223,13 +247,38 @@ def create_leave(
     ).all()
     week_off_dates = {wo.date for wo in week_off_records}
     
+    # Get holidays in the date range - filter by user's branch_id matching holiday_permissions
     holiday_records = db.query(Holiday).filter(
         and_(
             Holiday.date >= from_date,
             Holiday.date <= to_date
         )
     ).all()
-    holiday_dates = {h.date for h in holiday_records}
+    
+    # Filter holidays by user's branch_id (default to 1 if null/empty)
+    user_branch_id = current_user.branch_id if current_user.branch_id else 1
+    holiday_dates = set()
+    
+    for holiday in holiday_records:
+        # If holiday has no permissions, skip it
+        if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+            continue
+        
+        # Check if user's branch_id exists in the holiday's holiday_permissions array
+        # Normalize branch_id to int for comparison
+        match = False
+        for perm in holiday.holiday_permissions:
+            if perm and perm.get('branch_id') is not None:
+                try:
+                    perm_branch_id = int(perm.get('branch_id'))
+                    if perm_branch_id == user_branch_id:
+                        match = True
+                        break
+                except (ValueError, TypeError):
+                    continue
+        
+        if match:
+            holiday_dates.add(holiday.date)
     
     # Check if from_date or to_date are week-offs or holidays (not middle dates)
     invalid_dates = []

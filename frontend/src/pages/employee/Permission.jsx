@@ -437,7 +437,7 @@ const Permission = () => {
     <div className="page-container employee-permission-page">
       <div className="page-header stacked">
         <div>
-          <h1>Permission Requests</h1>
+          <h1>PERMISSIONS</h1>
           <p className="page-subtitle">View your permission history with quick filters.</p>
         </div>
         <div className="header-actions filters-row toolbar">

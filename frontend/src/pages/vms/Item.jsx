@@ -539,7 +539,7 @@ const Item = () => {
     XLSX.utils.book_append_sheet(wb, ws, 'Issues Matrix');
     
     // Download
-    XLSX.writeFile(wb, `issues_matrix_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `Stationery_items.xlsx`);
     toast.success('Excel file downloaded successfully');
   };
 

@@ -78,10 +78,35 @@ const ApplyLeave = () => {
         });
       }
       
-      // Add holidays
+      // Add holidays - filter by user's branch_id matching holiday_permissions
       if (holidaysRes?.data) {
+        // Get user's branch_id (default to 1 if null/empty, similar to backend logic)
+        const userBranchId = user?.branch_id || 1;
+        
         holidaysRes.data.forEach(holiday => {
-          if (holiday?.date) {
+          if (!holiday?.date) return;
+          
+          // If holiday has no permissions, skip it
+          if (!holiday.holiday_permissions || holiday.holiday_permissions.length === 0) {
+            return;
+          }
+          
+          // Check if user's branch_id exists in the holiday's holiday_permissions array
+          // Normalize branch_id to int for comparison (permissions may store as int or string)
+          const branchMatches = holiday.holiday_permissions.some(perm => {
+            if (!perm || perm.branch_id === null || perm.branch_id === undefined) {
+              return false;
+            }
+            try {
+              const permBranchId = typeof perm.branch_id === 'string' ? parseInt(perm.branch_id) : perm.branch_id;
+              return permBranchId === userBranchId;
+            } catch {
+              return false;
+            }
+          });
+          
+          // Only add holiday if branch matches
+          if (branchMatches) {
             const dateStr = holiday.date.split('T')[0]; // Get YYYY-MM-DD format
             disabledDatesSet.add(dateStr);
           }
@@ -477,9 +502,7 @@ const ApplyLeave = () => {
                 <option value="sick">Sick Leave</option>
                 <option value="casual">Casual Leave</option>
                 <option value="comp-off">Comp-Off Leave</option>
-                <option value="annual">Annual Leave</option>
-                <option value="emergency">Emergency Leave</option>
-                <option value="other">Other</option>
+                
               </select>
               {formData.leave_type && (
                 <div className="available-balance-info">

@@ -1,19 +1,43 @@
 .reports-page {
   animation: fadeIn 0.3s ease;
+  overflow: visible;
+  position: relative;
 }
 
 .filters-card {
   margin-bottom: 24px;
+  overflow: visible;
+  position: relative;
+}
+
+.filters-container {
+  padding: 16px;
+  overflow: visible;
+  position: relative;
 }
 
 .filters-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  overflow: visible;
+  position: relative;
+}
+
+.filters-grid .form-group {
+  min-width: 160px;
+  flex: 0 0 auto;
+}
+
+.filters-grid .form-group:nth-child(2) {
+  min-width: 200px;
+  flex: 1 1 auto;
+  max-width: 300px;
 }
 
 .filters-actions {
-  margin-top: 20px;
+  margin-top: 16px;
   display: flex;
   justify-content: flex-end;
 }

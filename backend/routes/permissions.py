@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import extract
 from datetime import datetime
 from utils import get_ist_now
 from database import get_db
@@ -32,6 +33,77 @@ def create_permission(
         to_datetime = datetime.fromisoformat(permission_data.to_datetime.replace('Z', '+00:00'))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid datetime format: {str(e)}")
+
+    # Validate required fields
+    if not permission_data.permission_type or permission_data.permission_type.strip() == "":
+        raise HTTPException(status_code=400, detail="Permission Type is required")
+
+    if not permission_data.reason or permission_data.reason.strip() == "":
+        raise HTTPException(status_code=400, detail="Reason is required")
+    
+    # Validate that to_datetime is after from_datetime
+    if to_datetime <= from_datetime:
+        raise HTTPException(status_code=400, detail="To datetime must be after From datetime")
+
+    # Validate From Time between 09:30 and 17:30 (same logic as frontend Permission.jsx)
+    from_minutes = from_datetime.hour * 60 + from_datetime.minute
+    min_minutes = 9 * 60 + 30   # 09:30
+    max_minutes = 17 * 60 + 30  # 17:30
+    if from_minutes < min_minutes or from_minutes > max_minutes:
+        raise HTTPException(status_code=400, detail="From Time must be between 09:30 and 17:30")
+
+    # Duration validation: typically 2 hours (frontend auto-adds 2 hours). Allow up to 2 hours.
+    duration_seconds = (to_datetime - from_datetime).total_seconds()
+    if duration_seconds > 2 * 3600:
+        raise HTTPException(status_code=400, detail="Permission duration must be within 2 hours")
+
+    # Monthly limit: max 2 permissions per month (excluding rejected) - same as frontend logic
+    perm_month = from_datetime.month
+    perm_year = from_datetime.year
+    monthly_count = db.query(Permission).filter(
+        Permission.empid == current_user.empid,
+        Permission.status != "rejected",
+        extract("year", Permission.from_datetime) == perm_year,
+        extract("month", Permission.from_datetime) == perm_month
+    ).count()
+    if monthly_count >= 2:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can apply only 2 permissions per month. You have already applied {monthly_count} permission(s) for {from_datetime.strftime('%B %Y')}."
+        )
+    
+    # Check for overlapping time slots on the same date (excluding rejected permissions)
+    # Example: If user applied 2026-01-22 09:20 to 11:20, they cannot apply 2026-01-22 09:50 to 11:50
+    from_date = from_datetime.date()
+    to_date = to_datetime.date()
+    
+    # Get all existing permissions for this user on the same date(s), excluding rejected
+    existing_permissions = db.query(Permission).filter(
+        Permission.empid == current_user.empid,
+        Permission.status != 'rejected'  # Exclude rejected permissions
+    ).all()
+    
+    # Check for overlapping time slots
+    for existing_perm in existing_permissions:
+        existing_from_date = existing_perm.from_datetime.date()
+        existing_to_date = existing_perm.to_datetime.date()
+        
+        # Check if dates overlap
+        if from_date == existing_from_date or to_date == existing_to_date or \
+           (from_date <= existing_to_date and to_date >= existing_from_date):
+            # Check if time ranges overlap
+            existing_from_time = existing_perm.from_datetime
+            existing_to_time = existing_perm.to_datetime
+            
+            # Time ranges overlap if: new_from < existing_to AND new_to > existing_from
+            if from_datetime < existing_to_time and to_datetime > existing_from_time:
+                existing_time_str = f"{existing_from_time.strftime('%Y-%m-%d %H:%M')} to {existing_to_time.strftime('%H:%M')}"
+                new_time_str = f"{from_datetime.strftime('%Y-%m-%d %H:%M')} to {to_datetime.strftime('%H:%M')}"
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Permission time slot overlaps with existing permission: {existing_time_str}. "
+                           f"You cannot apply for {new_time_str} as the time slot is already applied (status: {existing_perm.status})."
+                )
     
     new_permission = Permission(
         empid=current_user.empid,

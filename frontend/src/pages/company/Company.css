@@ -283,7 +283,7 @@
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: var(--bg-primary);
+  background: var(--bg-card);
   color: var(--text-primary);
   font-size: 0.9rem;
   transition: border-color var(--transition-fast);
@@ -300,41 +300,137 @@
   cursor: not-allowed;
 }
 
+/* Remove white background from select dropdown - Dark Mode */
+.form-select {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.form-select::-ms-expand {
+  display: none;
+}
+
+/* Style all option elements - remove white background - Dark Mode */
 .form-select option {
-  background-color: var(--bg-primary) !important;
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
   color: var(--text-primary) !important;
+  padding: 8px 12px !important;
 }
 
+/* Remove white background from options in dropdown - all states - Dark Mode */
 .form-select option:hover,
-.form-select option:focus {
+.form-select option:focus,
+.form-select option:active,
+.form-select option:checked,
+.form-select option[selected],
+.form-select option[selected="selected"],
+.form-select option:checked:hover,
+.form-select option:checked:focus {
   background-color: var(--bg-hover) !important;
+  background: var(--bg-hover) !important;
   color: var(--text-primary) !important;
 }
 
-.form-select option:checked {
-  background-color: var(--bg-primary) !important;
-  color: var(--text-primary) !important;
-}
-
-/* Remove white background from selected option in dropdown list */
-.form-select option[selected] {
-  background-color: var(--bg-primary) !important;
-  color: var(--text-primary) !important;
-}
-
-/* Override browser default for selected option in open dropdown - remove white background */
+/* Override browser default for selected option in open dropdown - remove white background - Dark Mode */
 select.form-select option:checked,
 select.form-select option[selected],
-select.form-select option[selected="selected"] {
-  background: var(--bg-primary) !important;
-  background-color: var(--bg-primary) !important;
+select.form-select option[selected="selected"],
+select.form-select option:checked:hover,
+select.form-select option:checked:focus,
+select.form-select:focus option:checked,
+select.form-select:focus option:checked:hover {
+  background: var(--bg-hover) !important;
+  background-color: var(--bg-hover) !important;
   color: var(--text-primary) !important;
 }
 
-/* Remove white background when hovering over selected option in dropdown */
-select.form-select option:checked:hover {
-  background: var(--bg-hover) !important;
+/* Ensure select element itself doesn't have white background - Dark Mode */
+select.form-select {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Remove white background from datalist dropdown - Dark Mode */
+select.form-select::-webkit-list-button,
+select.form-select::-webkit-list-box {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+}
+
+/* Remove white background when dropdown is open - Dark Mode */
+select.form-select:focus {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+}
+
+/* Style the dropdown list container - ensure no white background - Dark Mode */
+select.form-select option {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+}
+
+select.form-select option:hover,
+select.form-select option:focus {
   background-color: var(--bg-hover) !important;
+  background: var(--bg-hover) !important;
+}
+
+/* Additional override for Chrome/Safari dropdown list - Dark Mode */
+select.form-select:focus option {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+}
+
+select.form-select:focus option:hover,
+select.form-select:focus option:checked {
+  background-color: var(--bg-hover) !important;
+  background: var(--bg-hover) !important;
+}
+
+/* Dark Mode Specific Rules - Force remove white background */
+[data-theme="dark"] .form-select,
+[data-theme="dark"] select.form-select {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .form-select option,
+[data-theme="dark"] select.form-select option {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .form-select option:hover,
+[data-theme="dark"] .form-select option:focus,
+[data-theme="dark"] .form-select option:checked,
+[data-theme="dark"] select.form-select option:hover,
+[data-theme="dark"] select.form-select option:focus,
+[data-theme="dark"] select.form-select option:checked {
+  background-color: var(--bg-hover) !important;
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] select.form-select:focus option {
+  background-color: var(--bg-card) !important;
+  background: var(--bg-card) !important;
+}
+
+[data-theme="dark"] select.form-select:focus option:hover,
+[data-theme="dark"] select.form-select:focus option:checked {
+  background-color: var(--bg-hover) !important;
+  background: var(--bg-hover) !important;
 }
 
 .form-row {

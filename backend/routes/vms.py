@@ -897,6 +897,9 @@ def add_visitor(
 @router.get("/vms/visitors")
 def get_all_visitors(
     status: Optional[str] = None,
+    purpose: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -915,6 +918,25 @@ def get_all_visitors(
         
         if status:
             query = query.filter(Visitor.status == status)
+        
+        # Filter by purpose
+        if purpose:
+            query = query.filter(Visitor.purpose == purpose)
+        
+        # Filter by date range
+        if from_date:
+            try:
+                from_date_obj = datetime.strptime(from_date, "%Y-%m-%d").date()
+                query = query.filter(func.date(Visitor.checkintime) >= from_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
+        
+        if to_date:
+            try:
+                to_date_obj = datetime.strptime(to_date, "%Y-%m-%d").date()
+                query = query.filter(func.date(Visitor.checkintime) <= to_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore
         
         visitors = query.order_by(Visitor.checkintime.desc()).all()
         

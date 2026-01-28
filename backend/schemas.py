@@ -97,7 +97,11 @@ class LoginRequest(BaseModel):
     device_info: Optional[str] = None
 
 class ChangePasswordRequest(BaseModel):
+    old_password: str
     new_password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
 
 class TokenResponse(BaseModel):
     access_token: str

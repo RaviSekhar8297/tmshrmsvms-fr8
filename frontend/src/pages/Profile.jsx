@@ -29,15 +29,20 @@ const Profile = () => {
   });
 
   const [passwordData, setPasswordData] = useState({
+    old_password: '',
     new_password: '',
     confirm_password: ''
   });
   const [passwordStrength, setPasswordStrength] = useState(''); // 'weak', 'medium', 'strong'
+  const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [oldPasswordVerified, setOldPasswordVerified] = useState(false);
+  const [verifyingOldPassword, setVerifyingOldPassword] = useState(false);
 
   const [reportToUser, setReportToUser] = useState(null);
   const [loadingReportTo, setLoadingReportTo] = useState(false);
+  const [showSalary, setShowSalary] = useState(false);
 
   // Calculate today's date in YYYY-MM-DD format for max date restriction
   const getTodayDateString = () => {
@@ -197,8 +202,36 @@ const Profile = () => {
     return true;
   };
 
+  const verifyOldPassword = async () => {
+    if (!passwordData.old_password || passwordData.old_password.trim() === '') {
+      toast.error('Please enter old password');
+      return;
+    }
+    
+    setVerifyingOldPassword(true);
+    try {
+      await api.post('/auth/verify-old-password', {
+        old_password: passwordData.old_password
+      });
+      setOldPasswordVerified(true);
+      toast.success('Old password verified');
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail || 'Old password verification failed';
+      toast.error(errorMsg);
+      setOldPasswordVerified(false);
+    } finally {
+      setVerifyingOldPassword(false);
+    }
+  };
+
   const handlePasswordChange = async (e) => {
     e.preventDefault();
+    
+    // Verify old password is entered
+    if (!passwordData.old_password || passwordData.old_password.trim() === '') {
+      toast.error('Please enter old password');
+      return;
+    }
     
     // Validate new password
     if (!validatePassword(passwordData.new_password)) {
@@ -214,12 +247,17 @@ const Profile = () => {
     setLoading(true);
     try {
       await authAPI.changePassword({
+        old_password: passwordData.old_password,
         new_password: passwordData.new_password
       });
       toast.success('Password changed successfully');
       setChangingPassword(false);
-      setPasswordData({ new_password: '', confirm_password: '' });
+      setPasswordData({ old_password: '', new_password: '', confirm_password: '' });
       setPasswordStrength('');
+      setOldPasswordVerified(false);
+      setShowOldPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
     } catch (error) {
       // Handle error response - could be string, object, or array
       let errorMsg = '';
@@ -324,34 +362,120 @@ const Profile = () => {
 
   // Handle detail update
   const handleDetailUpdate = async (detailType, data, action = 'add', index = null) => {
-    // Validate based on detail type
+    // Validate based on detail type - ensure required fields are not empty
     if (detailType === 'family_details') {
+      // Name is required
+      if (!data.name || (typeof data.name === 'string' && data.name.trim() === '')) {
+        toast.error('Name is required');
+        return;
+      }
       if (!validateName(data.name)) return;
+      
+      // Relation is required
+      if (!data.relation || (typeof data.relation === 'string' && data.relation.trim() === '')) {
+        toast.error('Relation is required');
+        return;
+      }
       if (!validateRelation(data.relation)) return;
-      if (data.phone && data.phone.trim() !== '' && !validatePhone(data.phone)) return;
-      if (data.aadhar && data.aadhar.trim() !== '' && !validateAadhar(data.aadhar)) return;
+      
+      // Phone and Aadhar are optional, but validate if provided
+      if (data.phone && data.phone.toString().trim() !== '' && !validatePhone(data.phone)) return;
+      if (data.aadhar && data.aadhar.toString().trim() !== '' && !validateAadhar(data.aadhar)) return;
     } else if (detailType === 'nominee_details') {
+      // Name is required
+      if (!data.name || (typeof data.name === 'string' && data.name.trim() === '')) {
+        toast.error('Name is required');
+        return;
+      }
       if (!validateName(data.name)) return;
+      
+      // Relation is required
+      if (!data.relation || (typeof data.relation === 'string' && data.relation.trim() === '')) {
+        toast.error('Relation is required');
+        return;
+      }
       if (!validateRelation(data.relation)) return;
+      
+      // Phone is required
+      if (!data.phone || (typeof data.phone === 'string' && data.phone.trim() === '')) {
+        toast.error('Phone is required');
+        return;
+      }
       if (!validatePhone(data.phone)) return;
-      if (data.aadhar && data.aadhar.trim() !== '' && !validateAadhar(data.aadhar)) return;
+      
+      // Aadhar is optional, but validate if provided
+      if (data.aadhar && data.aadhar.toString().trim() !== '' && !validateAadhar(data.aadhar)) return;
     } else if (detailType === 'bank_details') {
+      // Bank Name is required
+      if (!data.bank_name || (typeof data.bank_name === 'string' && data.bank_name.trim() === '')) {
+        toast.error('Bank Name is required');
+        return;
+      }
       if (!validateBankName(data.bank_name)) return;
+      
+      // Account Number is required
+      if (!data.account_number || (typeof data.account_number === 'string' && data.account_number.trim() === '')) {
+        toast.error('Account Number is required');
+        return;
+      }
       if (!validateAccountNumber(data.account_number)) return;
+      
+      // IFSC is required
+      if (!data.ifsc || (typeof data.ifsc === 'string' && data.ifsc.trim() === '')) {
+        toast.error('IFSC is required');
+        return;
+      }
       if (!validateIFSC(data.ifsc)) return;
-      if (data.pan && !validatePAN(data.pan)) return;
-      if (data.aadhar && !validateAadhar(data.aadhar)) return;
-      if (data.pf_no && !validatePFNO(data.pf_no)) return;
-      if (data.esi_no && !validateESINO(data.esi_no)) return;
+      
+      // Optional fields - validate if provided
+      if (data.pan && data.pan.toString().trim() !== '' && !validatePAN(data.pan)) return;
+      if (data.aadhar && data.aadhar.toString().trim() !== '' && !validateAadhar(data.aadhar)) return;
+      if (data.pf_no && data.pf_no.toString().trim() !== '' && !validatePFNO(data.pf_no)) return;
+      if (data.esi_no && data.esi_no.toString().trim() !== '' && !validateESINO(data.esi_no)) return;
     } else if (detailType === 'education_details') {
-      if (!validateEducationName(data.education_name)) return;
-      if (data.pass_out_year && !validateYear(data.pass_out_year)) return;
-      if (data.percentage && !validatePercentage(data.percentage)) return;
+      // Education name is required
+      if (!data.education_name || data.education_name.trim() === '') {
+        toast.error('Education name is required');
+        return;
+      }
+      if (data.education_name.length > 25) {
+        toast.error('Education name must be below 25 characters');
+        return;
+      }
+      if (data.pass_out_year && data.pass_out_year.toString().trim() !== '') {
+        const year = parseInt(data.pass_out_year);
+        const currentYear = new Date().getFullYear();
+        if (isNaN(year) || year > currentYear) {
+          toast.error('Pass out year must be a past year');
+          return;
+        }
+      }
+      if (data.percentage && data.percentage.toString().trim() !== '') {
+        const percentageNum = parseFloat(data.percentage);
+        if (isNaN(percentageNum) || percentageNum < 0 || percentageNum > 100) {
+          toast.error('Percentage must be between 0 and 100');
+          return;
+        }
+      }
     } else if (detailType === 'experience_details') {
+      // Company is required
+      if (!data.prev_company_name || (typeof data.prev_company_name === 'string' && data.prev_company_name.trim() === '')) {
+        toast.error('Company is required');
+        return;
+      }
       if (!validateCompany(data.prev_company_name)) return;
-      if (data.year && !validateYear(data.year)) return;
-      if (data.designation && !validateDesignation(data.designation)) return;
-      if (data.salary_per_annum && !validateSalary(data.salary_per_annum)) return;
+      
+      // Optional fields - validate if provided
+      if (data.year && data.year.toString().trim() !== '') {
+        const year = parseInt(data.year);
+        const currentYear = new Date().getFullYear();
+        if (isNaN(year) || year > currentYear) {
+          toast.error('Year must be a past year');
+          return;
+        }
+      }
+      if (data.designation && data.designation.toString().trim() !== '' && !validateDesignation(data.designation)) return;
+      if (data.salary_per_annum && data.salary_per_annum.toString().trim() !== '' && !validateSalary(data.salary_per_annum)) return;
     } else if (detailType === 'documents') {
       if (!validateDocumentName(data.name)) return;
     }
@@ -451,13 +575,20 @@ const Profile = () => {
   };
 
   const validatePhone = (phone) => {
-    if (!phone || phone.trim() === '') {
+    if (!phone || phone.toString().trim() === '') {
       toast.error('Phone is required');
       return false;
     }
+    const phoneStr = phone.toString().trim();
     const phoneRegex = /^\d{10}$/;
-    if (!phoneRegex.test(phone)) {
+    if (!phoneRegex.test(phoneStr)) {
       toast.error('Phone must be exactly 10 digits');
+      return false;
+    }
+    // Check if phone starts with 6, 7, 8, or 9
+    const firstDigit = phoneStr.charAt(0);
+    if (!['6', '7', '8', '9'].includes(firstDigit)) {
+      toast.error('Phone number must start with 6, 7, 8, or 9');
       return false;
     }
     return true;
@@ -903,6 +1034,38 @@ const Profile = () => {
               </div>
 
               <div className="form-group">
+                <label className="form-label">Company</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={user?.company_name || 'Pending'}
+                  disabled={true}
+                  readOnly
+                  style={{ 
+                    cursor: 'not-allowed',
+                    opacity: 0.8,
+                    backgroundColor: 'var(--bg-hover)'
+                  }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Branch</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={user?.branch_name || 'Pending'}
+                  disabled={true}
+                  readOnly
+                  style={{ 
+                    cursor: 'not-allowed',
+                    opacity: 0.8,
+                    backgroundColor: 'var(--bg-hover)'
+                  }}
+                />
+              </div>
+
+              <div className="form-group">
                 <label className="form-label">Notification Preferences</label>
                 <div className="consent-toggles-horizontal">
                   <div className="toggle-column">
@@ -999,6 +1162,65 @@ const Profile = () => {
           {changingPassword ? (
             <form onSubmit={handlePasswordChange}>
               <div className="form-group">
+                <label className="form-label">Old Password</label>
+                <div style={{ position: 'relative', display: 'flex', gap: '8px' }}>
+                  <input
+                    type={showOldPassword ? 'text' : 'password'}
+                    className="form-input"
+                    style={{ paddingRight: '40px', flex: 1 }}
+                    value={passwordData.old_password}
+                    onChange={(e) => {
+                      setPasswordData({ ...passwordData, old_password: e.target.value });
+                      setOldPasswordVerified(false);
+                    }}
+                    placeholder="Enter old password"
+                    disabled={oldPasswordVerified}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px'
+                    }}
+                  >
+                    {showOldPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                  </button>
+                  {!oldPasswordVerified && (
+                    <button
+                      type="button"
+                      onClick={verifyOldPassword}
+                      className="btn btn-secondary"
+                      disabled={verifyingOldPassword || !passwordData.old_password}
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      {verifyingOldPassword ? 'Verifying...' : 'Verify'}
+                    </button>
+                  )}
+                </div>
+                {!oldPasswordVerified && (
+                  <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                    Once Verify Your Old password then Update new password
+                  </div>
+                )}
+                {oldPasswordVerified && (
+                  <div style={{ marginTop: '4px', fontSize: '0.75rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <FiCheck size={14} />
+                    <span>Old password verified</span>
+                  </div>
+                )}
+              </div>
+              <div className="form-group">
                 <label className="form-label">New Password</label>
                 <div style={{ position: 'relative' }}>
                 <input
@@ -1012,6 +1234,7 @@ const Profile = () => {
                       setPasswordStrength(calculatePasswordStrength(newPassword));
                     }}
                     placeholder="6-12 characters, include A-Z, a-z, 0-9, and . @ #"
+                    disabled={!oldPasswordVerified}
                   />
                   <button
                     type="button"
@@ -1082,6 +1305,7 @@ const Profile = () => {
                   value={passwordData.confirm_password}
                   onChange={(e) => setPasswordData({ ...passwordData, confirm_password: e.target.value })}
                     placeholder="Re-enter new password"
+                    disabled={!oldPasswordVerified}
                   />
                   <button
                     type="button"
@@ -1123,15 +1347,17 @@ const Profile = () => {
                   className="btn btn-secondary" 
                   onClick={() => {
                     setChangingPassword(false);
-                    setPasswordData({ new_password: '', confirm_password: '' });
+                    setPasswordData({ old_password: '', new_password: '', confirm_password: '' });
                     setPasswordStrength('');
+                    setOldPasswordVerified(false);
+                    setShowOldPassword(false);
                     setShowNewPassword(false);
                     setShowConfirmPassword(false);
                   }}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={loading}>
+                <button type="submit" className="btn btn-primary" disabled={loading || !oldPasswordVerified}>
                   Change Password
                 </button>
               </div>
@@ -1228,9 +1454,34 @@ const Profile = () => {
                 <tr>
                   <td className="info-label">Salary Per Annum</td>
                   <td className="info-value">
-                    {user?.salary_per_annum && user.salary_per_annum > 0 
-                      ? `₹${parseFloat(user.salary_per_annum).toLocaleString('en-IN')}` 
-                      : 'Pending'}
+                    {user?.salary_per_annum && user.salary_per_annum > 0 ? (
+                      <span
+                        onClick={() => setShowSalary(!showSalary)}
+                        style={{
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          display: 'inline-block',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          transition: 'background-color 0.2s',
+                          fontWeight: showSalary ? 'normal' : '600',
+                          letterSpacing: showSalary ? 'normal' : '2px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.backgroundColor = 'var(--bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.backgroundColor = 'transparent';
+                        }}
+                        title={showSalary ? 'Click to hide' : 'Click to reveal'}
+                      >
+                        {showSalary 
+                          ? `₹${parseFloat(user.salary_per_annum).toLocaleString('en-IN')}` 
+                          : '****'}
+                      </span>
+                    ) : (
+                      'Pending'
+                    )}
                   </td>
                 </tr>
                 {user?.role !== 'Admin' && (
@@ -1674,6 +1925,7 @@ const Profile = () => {
                             }
                           }}
                           maxLength={40}
+                          required
                         />
                       </div>
                       <div className="form-group">
@@ -1686,6 +1938,7 @@ const Profile = () => {
                             const value = e.target.value.replace(/\D/g, '').slice(0, 21);
                             setDetailFormData({...detailFormData, account_number: value});
                           }}
+                          required
                         />
                       </div>
                     </div>
@@ -1700,6 +1953,7 @@ const Profile = () => {
                             const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
                             setDetailFormData({...detailFormData, ifsc: value});
                           }}
+                          required
                         />
                       </div>
                       <div className="form-group">
@@ -1773,6 +2027,7 @@ const Profile = () => {
                             }
                           }}
                           maxLength={40}
+                          required
                         />
                       </div>
                       <div className="form-group">
@@ -1789,6 +2044,7 @@ const Profile = () => {
                             }
                           }}
                           maxLength={40}
+                          required
                         />
                       </div>
                     </div>
@@ -1800,9 +2056,19 @@ const Profile = () => {
                           className="form-input" 
                           value={detailFormData.phone || ''} 
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            let value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            // If first digit is entered, ensure it's 6, 7, 8, or 9
+                            if (value.length > 0) {
+                              const firstDigit = value.charAt(0);
+                              if (!['6', '7', '8', '9'].includes(firstDigit)) {
+                                // Remove invalid first digit
+                                value = value.slice(1);
+                              }
+                            }
                             setDetailFormData({...detailFormData, phone: value});
                           }}
+                          placeholder="Must start with 6, 7, 8, or 9"
+                          required
                         />
                       </div>
                       <div className="form-group">
@@ -1838,6 +2104,7 @@ const Profile = () => {
                             }
                           }}
                           maxLength={40}
+                          required
                         />
                       </div>
                       <div className="form-group">
@@ -1854,6 +2121,7 @@ const Profile = () => {
                             }
                           }}
                           maxLength={40}
+                          required
                         />
                       </div>
                     </div>
@@ -1865,9 +2133,18 @@ const Profile = () => {
                           className="form-input" 
                           value={detailFormData.phone || ''} 
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            let value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            // If first digit is entered, ensure it's 6, 7, 8, or 9
+                            if (value.length > 0) {
+                              const firstDigit = value.charAt(0);
+                              if (!['6', '7', '8', '9'].includes(firstDigit)) {
+                                // Remove invalid first digit
+                                value = value.slice(1);
+                              }
+                            }
                             setDetailFormData({...detailFormData, phone: value});
                           }}
+                          placeholder="Must start with 6, 7, 8, or 9"
                         />
                       </div>
                       <div className="form-group">
@@ -1890,16 +2167,56 @@ const Profile = () => {
                   <>
                     <div className="form-group">
                       <label>Education Name *</label>
-                      <input type="text" className="form-input" value={detailFormData.education_name || ''} onChange={(e) => setDetailFormData({...detailFormData, education_name: e.target.value})} required />
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        value={detailFormData.education_name || ''} 
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value.length <= 25) {
+                            setDetailFormData({...detailFormData, education_name: value});
+                          }
+                        }}
+                        maxLength={25}
+                        placeholder="Enter education name (max 25 characters)"
+                        required
+                      />
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Pass Out Year</label>
-                        <input type="number" className="form-input" value={detailFormData.pass_out_year || ''} onChange={(e) => setDetailFormData({...detailFormData, pass_out_year: e.target.value})} />
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          value={detailFormData.pass_out_year || ''} 
+                          onChange={(e) => {
+                            const year = parseInt(e.target.value);
+                            const currentYear = new Date().getFullYear();
+                            if (!e.target.value || (year && year <= currentYear)) {
+                              setDetailFormData({...detailFormData, pass_out_year: e.target.value});
+                            }
+                          }}
+                          max={new Date().getFullYear()}
+                          placeholder="Past years only"
+                        />
                       </div>
                       <div className="form-group">
                         <label>Percentage</label>
-                        <input type="number" step="0.01" className="form-input" value={detailFormData.percentage || ''} onChange={(e) => setDetailFormData({...detailFormData, percentage: e.target.value})} />
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          className="form-input" 
+                          value={detailFormData.percentage || ''} 
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value);
+                            if (!e.target.value || (!isNaN(value) && value >= 0 && value <= 100)) {
+                              setDetailFormData({...detailFormData, percentage: e.target.value});
+                            }
+                          }}
+                          min="0"
+                          max="100"
+                          placeholder="0 to 100"
+                        />
                       </div>
                     </div>
                   </>
@@ -1921,19 +2238,25 @@ const Profile = () => {
                           }
                         }}
                         maxLength={40}
+                        required
                       />
                     </div>
                     <div className="form-row">
                       <div className="form-group">
                         <label>Year</label>
                         <input 
-                          type="text" 
+                          type="number" 
                           className="form-input" 
                           value={detailFormData.year || ''} 
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 4);
-                            setDetailFormData({...detailFormData, year: value});
+                            const year = parseInt(e.target.value);
+                            const currentYear = new Date().getFullYear();
+                            if (!e.target.value || (year && year <= currentYear)) {
+                              setDetailFormData({...detailFormData, year: e.target.value});
+                            }
                           }}
+                          max={new Date().getFullYear()}
+                          placeholder="Past years only"
                         />
                       </div>
                       <div className="form-group">

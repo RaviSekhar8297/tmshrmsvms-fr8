@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api, { attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiClock, FiCamera, FiX, FiChevronLeft, FiChevronRight, FiCalendar, FiChevronDown } from 'react-icons/fi';
+import { FiClock, FiCamera, FiX, FiChevronLeft, FiChevronRight, FiCalendar, FiChevronDown, FiPlus, FiLogOut, FiFileText, FiShield } from 'react-icons/fi';
+import DatePicker from '../../components/DatePicker';
 import '../employee/Employee.css';
 import './Punch.css';
 
@@ -36,6 +37,14 @@ const Punch = () => {
   const [selectedDateForModal, setSelectedDateForModal] = useState(null);
   const [attendanceCycle, setAttendanceCycle] = useState(null);
   const [lateLogTime, setLateLogTime] = useState(null);
+  const [showQuickActionMenu, setShowQuickActionMenu] = useState(false);
+  const [showLeavePopup, setShowLeavePopup] = useState(false);
+  const [showRequestPopup, setShowRequestPopup] = useState(false);
+  const [showPermissionPopup, setShowPermissionPopup] = useState(false);
+  const [leaveFormData, setLeaveFormData] = useState({ leave_type: '', reason: '' });
+  const [requestFormData, setRequestFormData] = useState({ type: '', subject: '', description: '', in_time: '', out_time: '' });
+  const [permissionFormData, setPermissionFormData] = useState({ type: '', from_date: '', from_time: '', to_date: '', to_time: '', reason: '' });
+  const quickActionMenuRef = useRef(null);
   
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -86,6 +95,14 @@ const Punch = () => {
       // API key should be set in backend .env file
       if (!apiKey) {
         console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
+        // Set coordinates as fallback even if API key is missing
+        const [lat, lng] = coordinates.split(',').map(c => parseFloat(c.trim()));
+        if (!isNaN(lat) && !isNaN(lng)) {
+          const coordString = `${lat}, ${lng}`;
+          setLocationName(null);
+          setLocation(coordString);
+          setIsGeocoding(false);
+        }
         return;
       }
       
@@ -141,6 +158,54 @@ const Punch = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showMonthPicker]);
+
+  // Close quick action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showQuickActionMenu && quickActionMenuRef.current && !quickActionMenuRef.current.contains(event.target)) {
+        setShowQuickActionMenu(false);
+      }
+    };
+    if (showQuickActionMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showQuickActionMenu]);
+
+  // When Permission popup opens, ensure From Date is prefilled from selected calendar date
+  // and keep To Date/Time in sync (same behavior as Permission.jsx).
+  useEffect(() => {
+    if (!showPermissionPopup) return;
+    if (!selectedDateForModal) return;
+
+    setPermissionFormData(prev => {
+      // If from_date is empty, prefill it with selectedDateForModal
+      const from_date = prev.from_date || selectedDateForModal;
+      const updated = { ...prev, from_date };
+
+      // Keep to_date aligned at least to from_date
+      if (!updated.to_date) updated.to_date = from_date;
+
+      // If from_time already selected, recompute to_date/to_time (+2 hours)
+      if (updated.from_time) {
+        const [hours, minutes] = updated.from_time.split(':');
+        let newHours = parseInt(hours, 10) + 2;
+        let newDate = from_date;
+        if (newHours >= 24) {
+          newHours -= 24;
+          const d = new Date(from_date);
+          d.setDate(d.getDate() + 1);
+          newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        updated.to_date = newDate;
+        updated.to_time = `${String(newHours).padStart(2, '0')}:${minutes}`;
+      }
+
+      return updated;
+    });
+  }, [showPermissionPopup, selectedDateForModal]);
 
   const fetchLeaves = async () => {
     try {
@@ -203,7 +268,12 @@ const Punch = () => {
       } else {
         // API key should be set in backend .env file
         console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
-        return;
+        // Set coordinates as fallback
+        const coordString = `${latitude}, ${longitude}`;
+        setLocationName(null);
+        setLocation(coordString);
+        setIsGeocoding(false);
+        return coordString;
       }
     }
     
@@ -211,6 +281,11 @@ const Punch = () => {
     try {
       const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`;
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Geocoding API error: ${response.status}`);
+      }
+      
       const data = await response.json();
       
       if (data.status === 'OK' && data.results && data.results.length > 0) {
@@ -225,6 +300,7 @@ const Punch = () => {
         setLocationName(null);
         setLocation(coordString);
         setIsGeocoding(false);
+        console.warn('Geocoding failed:', data.status, data.error_message || '');
         return coordString;
       }
     } catch (error) {
@@ -233,6 +309,7 @@ const Punch = () => {
       setLocationName(null);
       setLocation(coordString);
       setIsGeocoding(false);
+      console.error('Geocoding error:', error);
       return coordString;
     }
   };
@@ -626,6 +703,7 @@ const Punch = () => {
       setSelectedDateForModal(dateStr);
       setLoadingPunchLogs(true);
       setShowPunchLogsModal(true);
+      setShowQuickActionMenu(false);
       
       const response = await api.get('/attendance/punch-logs-by-date', {
         params: {
@@ -642,6 +720,188 @@ const Punch = () => {
     } finally {
       setLoadingPunchLogs(false);
     }
+  };
+
+  const handleQuickActionClick = (e) => {
+    e.stopPropagation();
+    setShowQuickActionMenu(!showQuickActionMenu);
+  };
+
+  const handleQuickActionSelect = (action) => {
+    setShowQuickActionMenu(false);
+    if (action === 'leave') {
+      setLeaveFormData({ leave_type: '', reason: '' });
+      setShowLeavePopup(true);
+    } else if (action === 'request') {
+      setRequestFormData({ type: '', subject: '', description: '', in_time: '', out_time: '' });
+      setShowRequestPopup(true);
+    } else if (action === 'permission') {
+      setPermissionFormData({ type: '', from_date: selectedDateForModal || '', from_time: '', to_date: selectedDateForModal || '', to_time: '', reason: '' });
+      setShowPermissionPopup(true);
+    }
+  };
+
+  const handleLeaveSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedDateForModal) {
+      toast.error('Please select a date');
+      return;
+    }
+    if (!leaveFormData.leave_type || !leaveFormData.reason.trim()) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+    if (leaveFormData.reason.trim().length < 10) {
+      toast.error('Reason must be at least 10 characters long');
+      return;
+    }
+    if (leaveFormData.reason.trim().length > 150) {
+      toast.error('Reason must not exceed 150 characters');
+      return;
+    }
+    try {
+      await api.post('/leaves', {
+        from_date: selectedDateForModal,
+        to_date: selectedDateForModal,
+        leave_type: leaveFormData.leave_type,
+        reason: leaveFormData.reason
+      });
+      toast.success('Leave request submitted successfully');
+      setShowLeavePopup(false);
+      setLeaveFormData({ leave_type: '', reason: '' });
+      // Refresh calendar to reflect approved leaves (if any) later
+      fetchPunchHistory();
+    } catch (error) {
+      const msg = error?.response?.data?.detail || error?.response?.data?.message || 'Failed to submit leave request';
+      toast.error(typeof msg === 'string' ? msg : 'Failed to submit leave request');
+    }
+  };
+
+  const handleRequestSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedDateForModal) {
+      toast.error('Please select a date');
+      return;
+    }
+    if (!requestFormData.type || !requestFormData.subject.trim() || !requestFormData.description.trim()) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    const requiresIn = requestFormData.type === 'full-day' || requestFormData.type === 'in-time';
+    const requiresOut = requestFormData.type === 'full-day' || requestFormData.type === 'out-time';
+
+    if (requiresIn && !requestFormData.in_time) {
+      toast.error('Please select In Time');
+      return;
+    }
+    if (requiresOut && !requestFormData.out_time) {
+      toast.error('Please select Out Time');
+      return;
+    }
+
+    const intime = requiresIn ? `${selectedDateForModal}T${requestFormData.in_time}:00` : null;
+    const outtime = requiresOut ? `${selectedDateForModal}T${requestFormData.out_time}:00` : null;
+
+    try {
+      await api.post('/requests', {
+        type: requestFormData.type,
+        subject: requestFormData.subject,
+        description: requestFormData.description,
+        intime,
+        outtime
+      });
+      toast.success('Request submitted successfully');
+      setShowRequestPopup(false);
+      setRequestFormData({ type: '', subject: '', description: '', in_time: '', out_time: '' });
+    } catch (error) {
+      const msg = error?.response?.data?.detail || error?.response?.data?.message || 'Failed to submit request';
+      toast.error(typeof msg === 'string' ? msg : 'Failed to submit request');
+    }
+  };
+
+  const handlePermissionSubmit = async (e) => {
+    e.preventDefault();
+    if (!permissionFormData.type || !permissionFormData.from_date || !permissionFormData.from_time || 
+        !permissionFormData.to_date || !permissionFormData.to_time || !permissionFormData.reason.trim()) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    try {
+      await api.post('/permissions', {
+        permission_type: permissionFormData.type,
+        from_datetime: `${permissionFormData.from_date}T${permissionFormData.from_time}:00`,
+        to_datetime: `${permissionFormData.to_date}T${permissionFormData.to_time}:00`,
+        reason: permissionFormData.reason
+      });
+      toast.success('Permission request submitted successfully');
+      setShowPermissionPopup(false);
+      setPermissionFormData({ type: '', from_date: '', from_time: '', to_date: '', to_time: '', reason: '' });
+    } catch (error) {
+      const msg = error?.response?.data?.detail || error?.response?.data?.message || 'Failed to submit permission request';
+      toast.error(typeof msg === 'string' ? msg : 'Failed to submit permission request');
+    }
+  };
+
+  const handlePermissionFromDateChange = (date) => {
+    const updated = { ...permissionFormData, from_date: date };
+
+    // If from_time exists, auto-calc to_date/to_time (+2 hours) same as Permission.jsx
+    if (date && permissionFormData.from_time) {
+      const [hours, minutes] = permissionFormData.from_time.split(':');
+      let newHours = parseInt(hours, 10) + 2;
+      let newDate = date;
+      if (newHours >= 24) {
+        newHours -= 24;
+        const d = new Date(date);
+        d.setDate(d.getDate() + 1);
+        newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+      const newTime = `${String(newHours).padStart(2, '0')}:${minutes}`;
+      updated.to_date = newDate;
+      updated.to_time = newTime;
+    } else if (date) {
+      updated.to_date = date;
+    }
+
+    setPermissionFormData(updated);
+  };
+
+  const handlePermissionFromTimeChange = (selectedTime) => {
+    if (selectedTime) {
+      // Validate time range (09:30 to 17:30) same as Permission.jsx
+      const [hours, minutes] = selectedTime.split(':').map(Number);
+      const totalMinutes = hours * 60 + minutes;
+      const minMinutes = 9 * 60 + 30; // 09:30
+      const maxMinutes = 17 * 60 + 30; // 17:30
+
+      if (totalMinutes < minMinutes || totalMinutes > maxMinutes) {
+        toast.error('Time must be between 09:30 and 17:30');
+        return;
+      }
+    }
+
+    const updated = { ...permissionFormData, from_time: selectedTime };
+
+    if (selectedTime && permissionFormData.from_date) {
+      const [hours, minutes] = selectedTime.split(':');
+      let newHours = parseInt(hours, 10) + 2;
+      let newDate = permissionFormData.from_date;
+
+      if (newHours >= 24) {
+        newHours -= 24;
+        const d = new Date(permissionFormData.from_date);
+        d.setDate(d.getDate() + 1);
+        newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      const newTime = `${String(newHours).padStart(2, '0')}:${minutes}`;
+      updated.to_date = newDate;
+      updated.to_time = newTime;
+    }
+
+    setPermissionFormData(updated);
   };
 
   const isAnniversaryDate = (dateStr) => {
@@ -725,6 +985,43 @@ const Punch = () => {
     const total1 = h1 * 60 + m1;
     const total2 = h2 * 60 + m2;
     return total1 > total2;
+  };
+
+  // Permission page uses attendance cycle range (26th - 25th by default) for date picker
+  const getPermissionValidDateRange = () => {
+    const formatLocalDate = (d) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (!attendanceCycle) {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+
+      const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const minDate = new Date(prevYear, prevMonth, 26);
+
+      const maxDate = new Date(currentYear, currentMonth, 25);
+
+      return { min: formatLocalDate(minDate), max: formatLocalDate(maxDate) };
+    }
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const cycleStartDate = attendanceCycle.attendance_cycle_start_date || 26;
+    const cycleEndDate = attendanceCycle.attendance_cycle_end_date || 25;
+
+    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const minDate = new Date(prevYear, prevMonth, cycleStartDate);
+    const maxDate = new Date(currentYear, currentMonth, cycleEndDate);
+
+    return { min: formatLocalDate(minDate), max: formatLocalDate(maxDate) };
   };
 
   const renderCalendar = () => {
@@ -1838,19 +2135,157 @@ const Punch = () => {
               <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 Punch Logs Details
               </h2>
-              <button
-                onClick={() => setShowPunchLogsModal(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '1.5rem',
-                  color: 'var(--text-secondary)',
-                  padding: '4px 8px'
-                }}
-              >
-                <FiX />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {(() => {
+                  if (!selectedDateForModal) return null;
+                  const selectedDayData = punchHistory.find(h => h.date === selectedDateForModal);
+                  const isBlocked = !!(selectedDayData?.week_off || selectedDayData?.holiday);
+                  if (isBlocked) return null;
+                  return (
+                  <div style={{ position: 'relative' }} ref={quickActionMenuRef}>
+                    <button
+                      onClick={handleQuickActionClick}
+                      style={{
+                        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '40px',
+                        height: '40px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        color: 'white',
+                        fontSize: '1.2rem',
+                        boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
+                        transition: 'all 0.3s ease',
+                        zIndex: 10
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
+                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(99, 102, 241, 0.6)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.4)';
+                      }}
+                    >
+                      <FiPlus />
+                    </button>
+                    {showQuickActionMenu && (
+                      <div 
+                        className="quick-action-menu"
+                        style={{
+                          position: 'absolute',
+                          top: '50px',
+                          right: 0,
+                          background: 'var(--bg-card)',
+                          borderRadius: '12px',
+                          border: '1px solid var(--border-color)',
+                          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+                          padding: '8px',
+                          minWidth: '180px',
+                          zIndex: 1001,
+                          animation: 'slideDownFade 0.3s ease'
+                        }}
+                      >
+                        <div
+                          onClick={() => handleQuickActionSelect('leave')}
+                          className="quick-action-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px 16px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            color: 'var(--text-primary)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                            e.currentTarget.style.transform = 'translateX(4px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.transform = 'translateX(0)';
+                          }}
+                        >
+                          <FiLogOut style={{ fontSize: '1.2rem', color: '#3b82f6' }} />
+                          <span style={{ fontWeight: 600 }}>Leave</span>
+                        </div>
+                        <div
+                          onClick={() => handleQuickActionSelect('request')}
+                          className="quick-action-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px 16px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            color: 'var(--text-primary)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                            e.currentTarget.style.transform = 'translateX(4px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.transform = 'translateX(0)';
+                          }}
+                        >
+                          <FiFileText style={{ fontSize: '1.2rem', color: '#10b981' }} />
+                          <span style={{ fontWeight: 600 }}>Request</span>
+                        </div>
+                        <div
+                          onClick={() => handleQuickActionSelect('permission')}
+                          className="quick-action-item"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px 16px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            color: 'var(--text-primary)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                            e.currentTarget.style.transform = 'translateX(4px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.transform = 'translateX(0)';
+                          }}
+                        >
+                          <FiShield style={{ fontSize: '1.2rem', color: '#f59e0b' }} />
+                          <span style={{ fontWeight: 600 }}>Permission</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  );
+                })()}
+                <button
+                  onClick={() => {
+                    setShowPunchLogsModal(false);
+                    setShowQuickActionMenu(false);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.5rem',
+                    color: 'var(--text-secondary)',
+                    padding: '4px 8px'
+                  }}
+                >
+                  <FiX />
+                </button>
+              </div>
             </div>
             
             {selectedDateForModal && (
@@ -1967,6 +2402,470 @@ const Punch = () => {
                 })()}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Leave Popup */}
+      {showLeavePopup && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}
+          onClick={() => setShowLeavePopup(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '500px',
+              width: '100%',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              animation: 'slideDownFade 0.3s ease'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Apply Leave</h3>
+              <button
+                onClick={() => setShowLeavePopup(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.5rem',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 8px'
+                }}
+              >
+                <FiX />
+              </button>
+            </div>
+            {selectedDateForModal && (
+              <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-hover)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                <strong>Date:</strong> {new Date(selectedDateForModal).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </div>
+            )}
+            <form onSubmit={handleLeaveSubmit}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Leave Type *
+                </label>
+                <select
+                  value={leaveFormData.leave_type}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, leave_type: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem'
+                  }}
+                  required
+                >
+                  <option value="">Select Leave Type</option>
+                  <option value="sick">Sick Leave</option>
+                  <option value="casual">Casual Leave</option>
+                  <option value="comp-off">Comp-Off Leave</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Reason * (10-150 characters)
+                </label>
+                <textarea
+                  value={leaveFormData.reason}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, reason: e.target.value })}
+                  rows="5"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    fontFamily: 'inherit',
+                    resize: 'vertical'
+                  }}
+                  placeholder="Enter reason for leave (minimum 10 characters, maximum 150 characters)..."
+                  minLength={10}
+                  maxLength={150}
+                  required
+                />
+                <small style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+                  {leaveFormData.reason.length}/150 characters
+                </small>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowLeavePopup(false)}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-hover)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Request Popup */}
+      {showRequestPopup && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}
+          onClick={() => setShowRequestPopup(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '500px',
+              width: '100%',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              animation: 'slideDownFade 0.3s ease'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Add Request</h3>
+              <button
+                onClick={() => setShowRequestPopup(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.5rem',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 8px'
+                }}
+              >
+                <FiX />
+              </button>
+            </div>
+            {selectedDateForModal && (
+              <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-hover)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                <strong>Date:</strong> {new Date(selectedDateForModal).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                <div style={{ marginTop: '8px', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                  <strong>Auto-filled Date:</strong> {selectedDateForModal}
+                </div>
+              </div>
+            )}
+            <form onSubmit={handleRequestSubmit}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Request Type *
+                </label>
+                <select
+                  value={requestFormData.type}
+                  onChange={(e) => setRequestFormData({ ...requestFormData, type: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem'
+                  }}
+                  required
+                >
+                  <option value="">Select Request Type</option>
+                  <option value="full-day">Full-Day</option>
+                  <option value="in-time">In-time</option>
+                  <option value="out-time">Out-Time</option>
+                </select>
+              </div>
+              {(requestFormData.type === 'full-day' || requestFormData.type === 'in-time' || requestFormData.type === 'out-time') && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  {(requestFormData.type === 'full-day' || requestFormData.type === 'in-time') ? (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        In Time *
+                      </label>
+                      <input
+                        type="time"
+                        value={requestFormData.in_time}
+                        onChange={(e) => setRequestFormData({ ...requestFormData, in_time: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)',
+                          background: 'var(--bg-card)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.95rem'
+                        }}
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+                  {(requestFormData.type === 'full-day' || requestFormData.type === 'out-time') ? (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Out Time *
+                      </label>
+                      <input
+                        type="time"
+                        value={requestFormData.out_time}
+                        onChange={(e) => setRequestFormData({ ...requestFormData, out_time: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)',
+                          background: 'var(--bg-card)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.95rem'
+                        }}
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+                </div>
+              )}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Subject *
+                </label>
+                <input
+                  type="text"
+                  value={requestFormData.subject}
+                  onChange={(e) => setRequestFormData({ ...requestFormData, subject: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem'
+                  }}
+                  placeholder="Enter subject..."
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Description *
+                </label>
+                <textarea
+                  value={requestFormData.description}
+                  onChange={(e) => setRequestFormData({ ...requestFormData, description: e.target.value })}
+                  rows="4"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    fontFamily: 'inherit',
+                    resize: 'vertical'
+                  }}
+                  placeholder="Enter description..."
+                  required
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowRequestPopup(false)}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-hover)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Submit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Permission Popup */}
+      {showPermissionPopup && (
+        <div className="modal-overlay" onClick={() => setShowPermissionPopup(false)}>
+          <div className="modal-content detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add Permission</h3>
+              <button className="modal-close" onClick={() => setShowPermissionPopup(false)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <form onSubmit={handlePermissionSubmit}>
+                <div className="form-group">
+                  <label>Permission Type *</label>
+                  <select
+                    name="type"
+                    value={permissionFormData.type}
+                    onChange={(e) => setPermissionFormData({ ...permissionFormData, type: e.target.value })}
+                    className="form-select"
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Select Type</option>
+                    <option value="morning-short-leave" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Morning-Short Leave</option>
+                    <option value="evening-short-leave" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>Evening-Short Leave</option>
+                  </select>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>From Date *</label>
+                    <DatePicker
+                      value={permissionFormData.from_date}
+                      onChange={handlePermissionFromDateChange}
+                      placeholder="Select from date"
+                      min={getPermissionValidDateRange().min}
+                      max={getPermissionValidDateRange().max}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>From Time *</label>
+                    <input
+                      type="time"
+                      value={permissionFormData.from_time}
+                      onChange={(e) => handlePermissionFromTimeChange(e.target.value)}
+                      min="09:30"
+                      max="17:30"
+                      className="form-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>To Date *</label>
+                    <input
+                      type="date"
+                      value={permissionFormData.to_date}
+                      className="form-input"
+                      readOnly
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-hover)',
+                        cursor: 'not-allowed'
+                      }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>To Time *</label>
+                    <input
+                      type="time"
+                      value={permissionFormData.to_time}
+                      className="form-input"
+                      readOnly
+                      style={{
+                        width: '100%',
+                        background: 'var(--bg-hover)',
+                        cursor: 'not-allowed'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Reason *</label>
+                  <textarea
+                    value={permissionFormData.reason}
+                    onChange={(e) => setPermissionFormData({ ...permissionFormData, reason: e.target.value })}
+                    rows="5"
+                    className="form-input"
+                    style={{ width: '100%' }}
+                    placeholder="Enter reason for permission..."
+                  />
+                </div>
+
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowPermissionPopup(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Submitting...' : 'Submit'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

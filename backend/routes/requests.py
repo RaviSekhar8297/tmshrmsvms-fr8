@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from database import get_db
-from models import Request, User, PunchLog, LeaveBalanceList
+from models import Request, User, PunchLog, LeaveBalanceList, WeekOffDate, Holiday
 from routes.auth import get_current_user
 from typing import Optional
 from pydantic import BaseModel
@@ -44,22 +44,73 @@ def create_request(
             outtime = datetime.fromisoformat(request_data.outtime.replace('Z', '+00:00'))
         except:
             pass
-    
-    # Check for duplicate requests (same date, same type, not rejected)
-    if intime:
-        intime_date = intime.date()
-        existing_request = db.query(Request).filter(
-            Request.empid == current_user.empid,
-            Request.type == request_data.type,
-            Request.status.in_(['pending', 'approved']),
-            func.date(Request.intime) == intime_date
-        ).first()
-        
-        if existing_request:
+
+    allowed_types = {"full-day", "in-time", "out-time", "overtime-comp-off"}
+    if request_data.type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid request type")
+
+    if not request_data.subject or request_data.subject.strip() == "":
+        raise HTTPException(status_code=400, detail="Subject is required")
+
+    if not request_data.description or request_data.description.strip() == "":
+        raise HTTPException(status_code=400, detail="Description is required")
+
+    # Validate required datetime fields based on request type
+    if request_data.type in {"full-day", "in-time", "overtime-comp-off"} and not intime:
+        raise HTTPException(status_code=400, detail="In time is required for this request type")
+
+    if request_data.type in {"full-day", "out-time", "overtime-comp-off"} and not outtime:
+        raise HTTPException(status_code=400, detail="Out time is required for this request type")
+
+    # Determine request date (used for duplicate and overtime validation)
+    request_date: Optional[date] = (intime.date() if intime else (outtime.date() if outtime else None))
+    if not request_date:
+        raise HTTPException(status_code=400, detail="Request date could not be determined")
+
+    # Basic ordering validation when both are present
+    if intime and outtime and outtime <= intime:
+        raise HTTPException(status_code=400, detail="Out time must be after In time")
+
+    # For overtime-comp-off: allow only Week-Off or Holiday dates (same rule as Requests.jsx dropdown)
+    if request_data.type == "overtime-comp-off":
+        # Week off check (employee-specific or global employee_id="0")
+        is_week_off = db.query(WeekOffDate).filter(
+            WeekOffDate.date == request_date,
+            WeekOffDate.employee_id.in_([str(current_user.empid), "0"])
+        ).first() is not None
+
+        # Holiday check - filter by branch_id via holiday_permissions
+        user_branch_id = current_user.branch_id if current_user.branch_id else 1
+        holiday_records = db.query(Holiday).filter(Holiday.date == request_date).all()
+        is_holiday = False
+        for holiday in holiday_records:
+            if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
+                continue
+            if any(perm.get("branch_id") == user_branch_id for perm in holiday.holiday_permissions):
+                is_holiday = True
+                break
+
+        if not (is_week_off or is_holiday):
             raise HTTPException(
-                status_code=400, 
-                detail=f"You have already applied for {request_data.type} on {intime_date.strftime('%Y-%m-%d')} with status: {existing_request.status}"
+                status_code=400,
+                detail="Over-Time(Comp-off) request can be applied only on Week-Off or Holiday dates"
             )
+
+    # Duplicate rule: only one pending/approved request per date (any type)
+    existing_request = db.query(Request).filter(
+        Request.empid == current_user.empid,
+        Request.status.in_(["pending", "approved"]),
+        func.date(func.coalesce(Request.intime, Request.outtime)) == request_date
+    ).first()
+
+    if existing_request:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This date already applied for {existing_request.type} on {request_date.strftime('%Y-%m-%d')}. "
+                f"Status: {existing_request.status}"
+            )
+        )
     
     new_request = Request(
         empid=current_user.empid,

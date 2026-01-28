@@ -18,7 +18,10 @@ const Reports = () => {
   const [downloading, setDownloading] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const employeeDropdownRef = useRef(null);
+  const employeeInputRef = useRef(null);
+  const employeeDropdownMenuRef = useRef(null);
 
   useEffect(() => {
     fetchFilterOptions();
@@ -27,7 +30,12 @@ const Reports = () => {
   // Handle click outside to close employee dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
+      if (
+        employeeDropdownRef.current && 
+        !employeeDropdownRef.current.contains(event.target) &&
+        employeeDropdownMenuRef.current &&
+        !employeeDropdownMenuRef.current.contains(event.target)
+      ) {
         setShowEmployeeDropdown(false);
       }
     };
@@ -108,146 +116,199 @@ const Reports = () => {
 
       {/* Filters */}
       <div className="card filters-card">
-        <div className="card-header">
-          <h3 className="card-title"><FiFilter /> Filters</h3>
+        <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}>
+          <h3 className="card-title" style={{ fontSize: '1rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FiFilter size={18} /> Filters
+          </h3>
         </div>
-        <div className="filters-grid">
-          <div className="form-group">
-            <label className="form-label">Project</label>
-            <select
-              className="form-select"
-              value={filters.project_id}
-              onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
-            >
-              <option value="">All Projects</option>
-              {filterOptions.projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
+        <div className="filters-container" style={{ padding: '16px' }}>
+          <div className="filters-grid">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>Project</label>
+              <select
+                className="form-select"
+                value={filters.project_id}
+                onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
+                style={{ padding: '8px 12px', fontSize: '0.9rem', width: '100%' }}
+              >
+                <option value="">All Projects</option>
+                {filterOptions.projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
 
-          <div className="form-group" ref={employeeDropdownRef} style={{ position: 'relative' }}>
-            <label className="form-label">Employee</label>
-            <div style={{ position: 'relative' }}>
-              <FiSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }} />
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search employee by name or ID..."
-                value={filters.employee_id ? (filterOptions.employees.find(e => e.id === parseInt(filters.employee_id))?.name || '') : employeeSearch}
-                onChange={(e) => {
-                  setEmployeeSearch(e.target.value);
-                  setShowEmployeeDropdown(true);
-                  if (!e.target.value) {
-                    setFilters({ ...filters, employee_id: '' });
-                  }
-                }}
-                onFocus={() => setShowEmployeeDropdown(true)}
-                style={{ paddingLeft: '40px' }}
-              />
-              {showEmployeeDropdown && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  zIndex: 1000,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  marginTop: '4px'
-                }}>
-                  {filterOptions.employees
-                    .filter(emp => {
-                      if (!employeeSearch.trim() && !filters.employee_id) return true;
+            <div className="form-group" ref={employeeDropdownRef} style={{ position: 'relative', marginBottom: 0, zIndex: 10 }}>
+              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>Employee</label>
+              <div style={{ position: 'relative', zIndex: 1001 }}>
+                <FiSearch style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1, fontSize: '16px' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Search employee by name or ID..."
+                  value={filters.employee_id && !employeeSearch ? (filterOptions.employees.find(e => e.id === parseInt(filters.employee_id))?.name || '') : employeeSearch}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setEmployeeSearch(value);
+                    setShowEmployeeDropdown(true);
+                    // Calculate dropdown position
+                    if (employeeInputRef.current) {
+                      const rect = employeeInputRef.current.getBoundingClientRect();
+                      setDropdownPosition({
+                        top: rect.bottom + window.scrollY + 4,
+                        left: rect.left + window.scrollX,
+                        width: rect.width
+                      });
+                    }
+                    // Clear employee selection when user starts typing or changes the value
+                    if (filters.employee_id) {
+                      const selectedEmployee = filterOptions.employees.find(e => e.id === parseInt(filters.employee_id));
+                      const selectedName = selectedEmployee?.name || '';
+                      // If user is typing something different from selected name, clear selection
+                      if (value !== selectedName) {
+                        setFilters({ ...filters, employee_id: '' });
+                      }
+                    }
+                    if (!value) {
+                      setFilters({ ...filters, employee_id: '' });
+                    }
+                  }}
+                  ref={employeeInputRef}
+                  onFocus={() => {
+                    setShowEmployeeDropdown(true);
+                    // Calculate dropdown position
+                    if (employeeInputRef.current) {
+                      const rect = employeeInputRef.current.getBoundingClientRect();
+                      setDropdownPosition({
+                        top: rect.bottom + window.scrollY + 4,
+                        left: rect.left + window.scrollX,
+                        width: rect.width
+                      });
+                    }
+                    // When focusing, if employee is selected, populate search field with name for editing
+                    if (filters.employee_id && !employeeSearch) {
+                      const selectedEmployee = filterOptions.employees.find(e => e.id === parseInt(filters.employee_id));
+                      if (selectedEmployee) {
+                        setEmployeeSearch(selectedEmployee.name || '');
+                      }
+                    }
+                  }}
+                  style={{ paddingLeft: '36px', paddingRight: '12px', paddingTop: '8px', paddingBottom: '8px', fontSize: '0.9rem', width: '100%' }}
+                />
+                {showEmployeeDropdown && (
+                  <div 
+                    ref={employeeDropdownMenuRef}
+                    style={{
+                      position: 'fixed',
+                      top: `${dropdownPosition.top}px`,
+                      left: `${dropdownPosition.left}px`,
+                      width: `${dropdownPosition.width || 300}px`,
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      maxHeight: '250px',
+                      overflowY: 'auto',
+                      zIndex: 10000,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  >
+                    {filterOptions.employees
+                      .filter(emp => {
+                        if (!employeeSearch.trim() && !filters.employee_id) return true;
+                        const search = employeeSearch.toLowerCase();
+                        const name = (emp.name || '').toLowerCase();
+                        const empid = (emp.empid || '').toLowerCase();
+                        const email = (emp.email || '').toLowerCase();
+                        return name.includes(search) || empid.includes(search) || email.includes(search);
+                      })
+                      .map((emp) => (
+                        <div
+                          key={emp.id}
+                          onClick={() => {
+                            setFilters({ ...filters, employee_id: emp.id.toString() });
+                            setEmployeeSearch('');
+                            setShowEmployeeDropdown(false);
+                          }}
+                          style={{
+                            padding: '10px 12px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid var(--border-color)',
+                            background: filters.employee_id === emp.id.toString() ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                            fontWeight: filters.employee_id === emp.id.toString() ? 600 : 400,
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (filters.employee_id !== emp.id.toString()) e.currentTarget.style.background = 'var(--bg-hover)';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (filters.employee_id !== emp.id.toString()) e.currentTarget.style.background = filters.employee_id === emp.id.toString() ? 'rgba(99, 102, 241, 0.1)' : 'transparent';
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {emp.empid} {emp.email ? `• ${emp.email}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    {filterOptions.employees.filter(emp => {
+                      if (!employeeSearch.trim() && !filters.employee_id) return false;
                       const search = employeeSearch.toLowerCase();
                       const name = (emp.name || '').toLowerCase();
                       const empid = (emp.empid || '').toLowerCase();
                       const email = (emp.email || '').toLowerCase();
                       return name.includes(search) || empid.includes(search) || email.includes(search);
-                    })
-                    .map((emp) => (
-                      <div
-                        key={emp.id}
-                        onClick={() => {
-                          setFilters({ ...filters, employee_id: emp.id.toString() });
-                          setEmployeeSearch('');
-                          setShowEmployeeDropdown(false);
-                        }}
-                        style={{
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          borderBottom: '1px solid var(--border-color)',
-                          background: filters.employee_id === emp.id.toString() ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                          fontWeight: filters.employee_id === emp.id.toString() ? 600 : 400,
-                          transition: 'all 0.2s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (filters.employee_id !== emp.id.toString()) e.currentTarget.style.background = 'var(--bg-hover)';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (filters.employee_id !== emp.id.toString()) e.currentTarget.style.background = filters.employee_id === emp.id.toString() ? 'rgba(99, 102, 241, 0.1)' : 'transparent';
-                        }}
-                      >
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '1rem' }}>{emp.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            {emp.empid} {emp.email ? `• ${emp.email}` : ''}
-                          </div>
-                        </div>
+                    }).length === 0 && (employeeSearch || filters.employee_id) && (
+                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                        No employees found
                       </div>
-                    ))}
-                  {filterOptions.employees.filter(emp => {
-                    if (!employeeSearch.trim() && !filters.employee_id) return false;
-                    const search = employeeSearch.toLowerCase();
-                    const name = (emp.name || '').toLowerCase();
-                    const empid = (emp.empid || '').toLowerCase();
-                    const email = (emp.email || '').toLowerCase();
-                    return name.includes(search) || empid.includes(search) || email.includes(search);
-                  }).length === 0 && (employeeSearch || filters.employee_id) && (
-                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No employees found
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>Start Date</label>
+              <DatePicker
+                value={filters.start_date}
+                onChange={(date) => setFilters({ ...filters, start_date: date || '' })}
+                placeholder="Select start date"
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ marginBottom: '6px', fontSize: '0.875rem', fontWeight: 500 }}>End Date</label>
+              <DatePicker
+                value={filters.end_date}
+                onChange={(date) => setFilters({ ...filters, end_date: date || '' })}
+                placeholder="Select end date"
+                min={filters.start_date || ''}
+              />
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Start Date</label>
-            <DatePicker
-              value={filters.start_date}
-              onChange={(date) => setFilters({ ...filters, start_date: date || '' })}
-              placeholder="Select start date"
-            />
+          <div className="filters-actions" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+            <button 
+              className="btn btn-primary" 
+              onClick={handleGenerateReport}
+              disabled={loading}
+              style={{ 
+                padding: '8px 20px', 
+                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {loading ? 'Generating...' : 'Generate Report'}
+            </button>
           </div>
-
-          <div className="form-group">
-            <label className="form-label">End Date</label>
-            <DatePicker
-              value={filters.end_date}
-              onChange={(date) => setFilters({ ...filters, end_date: date || '' })}
-              placeholder="Select end date"
-              min={filters.start_date || ''}
-            />
-          </div>
-        </div>
-
-        <div className="filters-actions">
-          <button 
-            className="btn btn-primary" 
-            onClick={handleGenerateReport}
-            disabled={loading}
-          >
-            {loading ? 'Generating...' : 'Generate Report'}
-          </button>
         </div>
       </div>
 

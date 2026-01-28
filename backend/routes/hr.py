@@ -1163,14 +1163,31 @@ def get_attendance_history_month(
     # Logic: If employee's branch_id (or default 1 if null) matches holiday's holiday_permissions → It's a holiday
     holiday_map = {}  # {empid: {date_key: True}} - per employee holiday dates
     for emp in employees:
-        emp_branch_id = emp.branch_id if emp.branch_id else 1  # Default to 1 if null/empty
+        # Normalize employee branch_id to int (holiday_permissions may store as int or string)
+        raw_emp_branch_id = emp.branch_id if emp.branch_id else 1  # Default to 1 if null/empty
+        try:
+            emp_branch_id = int(raw_emp_branch_id)
+        except (ValueError, TypeError):
+            emp_branch_id = 1
+        
         emp_holiday_dates = set()
         for holiday in holidays:
             # If holiday has no permissions, skip it
             if not holiday.holiday_permissions or len(holiday.holiday_permissions) == 0:
                 continue
             # Check if employee's branch_id exists in the holiday's holiday_permissions array
-            if any(perm.get('branch_id') == emp_branch_id for perm in holiday.holiday_permissions):
+            # Normalize permission branch_id to int for reliable comparison
+            match = False
+            for perm in holiday.holiday_permissions:
+                if perm and perm.get('branch_id') is not None:
+                    try:
+                        perm_branch_id = int(perm.get('branch_id'))
+                        if perm_branch_id == emp_branch_id:
+                            match = True
+                            break
+                    except (ValueError, TypeError):
+                        continue
+            if match:
                 date_key = holiday.date.isoformat()
                 emp_holiday_dates.add(date_key)
         holiday_map[emp.empid] = emp_holiday_dates

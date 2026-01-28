@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiMail, FiLock, FiEye, FiEyeOff, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import api from '../services/api';
 import './Login.css';
 
 const LOGO_URL = 'https://www.brihaspathi.com/highbtlogo%20white-%20tm.png';
@@ -12,6 +13,9 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
   const { login, token, user } = useAuth();
   const navigate = useNavigate();
 
@@ -58,6 +62,39 @@ const Login = () => {
       console.error('Login error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotPasswordEmail.trim()) {
+      toast.error('Please enter your email address');
+      return;
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(forgotPasswordEmail.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+    
+    setVerifyingEmail(true);
+    try {
+      await api.post('/auth/forgot-password', {
+        email: forgotPasswordEmail.trim()
+      });
+      toast.success('Password reset successful! Please check your email for the new password.');
+      setShowForgotPassword(false);
+      setForgotPasswordEmail('');
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail || error.response?.data?.message || 'Failed to reset password';
+      if (errorMsg.toLowerCase().includes('not found') || errorMsg.toLowerCase().includes('user not found')) {
+        toast.error('User Not found');
+      } else {
+        toast.error(errorMsg);
+      }
+    } finally {
+      setVerifyingEmail(false);
     }
   };
 
@@ -130,8 +167,164 @@ const Login = () => {
               'Sign In'
             )}
           </button>
+          
+          <div style={{ textAlign: 'center', marginTop: '20px' }}>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary)',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                padding: '8px 16px',
+                borderRadius: '6px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)';
+                e.currentTarget.style.color = 'var(--primary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'none';
+                e.currentTarget.style.color = 'var(--primary)';
+              }}
+            >
+              Forgot Password?
+            </button>
+          </div>
         </form>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}
+          onClick={() => {
+            setShowForgotPassword(false);
+            setForgotPasswordEmail('');
+          }}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card)',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '450px',
+              width: '100%',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              animation: 'slideDownFade 0.3s ease'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Forgot Password
+              </h3>
+              <button
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotPasswordEmail('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.5rem',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <FiX />
+              </button>
+            </div>
+            
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '20px', lineHeight: '1.6' }}>
+              Enter your email and we'll send you a new password.
+            </p>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Email Address *
+              </label>
+              <div className="input-with-icon">
+                <FiMail className="input-icon" />
+                <input
+                  type="email"
+                  value={forgotPasswordEmail}
+                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                  className="form-input"
+                  placeholder="Enter your email address"
+                  style={{ width: '100%' }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleForgotPassword();
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotPasswordEmail('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-hover)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.95rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={verifyingEmail}
+                className="btn btn-primary"
+                style={{
+                  padding: '10px 20px',
+                  fontSize: '0.95rem'
+                }}
+              >
+                {verifyingEmail ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></div>
+                    <span>Verifying...</span>
+                  </div>
+                ) : (
+                  'Verify'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

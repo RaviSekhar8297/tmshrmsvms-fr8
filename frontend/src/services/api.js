@@ -191,7 +191,7 @@ export const attendanceAPI = {
 };
 
 export const visitorsAPI = {
-  getAll: (status) => api.get('/vms/visitors', { params: { status } }),
+  getAll: (params) => api.get('/vms/visitors', { params }),
   getById: (id) => api.get(`/vms/visitors/${id}`),
   add: (data) => api.post('/vms/visitors/add', data),
   checkout: (id) => api.put(`/vms/visitors/${id}/checkout`),

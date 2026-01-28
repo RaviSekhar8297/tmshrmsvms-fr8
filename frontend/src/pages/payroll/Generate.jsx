@@ -18,9 +18,14 @@ const Generate = () => {
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   // Calculate previous month
   const getPreviousMonth = () => {
-    const today = new Date();
-    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    return prevMonth.toISOString().slice(0, 7);
+    // IMPORTANT: don't use toISOString() here (UTC conversion can shift month backward)
+    // Build YYYY-MM in local time.
+    const d = new Date();
+    d.setDate(1); // normalize to avoid end-of-month rollover issues
+    d.setMonth(d.getMonth() - 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
   };
 
   const [formData, setFormData] = useState({
@@ -145,7 +150,7 @@ const Generate = () => {
       toast.success(
         response.data.freaze_status
           ? 'Payslips viewed (visible to employees)'
-          : 'Payslips unviewed (not visible to employees)'
+          : 'Payslips hidden (not visible to employees)'
       );
     } catch (error) {
       console.error('Error toggling freeze status:', error);
@@ -244,7 +249,7 @@ const Generate = () => {
         branch_id: '',
         department_id: '',
         employee_id: 'all',
-        month: new Date().toISOString().slice(0, 7)
+        month: getPreviousMonth()
       });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to generate payroll');
@@ -322,7 +327,7 @@ const Generate = () => {
                   <FiEyeOff className="freeze-icon" />
                 )}
                 <span className="freeze-status">
-                  {card.freaze_status ? 'Viewed' : 'Unviewed'}
+                  {card.freaze_status ? 'Viewed' : 'Hidden'}
                 </span>
               </div>
               <div className="month-card-body">

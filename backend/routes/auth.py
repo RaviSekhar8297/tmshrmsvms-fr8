@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from utils import get_ist_now
 from database import get_db
 from models import User, AuthToken, SalaryStructure
-from schemas import LoginRequest, TokenResponse, UserResponse, ChangePasswordRequest
-from utils import verify_password, create_access_token, decode_token
+from schemas import LoginRequest, TokenResponse, UserResponse, ChangePasswordRequest, ForgotPasswordRequest
+from utils import verify_password, create_access_token, decode_token, hash_password
 from config import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -245,17 +245,106 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
     
     return user_dict
 
+@router.post("/verify-old-password")
+def verify_old_password(
+    password_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from utils import verify_password
+    
+    old_password = password_data.get("old_password")
+    if not old_password:
+        raise HTTPException(status_code=400, detail="Old password is required")
+    
+    # Verify old password
+    if not verify_password(old_password, current_user.password):
+        raise HTTPException(status_code=400, detail="Old password is incorrect")
+    
+    return {"message": "Old password verified successfully"}
+
 @router.post("/change-password")
 def change_password(
     password_data: ChangePasswordRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    from utils import hash_password
+    from utils import hash_password, verify_password
     
-    # Update password directly without requiring old password
-    # User is already authenticated via token
+    # Verify old password
+    if not verify_password(password_data.old_password, current_user.password):
+        raise HTTPException(status_code=400, detail="Old password is incorrect")
+    
+    # Update password
     current_user.password = hash_password(password_data.new_password)
     db.commit()
     
     return {"message": "Password changed successfully"}
+
+@router.post("/forgot-password")
+def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Forgot password - generate random password and send via email"""
+    import secrets
+    import string
+    from utils.email_service import send_forgot_password_email
+    
+    # Check if email exists in users table
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User Not found")
+    
+    # Generate random password (mixed: uppercase, lowercase, numbers, special chars)
+    # Password must be 6-12 characters with at least one capital, one small, one number, one special (.@#)
+    uppercase = string.ascii_uppercase
+    lowercase = string.ascii_lowercase
+    digits = string.digits
+    special = ".@#"
+    
+    # Ensure at least one of each type
+    password_chars = [
+        secrets.choice(uppercase),
+        secrets.choice(lowercase),
+        secrets.choice(digits),
+        secrets.choice(special)
+    ]
+    
+    # Fill remaining length (6-12 total) with random chars from all types
+    all_chars = uppercase + lowercase + digits + special
+    remaining_length = secrets.randbelow(5) + 2  # Random between 2-6 (total 6-10 chars)
+    password_chars.extend(secrets.choice(all_chars) for _ in range(remaining_length))
+    
+    # Shuffle to randomize order
+    secrets.SystemRandom().shuffle(password_chars)
+    new_password = ''.join(password_chars)
+    
+    # Hash the password
+    user.password = hash_password(new_password)
+    db.commit()
+    
+    # Determine greeting (Mr/Mrs based on name - simple check)
+    greeting = "Mr/Mrs"
+    if user.name:
+        # Simple check - if name contains common female titles/names, use Mrs, else Mr
+        name_lower = user.name.lower()
+        if any(title in name_lower for title in ['mrs', 'miss', 'ms', 'kumari', 'devi']):
+            greeting = "Mrs"
+        else:
+            greeting = "Mr"
+    
+    # Send email with new password
+    email_sent = send_forgot_password_email(
+        to_email=user.email,
+        user_name=user.name or "User",
+        greeting=greeting,
+        new_password=new_password
+    )
+    
+    if not email_sent:
+        # Even if email fails, password is already updated
+        # Log error but don't fail the request
+        print(f"Warning: Password reset successful but email failed to send to {user.email}")
+    
+    return {"message": "Password reset successful. Please check your email for the new password."}

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiMail, 
   FiPhone, FiUser, FiEye, FiEyeOff, FiGrid, FiList,
   FiChevronLeft, FiChevronRight, FiUpload, FiX, FiImage,
   FiBriefcase, FiMapPin, FiCalendar, FiHash,
-  FiBell, FiCheckCircle
+  FiBell, FiCheckCircle, FiChevronDown
 } from 'react-icons/fi';
 import api, { usersAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,96 @@ import Modal from '../components/Modal';
 import DatePicker from '../components/DatePicker';
 import toast from 'react-hot-toast';
 import './Users.css';
+
+// Searchable Select Component for Reports To
+const SearchableSelect = ({ value, onChange, options, placeholder, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(opt => opt.value === value);
+  const filteredOptions = options.filter(opt => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (opt.label || '').toLowerCase().includes(search);
+  });
+
+  const handleSelect = (optionValue) => {
+    onChange(optionValue);
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  return (
+    <div className="searchable-select" ref={dropdownRef}>
+      <div
+        className={`searchable-select-trigger ${disabled ? 'disabled' : ''}`}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+      >
+        <input
+          type="text"
+          readOnly
+          value={selectedOption?.label || placeholder || 'Select...'}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="searchable-select-input"
+          style={{ color: 'var(--text-primary)' }}
+        />
+        <FiChevronDown className={`searchable-select-arrow ${isOpen ? 'open' : ''}`} />
+      </div>
+      {isOpen && (
+        <div className="searchable-select-dropdown">
+          <div className="searchable-select-search">
+            <FiSearch />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search..."
+              autoFocus
+              className="searchable-select-search-input"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="searchable-select-clear"
+              >
+                <FiX size={14} />
+              </button>
+            )}
+          </div>
+          <div className="searchable-select-options">
+            {filteredOptions.length === 0 ? (
+              <div className="searchable-select-no-results">No results found</div>
+            ) : (
+              filteredOptions.map((option) => (
+                <div
+                  key={option.value}
+                  className={`searchable-select-option ${value === option.value ? 'selected' : ''}`}
+                  onClick={() => handleSelect(option.value)}
+                >
+                  {option.label}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Users = () => {
   const [users, setUsers] = useState([]);
@@ -848,7 +938,15 @@ const Users = () => {
               <label className="form-label">Date of Birth</label>
               <DatePicker
                 value={formData.dob}
-                onChange={(date) => setFormData({ ...formData, dob: date })}
+                onChange={(date) => {
+                  setFormData({ ...formData, dob: date });
+                  // If DOJ is before DOB, clear DOJ
+                  if (formData.doj && date && formData.doj < date) {
+                    setFormData(prev => ({ ...prev, dob: date, doj: '' }));
+                  } else {
+                    setFormData(prev => ({ ...prev, dob: date }));
+                  }
+                }}
                 placeholder="Select date of birth"
                 max={new Date().toISOString().split('T')[0]}
               />
@@ -859,6 +957,8 @@ const Users = () => {
                 value={formData.doj}
                 onChange={(date) => setFormData({ ...formData, doj: date })}
                 placeholder="Select date of joining"
+                min={formData.dob || undefined}
+                disabled={!formData.dob}
               />
             </div>
           </div>
@@ -942,24 +1042,17 @@ const Users = () => {
             </div>
             <div className="form-group">
               <label className="form-label">Reports To</label>
-              <select
-                className="form-select"
+              <SearchableSelect
                 value={formData.report_to_id}
-                onChange={(e) => setFormData({ ...formData, report_to_id: e.target.value })}
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <option value="">No one</option>
-                {user && (
-                  <option key="current-user" value={user.empid} style={{ color: 'var(--text-primary)' }}>{user.name} {user.role === 'Manager' ? '(You)' : ''}</option>
-                )}
-                {/* Show Admins if HR is logged in */}
-                {isHR && admins.filter(a => !user || a.empid !== user.empid).map((a) => (
-                  <option key={a.id} value={a.empid} style={{ color: 'var(--text-primary)' }}>{a.name} (Admin)</option>
-                ))}
-                {managers.filter(m => !user || m.empid !== user.empid).map((m) => (
-                  <option key={m.id} value={m.empid} style={{ color: 'var(--text-primary)' }}>{m.name}</option>
-                ))}
-              </select>
+                onChange={(value) => setFormData({ ...formData, report_to_id: value })}
+                placeholder="Select manager..."
+                options={[
+                  { value: '', label: 'No one' },
+                  ...(user ? [{ value: user.empid, label: `${user.name} ${user.role === 'Manager' ? '(You)' : ''}` }] : []),
+                  ...(isHR ? admins.filter(a => !user || a.empid !== user.empid).map(a => ({ value: a.empid, label: `${a.name} (Admin)` })) : []),
+                  ...managers.filter(m => !user || m.empid !== user.empid).map(m => ({ value: m.empid, label: m.name }))
+                ]}
+              />
             </div>
           </div>
 

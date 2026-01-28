@@ -1534,6 +1534,41 @@
   justify-content: center;
 }
 
+/* Policy Modal Overlay - Remove blur for clear display */
+.modal-overlay.policy-modal {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  background: rgba(0, 0, 0, 0.75) !important;
+}
+
+/* Policy Modal Content - Ensure no blur */
+.modal.policy-modal {
+  filter: none !important;
+  -webkit-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: translateZ(0) !important;
+  -webkit-transform: translateZ(0) !important;
+  will-change: auto !important;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  opacity: 1 !important;
+}
+
+/* Ensure modal body has no blur */
+.modal.policy-modal .modal-body {
+  filter: none !important;
+  -webkit-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
 /* Policy Viewer Styles */
 .policy-viewer-container {
   display: flex;
@@ -1544,6 +1579,15 @@
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: auto;
 }
 
 .policy-viewer-container > * {
@@ -1655,6 +1699,43 @@
   max-height: calc(90vh - 500px);
   position: relative;
   overflow: hidden;
+  filter: none !important;
+  -webkit-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+.pdf-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 10;
+  gap: 16px;
+}
+
+.pdf-loading-overlay .spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(99, 102, 241, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.pdf-loading-overlay p {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0;
 }
 
 /* Ensure iframe is properly styled */
@@ -1675,6 +1756,14 @@
   overflow: hidden;
   display: block;
   object-fit: contain;
+  position: relative;
+  z-index: 1;
+  filter: none !important;
+  -webkit-filter: none !important;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 
 /* Hide PDF viewer controls */

@@ -181,18 +181,63 @@ const WorkReport = () => {
   };
 
   const handleDelete = async (reportId) => {
-    if (!window.confirm('Are you sure you want to delete this work report?')) {
-      return;
-    }
-
-    try {
-      await api.delete(`/work-reports/${reportId}`);
-      toast.success('Work report deleted successfully');
-      fetchReports();
-    } catch (error) {
-      console.error('Error deleting work report:', error);
-      toast.error(error.response?.data?.detail || 'Failed to delete work report');
-    }
+    toast((t) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '300px' }}>
+        <div style={{ fontWeight: '600', fontSize: '1rem' }}>
+          Delete Work Report?
+        </div>
+        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+          Are you sure you want to delete this work report? This action cannot be undone.
+        </div>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+            }}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--bg-hover)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.9rem'
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id);
+              try {
+                await api.delete(`/work-reports/${reportId}`);
+                toast.success('Work report deleted successfully');
+                fetchReports();
+              } catch (error) {
+                console.error('Error deleting work report:', error);
+                toast.error(error.response?.data?.detail || 'Failed to delete work report');
+              }
+            }}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--danger)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: '600'
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: Infinity,
+      style: {
+        minWidth: '350px'
+      }
+    });
   };
 
   const getStatusBadge = (status) => {
@@ -385,20 +430,22 @@ const WorkReport = () => {
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div className="action-buttons">
                           <button
-                            className="btn-sm btn-secondary"
+                            className="btn-action-edit"
                             onClick={() => handleEdit(report)}
-                            title="Edit"
+                            title="Edit Work Report"
                           >
-                            <FiEdit2 />
+                            <FiEdit2 size={16} />
+                            <span>Edit</span>
                           </button>
                           <button
-                            className="btn-sm btn-danger"
+                            className="btn-action-delete"
                             onClick={() => handleDelete(report.report_id)}
-                            title="Delete"
+                            title="Delete Work Report"
                           >
-                            <FiTrash2 />
+                            <FiTrash2 size={16} />
+                            <span>Delete</span>
                           </button>
                         </div>
                       </td>

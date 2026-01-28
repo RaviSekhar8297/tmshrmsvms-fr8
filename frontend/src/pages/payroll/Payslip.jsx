@@ -14,7 +14,9 @@ const Payslip = () => {
   const getPreviousMonth = () => {
     const today = new Date();
     const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    return prevMonth.toISOString().slice(0, 7);
+    const year = prevMonth.getFullYear();
+    const month = String(prevMonth.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
   };
 
   const [monthYear, setMonthYear] = useState(getPreviousMonth());

@@ -1130,3 +1130,158 @@ def send_weekly_attendance_email(
     
     return send_email(employee_email, subject, "", html_body)
 
+
+def send_forgot_password_email(
+    to_email: str,
+    user_name: str,
+    greeting: str = "Mr/Mrs",
+    new_password: str = ""
+) -> bool:
+    """Send forgot password email with new password"""
+    subject = "Password Reset - Your New Password"
+    
+    html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background-color: #f3f4f6;
+            padding: 20px;
+        }}
+        .email-wrapper {{
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }}
+        .email-header {{
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }}
+        .logo-container img {{
+            max-width: 200px;
+            height: auto;
+        }}
+        .email-body {{
+            padding: 40px 30px;
+        }}
+        .greeting {{
+            font-size: 18px;
+            color: #1f2937;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }}
+        .message {{
+            font-size: 15px;
+            color: #4b5563;
+            line-height: 1.8;
+            margin-bottom: 25px;
+        }}
+        .password-box {{
+            background-color: #f9fafb;
+            border: 2px solid #2563eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: center;
+        }}
+        .password-label {{
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }}
+        .password-value {{
+            font-size: 24px;
+            font-weight: 700;
+            color: #2563eb;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+            word-break: break-all;
+        }}
+        .warning-box {{
+            background-color: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 25px;
+        }}
+        .warning-text {{
+            font-size: 14px;
+            color: #92400e;
+            line-height: 1.6;
+        }}
+        .email-footer {{
+            background-color: #f9fafb;
+            padding: 25px 30px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 13px;
+            color: #6b7280;
+        }}
+        .footer-company {{
+            font-weight: 600;
+            color: #2563eb;
+            margin-top: 5px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="email-header">
+            <div class="logo-container">
+                <img src="{BTL_LOGO_URL}" alt="Brihaspathi Technologies Limited" />
+            </div>
+        </div>
+        <div class="email-body">
+            <div class="greeting">Hello {greeting} {user_name},</div>
+            
+            <div class="message">
+                Your password has been reset successfully. Please use the new password provided below to login to your account.
+            </div>
+            
+            <div class="password-box">
+                <div class="password-label">Your New Password</div>
+                <div class="password-value">{new_password}</div>
+            </div>
+            
+            <div class="warning-box">
+                <div class="warning-text">
+                    <strong>⚠️ Security Notice:</strong><br>
+                    For your security, please change this password immediately after logging in. 
+                    Do not share this password with anyone.
+                </div>
+            </div>
+            
+            <div class="message" style="margin-top: 25px;">
+                If you did not request this password reset, please contact your system administrator immediately.
+            </div>
+        </div>
+        <div class="email-footer">
+            <div>This is an automated email from</div>
+            <div class="footer-company">Brihaspathi Technologies Limited</div>
+            <div style="margin-top: 8px;">Please do not reply to this email</div>
+            </div>
+    </div>
+</body>
+</html>
+"""
+    
+    return send_email(to_email, subject, "", html_body)
+
