@@ -14,6 +14,7 @@ const Punch = () => {
   const [punchHistory, setPunchHistory] = useState([]);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
+  const [punchDescription, setPunchDescription] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0); // total for today
   const [baseElapsed, setBaseElapsed] = useState(0); // completed elapsed (seconds)
   const [runningStart, setRunningStart] = useState(null); // Date when current run started
@@ -590,6 +591,7 @@ const Punch = () => {
     stopCamera();
     setShowCameraModal(false);
     setCapturedImage(null);
+    setPunchDescription('');
   };
 
   const handleSubmitPunch = async (punchType) => {
@@ -644,12 +646,14 @@ const Punch = () => {
       
       const response = await api.post(`/attendance/punch-${punchType}`, {
         image: imageToSend || null,
-        location: locationToSend || coordinates || 'Location not available'
+        location: locationToSend || coordinates || 'Location not available',
+        punch_description: punchDescription.trim() || null
       });
       
       toast.success(`Punched ${punchType === 'in' ? 'In' : 'Out'} successfully`);
       setShowCameraModal(false);
       setCapturedImage(null);
+      setPunchDescription('');
       fetchTodayPunches();
       fetchPunchHistory();
     } catch (error) {
@@ -2065,6 +2069,38 @@ const Punch = () => {
                     alt="Captured" 
                     style={{ width: '100%', maxWidth: '500px', borderRadius: '8px', marginBottom: '16px' }}
                   />
+                  <div style={{ marginBottom: '16px', width: '100%', maxWidth: '500px', margin: '0 auto 16px' }}>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '8px', 
+                      fontSize: '0.9rem', 
+                      fontWeight: 500, 
+                      color: 'var(--text-primary)' 
+                    }}>
+                      Description (optional)
+                    </label>
+                    <textarea
+                      value={punchDescription}
+                      onChange={(e) => setPunchDescription(e.target.value)}
+                      placeholder="Enter description..."
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        background: 'var(--bg-input)',
+                        color: 'var(--text-primary)',
+                        outline: 'none',
+                        transition: 'border-color 0.2s'
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = 'var(--primary-color)'}
+                      onBlur={(e) => e.target.style.borderColor = 'var(--border-color)'}
+                    />
+                  </div>
                   <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                     <button 
                       className="btn-primary" 
@@ -2084,6 +2120,7 @@ const Punch = () => {
                       className="btn-secondary" 
                       onClick={() => {
                         setCapturedImage(null);
+                        setPunchDescription('');
                         startCamera();
                       }}
                     >

@@ -348,6 +348,7 @@ class PunchLog(Base):
     punch_time = Column(DateTime, nullable=False)
     image = Column(Text, nullable=True)  # Base64 encoded image
     location = Column(Text, nullable=True)  # Location address
+    punch_description = Column(Text, nullable=True)  # Description for punch
     remarks = Column(Text, nullable=True)  # Remarks/notes
     status = Column(String(20), default='present')  # present, late, etc.
     created_at = Column(DateTime, default=get_ist_now)

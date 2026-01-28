@@ -1669,6 +1669,7 @@ def get_punch_history(
 class PunchRequest(BaseModel):
     image: Optional[str] = None
     location: Optional[str] = None
+    punch_description: Optional[str] = None
 
 class ModifyAttendanceRequest(BaseModel):
     employee_id: str
@@ -1697,6 +1698,7 @@ def punch_in(
         punch_time=current_time,
         image=punch_data.image,
         location=punch_data.location,
+        punch_description=punch_data.punch_description,
         status='present'
     )
     db.add(punch_log)
@@ -1762,6 +1764,7 @@ def punch_out(
         punch_time=current_time,
         image=punch_data.image,
         location=punch_data.location,
+        punch_description=punch_data.punch_description,
         status='present'
     )
     db.add(punch_log)

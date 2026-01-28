@@ -26,26 +26,52 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         
+        # Check if this is a docs endpoint - use more permissive CSP
+        # FastAPI docs endpoints: /docs, /redoc, /openapi.json
+        is_docs_endpoint = (
+            request.url.path.startswith("/docs") or 
+            request.url.path.startswith("/redoc") or 
+            request.url.path.startswith("/openapi.json")
+        )
+        
         # Add security headers to all responses
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         
         # Content-Security-Policy: More restrictive but allows necessary features
         # Note: 'unsafe-inline' and 'unsafe-eval' are required for React/Vite build
         # In production, consider using nonces for better security
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "img-src 'self' data: https: blob:; "
-            "font-src 'self' data: https://fonts.gstatic.com; "
-            "connect-src 'self' https: wss: ws:; "
-            "frame-src 'self' https://maps.googleapis.com; "
-            "frame-ancestors 'self'; "
-            "base-uri 'self'; "
-            "form-action 'self'; "
-            "object-src 'none'; "
-            "upgrade-insecure-requests"
-        )
+        if is_docs_endpoint:
+            # More permissive CSP for Swagger UI docs
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://cdn.jsdelivr.net https://unpkg.com; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com; "
+                "img-src 'self' data: https: blob:; "
+                "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+                "connect-src 'self' https: wss: ws:; "
+                "frame-src 'self' https://maps.googleapis.com; "
+                "frame-ancestors 'self'; "
+                "base-uri 'self'; "
+                "form-action 'self'; "
+                "object-src 'none'; "
+                "upgrade-insecure-requests"
+            )
+        else:
+            # Standard CSP for application endpoints
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "img-src 'self' data: https: blob:; "
+                "font-src 'self' data: https://fonts.gstatic.com; "
+                "connect-src 'self' https: wss: ws:; "
+                "frame-src 'self' https://maps.googleapis.com; "
+                "frame-ancestors 'self'; "
+                "base-uri 'self'; "
+                "form-action 'self'; "
+                "object-src 'none'; "
+                "upgrade-insecure-requests"
+            )
         
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-Content-Type-Options"] = "nosniff"
