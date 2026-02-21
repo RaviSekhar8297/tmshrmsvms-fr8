@@ -87,7 +87,7 @@ def get_image_data(image_data: str) -> tuple:
         return None, False
 
 def send_whatsapp_notification(employee_name: str, visitor_name: str, visit_purpose: str, address: str, date_of_visit: str, phone: str, image_data: str = None):
-    """Send WhatsApp notification with image"""
+    """Send WhatsApp notification with image - Based on reference API structure"""
     try:
         if not is_valid_phone(phone):
             print(f"Invalid phone number: {phone}")
@@ -106,65 +106,106 @@ def send_whatsapp_notification(employee_name: str, visitor_name: str, visit_purp
             image_to_use = DEFAULT_IMAGE_URL
             is_url = True
         
-        # Build payload according to API specification
+        # Format date of visit (convert to yyyy-MM-dd format if needed)
+        try:
+            # Try to parse and format the date
+            if '/' in date_of_visit:
+                # Format: dd/mm/yyyy HH:MM:SS
+                date_part = date_of_visit.split()[0]
+                day, month, year = date_part.split('/')
+                formatted_date = f"{year}-{month}-{day}"
+            else:
+                formatted_date = date_of_visit.split()[0] if ' ' in date_of_visit else date_of_visit
+        except:
+            formatted_date = date_of_visit
+        
+        # Build payload according to reference API specification
         payload = {
+            "apiKey": WHATSAPP_API_KEY,
             "campaignName": WHATSAPP_CAMPAIGN,
             "destination": phone_clean,
             "userName": "BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED",
-            "templateParams": [employee_name, visitor_name, visit_purpose, address, date_of_visit],
+            "templateParams": [employee_name, visitor_name, visit_purpose, address, formatted_date],
             "source": "new-landing-page form"
         }
         
-        # If image is a URL, add it to payload
-        if is_url:
-            payload["imageUrl"] = image_to_use
+        # Add media object if image is available
+        if is_url and image_to_use:
+            payload["media"] = {
+                "url": image_to_use,
+                "filename": "visitor_photo"
+            }
         
-        # Try multiple authentication methods
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
+        # Add interactive buttons (Approve/Reject/Wait)
+        payload["interactive"] = {
+            "type": "button",
+            "body": {
+                "text": "Please select an option:"
+            },
+            "action": {
+                "buttons": [
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "approve",
+                            "title": "✅ Approve"
+                        }
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "reject",
+                            "title": "❌ Reject"
+                        }
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "wait",
+                            "title": "⏳ Wait"
+                        }
+                    }
+                ]
+            }
         }
         
-        # Method 1: Bearer token in header
-        headers["Authorization"] = f"Bearer {WHATSAPP_API_KEY}"
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {WHATSAPP_API_KEY}"
+        }
         
         print(f"WhatsApp API Request:")
         print(f"  URL: {WHATSAPP_API_URL}")
         print(f"  Campaign: {WHATSAPP_CAMPAIGN}")
         print(f"  Phone: {phone_clean}")
-        print(f"  Payload: {payload}")
+        print(f"  Payload keys: {list(payload.keys())}")
         
-        # Try with Bearer token
         response = requests.post(WHATSAPP_API_URL, json=payload, headers=headers, timeout=30)
         
-        # If 401, try with API key as query parameter
-        if response.status_code == 401:
-            print("Bearer token failed (401), trying with API key as query parameter...")
-            url_with_key = f"{WHATSAPP_API_URL}?apiKey={WHATSAPP_API_KEY}"
-            headers_no_auth = {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-            response = requests.post(url_with_key, json=payload, headers=headers_no_auth, timeout=30)
-        
-        # If still 401, try with API key in payload
-        if response.status_code == 401:
-            print("Query parameter failed, trying with API key in payload...")
-            payload_with_key = payload.copy()
-            payload_with_key["apiKey"] = WHATSAPP_API_KEY
-            headers_no_auth = {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
-            response = requests.post(WHATSAPP_API_URL, json=payload_with_key, headers=headers_no_auth, timeout=30)
         if response.status_code == 200:
-            print(f"WhatsApp notification sent to {phone}")
+            print(f"WhatsApp notification sent successfully to {phone}")
             return True
         else:
             print(f"WhatsApp API error: {response.status_code} - {response.text}")
+            # Try without Authorization header if it fails
+            if response.status_code == 401:
+                print("Trying without Authorization header...")
+                headers_no_auth = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+                response = requests.post(WHATSAPP_API_URL, json=payload, headers=headers_no_auth, timeout=30)
+                if response.status_code == 200:
+                    print(f"WhatsApp notification sent successfully to {phone} (without auth header)")
+                    return True
+                else:
+                    print(f"WhatsApp API error (retry): {response.status_code} - {response.text}")
             return False
     except Exception as e:
         print(f"WhatsApp error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def send_email_notification(employee_name: str, employee_email: str, visitor_name: str, visit_purpose: str, address: str, date_of_visit: str, visitor_phone: str, visitor_email: str, image_data: str = None):
@@ -596,6 +637,213 @@ BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED"""
         print(f"Visitor email error: {str(e)}")
         return False
 
+def send_visitor_checkout_thankyou_email(visitor_name: str, visitor_email: str):
+    """Send thank-you and feedback email to visitor after checkout"""
+    try:
+        if not is_valid_email(visitor_email):
+            print(f"Invalid visitor email: {visitor_email}")
+            return False
+        
+        msg = MIMEMultipart('alternative')
+        msg['From'] = EMAIL_FROM
+        msg['To'] = visitor_email
+        msg['Subject'] = "Thank You for Visiting Brihaspathi Technologies Limited"
+        
+        # Create HTML email body with enhanced UI
+        html_body = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }}
+        .email-wrapper {{
+            max-width: 650px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }}
+        .email-header {{
+            background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+        }}
+        .email-header::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="2" fill="rgba(255,255,255,0.1)"/></svg>');
+            opacity: 0.3;
+        }}
+        .email-header h2 {{
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+            position: relative;
+            z-index: 1;
+            letter-spacing: 1px;
+        }}
+        .email-header .icon {{
+            font-size: 48px;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }}
+        .email-body {{
+            padding: 40px 35px;
+        }}
+        .greeting {{
+            font-size: 18px;
+            margin-bottom: 25px;
+            color: #1e40af;
+            font-weight: 600;
+        }}
+        .content {{
+            margin-bottom: 20px;
+            color: #4b5563;
+            font-size: 16px;
+            line-height: 1.8;
+        }}
+        .highlight-box {{
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%);
+            border-left: 4px solid #6366f1;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 8px;
+        }}
+        .social-links {{
+            margin: 35px 0;
+            padding: 25px;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+        }}
+        .social-links h3 {{
+            margin-bottom: 20px;
+            color: #1e293b;
+            font-size: 20px;
+            font-weight: 600;
+            text-align: center;
+        }}
+        .social-link {{
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #6366f1;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+        }}
+        .social-link:hover {{
+            background: linear-gradient(135deg, #e0e7ff 0%, #ddd6fe 100%);
+            transform: translateX(5px);
+            box-shadow: 0 4px 8px rgba(99, 102, 241, 0.2);
+        }}
+        .social-link::before {{
+            content: '🔗';
+            margin-right: 12px;
+            font-size: 20px;
+        }}
+        .social-link.facebook::before {{
+            content: '📘';
+        }}
+        .social-link.instagram::before {{
+            content: '📷';
+        }}
+        .social-link.linkedin::before {{
+            content: '💼';
+        }}
+        .footer {{
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }}
+        .footer p {{
+            margin: 8px 0;
+            font-size: 15px;
+        }}
+        .footer strong {{
+            font-size: 18px;
+            color: #fbbf24;
+        }}
+        .divider {{
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #6366f1, transparent);
+            margin: 30px 0;
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="email-header">
+            <div class="icon">🙏</div>
+            <h2>Thank You for Visiting</h2>
+        </div>
+        <div class="email-body">
+            <p class="content">Thank you for visiting <strong>Brihaspathi Technologies Limited</strong>.</p>
+            <p class="content">We would appreciate your valuable feedback at your convenience. Thank you in advance for your time and support.</p>
+        </div>
+        <div class="footer">
+            <p><strong>Best Regards,</strong></p>
+            <p>Brihaspathi Technologies Limited</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+        
+        # Create plain text version
+        text_body = """Thank you for visiting Brihaspathi Technologies Limited.
+
+We would appreciate your valuable feedback at your convenience. Thank you in advance for your time and support.
+
+
+Best regards,
+Brihaspathi Technologies Limited"""
+        
+        # Attach both plain text and HTML
+        part1 = MIMEText(text_body, 'plain')
+        part2 = MIMEText(html_body, 'html')
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_FROM, visitor_email, msg.as_string())
+        server.quit()
+        print(f"Visitor checkout thank-you email sent to {visitor_email}")
+        return True
+    except Exception as e:
+        print(f"Visitor checkout email error: {str(e)}")
+        return False
+
 def send_visitor_whatsapp_notification(visitor_name: str, visit_purpose: str, date_of_visit: str, employee_name: str, phone: str, image_data: str = None):
     """Send WhatsApp notification to visitor with their captured image"""
     try:
@@ -797,9 +1045,24 @@ def add_visitor(
                     date_of_visit = get_ist_now().strftime("%d/%m/%Y %H:%M:%S")
                     
                     # Send WhatsApp notification if consent is given and phone is valid
-                    if user_to_meet.whatsapp_consent and user_to_meet.phone:
+                    # For users 99 and 123123, send WhatsApp regardless of consent if phone exists
+                    whatsapp_consent = getattr(user_to_meet, 'whatsapp_consent', False)
+                    current_user_empid = getattr(current_user, 'empid', None)
+                    should_send_whatsapp = False
+                    
+                    # Check if we should send WhatsApp
+                    if user_to_meet.phone:
+                        # For users 99 and 123123, send regardless of consent
+                        if current_user_empid in ['99', '123123']:
+                            should_send_whatsapp = True
+                        # For other users, check consent
+                        elif whatsapp_consent is True:
+                            should_send_whatsapp = True
+                    
+                    if should_send_whatsapp:
+                        print(f"Attempting to send WhatsApp to {user_to_meet.name} (Phone: {user_to_meet.phone}, Consent: {whatsapp_consent}, User: {current_user_empid})")
                         try:
-                            send_whatsapp_notification(
+                            result = send_whatsapp_notification(
                                 employee_name=user_to_meet.name,
                                 visitor_name=visitor_data.fullname,
                                 visit_purpose=visitor_data.purpose or 'Not specified',
@@ -808,8 +1071,16 @@ def add_visitor(
                                 phone=user_to_meet.phone,
                                 image_data=image_url
                             )
+                            if result:
+                                print(f"WhatsApp notification sent successfully to {user_to_meet.name}")
+                            else:
+                                print(f"WhatsApp notification failed for {user_to_meet.name}")
                         except Exception as wa_error:
-                            print(f"WhatsApp notification error: {str(wa_error)}")
+                            print(f"WhatsApp notification error for {user_to_meet.name}: {str(wa_error)}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"WhatsApp not sent to {user_to_meet.name} - Consent: {whatsapp_consent}, Phone: {user_to_meet.phone if user_to_meet.phone else 'Not provided'}, Current User: {current_user_empid}")
                     
                     # Send Email notification if consent is given and email is valid
                     if user_to_meet.email_consent and user_to_meet.email:
@@ -833,45 +1104,8 @@ def add_visitor(
                 import traceback
                 traceback.print_exc()
         
-        # Send notifications to the visitor with their captured image
-        try:
-            from utils import get_ist_now
-            date_of_visit = get_ist_now().strftime("%d/%m/%Y %H:%M:%S")
-            employee_name = visitor_data.whometomeet or 'Not specified'
-            
-            # Send WhatsApp to visitor if phone is provided
-            if visitor_data.phone and is_valid_phone(visitor_data.phone):
-                try:
-                    send_visitor_whatsapp_notification(
-                        visitor_name=visitor_data.fullname,
-                        visit_purpose=visitor_data.purpose or 'Not specified',
-                        date_of_visit=date_of_visit,
-                        employee_name=employee_name,
-                        phone=visitor_data.phone,
-                        image_data=image_url
-                    )
-                except Exception as wa_error:
-                    print(f"Visitor WhatsApp notification error: {str(wa_error)}")
-            
-            # Send Email to visitor if email is provided
-            if visitor_data.email and is_valid_email(visitor_data.email):
-                try:
-                    send_visitor_email_notification(
-                        visitor_name=visitor_data.fullname,
-                        visitor_email=visitor_data.email,
-                        visit_purpose=visitor_data.purpose or 'Not specified',
-                        address=visitor_data.address or 'Not provided',
-                        date_of_visit=date_of_visit,
-                        employee_name=employee_name,
-                        image_data=image_url
-                    )
-                except Exception as email_error:
-                    print(f"Visitor email notification error: {str(email_error)}")
-        except Exception as e:
-            # Log error but don't fail the visitor creation
-            print(f"Error sending visitor notifications: {str(e)}")
-            import traceback
-            traceback.print_exc()
+        # Note: Visitor email/WhatsApp notifications are NOT sent when visitor is added
+        # They will be sent only when visitor is checked out (see checkout_visitor endpoint)
         
         return {
             "message": "Visitor added successfully",
@@ -1075,6 +1309,17 @@ def checkout_visitor(
     
     db.commit()
     db.refresh(visitor)
+    
+    # Send thank-you and feedback email to visitor after checkout
+    if visitor.email and is_valid_email(visitor.email):
+        try:
+            send_visitor_checkout_thankyou_email(
+                visitor_name=visitor.fullname,
+                visitor_email=visitor.email
+            )
+        except Exception as email_error:
+            # Log error but don't fail the checkout
+            print(f"Error sending checkout thank-you email: {str(email_error)}")
     
     return {
         "message": "Visitor checked out successfully",

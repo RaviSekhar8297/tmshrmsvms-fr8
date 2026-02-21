@@ -33,6 +33,7 @@ const Punch = () => {
   const [isDetectingFace, setIsDetectingFace] = useState(false);
   const detectionIntervalRef = useRef(null);
   const [showPunchLogsModal, setShowPunchLogsModal] = useState(false);
+  const [locationEnabled, setLocationEnabled] = useState(false);
   const [punchLogsData, setPunchLogsData] = useState([]);
   const [loadingPunchLogs, setLoadingPunchLogs] = useState(false);
   const [selectedDateForModal, setSelectedDateForModal] = useState(null);
@@ -86,32 +87,10 @@ const Punch = () => {
       
       geocodingAttemptedRef.current = true;
       
-      let apiKey = googleMapsApiKey;
-      
-      // Try to fetch from backend if not available
-      if (!apiKey) {
-        apiKey = await fetchGoogleMapsApiKey();
-      }
-      
-      // API key should be set in backend .env file
-      if (!apiKey) {
-        console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
-        // Set coordinates as fallback even if API key is missing
-        const [lat, lng] = coordinates.split(',').map(c => parseFloat(c.trim()));
-        if (!isNaN(lat) && !isNaN(lng)) {
-          const coordString = `${lat}, ${lng}`;
-          setLocationName(null);
-          setLocation(coordString);
-          setIsGeocoding(false);
-        }
-        return;
-      }
-      
-      if (apiKey) {
-        const [lat, lng] = coordinates.split(',').map(c => parseFloat(c.trim()));
-        if (!isNaN(lat) && !isNaN(lng)) {
-          await reverseGeocode(lat, lng, apiKey);
-        }
+      // Use backend proxy for geocoding
+      const [lat, lng] = coordinates.split(',').map(c => parseFloat(c.trim()));
+      if (!isNaN(lat) && !isNaN(lng)) {
+        await reverseGeocode(lat, lng);
       }
     };
     
@@ -261,39 +240,19 @@ const Punch = () => {
   };
 
   const reverseGeocode = async (latitude, longitude, apiKey) => {
-    if (!apiKey) {
-      // Try to fetch API key again, or use fallback
-      const fetchedKey = await fetchGoogleMapsApiKey();
-      if (fetchedKey) {
-        apiKey = fetchedKey;
-      } else {
-        // API key should be set in backend .env file
-        console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
-        // Set coordinates as fallback
-        const coordString = `${latitude}, ${longitude}`;
-        setLocationName(null);
-        setLocation(coordString);
-        setIsGeocoding(false);
-        return coordString;
-      }
-    }
-    
     setIsGeocoding(true);
     try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`;
-      const response = await fetch(url);
+      // Use backend proxy to avoid CSP issues
+      const response = await api.get('/attendance/geocode', {
+        params: { latitude, longitude }
+      });
       
-      if (!response.ok) {
-        throw new Error(`Geocoding API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.status === 'OK' && data.results && data.results.length > 0) {
-        const address = data.results[0].formatted_address;
+      if (response.data && response.data.address) {
+        const address = response.data.address;
         setLocationName(address);
         setLocation(address);
         setIsGeocoding(false);
+        setLocationEnabled(true);
         return address;
       } else {
         // If geocoding failed, just use coordinates
@@ -301,7 +260,8 @@ const Punch = () => {
         setLocationName(null);
         setLocation(coordString);
         setIsGeocoding(false);
-        console.warn('Geocoding failed:', data.status, data.error_message || '');
+        setLocationEnabled(true);
+        console.warn('Geocoding failed:', response.data?.status || 'UNKNOWN');
         return coordString;
       }
     } catch (error) {
@@ -310,6 +270,7 @@ const Punch = () => {
       setLocationName(null);
       setLocation(coordString);
       setIsGeocoding(false);
+      setLocationEnabled(true);
       console.error('Geocoding error:', error);
       return coordString;
     }
@@ -317,6 +278,9 @@ const Punch = () => {
 
   const getCurrentLocation = async () => {
     if (navigator.geolocation) {
+      setLocationEnabled(false);
+      setIsGeocoding(true);
+      setLocation('Getting location...');
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
@@ -324,20 +288,8 @@ const Punch = () => {
           const coordString = `${latitude}, ${longitude}`;
           setCoordinates(coordString);
           
-          // Always try to get API key and geocode
-          let apiKey = googleMapsApiKey;
-          if (!apiKey) {
-            apiKey = await fetchGoogleMapsApiKey();
-          }
-          
-          // API key should be set in backend .env file
-          if (!apiKey) {
-            console.warn('Google Maps API key not found. Please set GOOGLE_MAPS_API_KEY in backend .env file');
-            return;
-          }
-          
-          // Always try to geocode
-          await reverseGeocode(latitude, longitude, apiKey);
+          // Always try to geocode using backend proxy
+          await reverseGeocode(latitude, longitude);
         },
         (error) => {
           console.error('Error getting geolocation:', error);
@@ -345,6 +297,7 @@ const Punch = () => {
           setLocationName(null);
           setLocation('Location not available');
           setIsGeocoding(false);
+          setLocationEnabled(false);
         }
       );
     } else {
@@ -352,6 +305,7 @@ const Punch = () => {
       setLocationName(null);
       setLocation('Geolocation not supported');
       setIsGeocoding(false);
+      setLocationEnabled(false);
     }
   };
 
@@ -509,37 +463,63 @@ const Punch = () => {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     
-    // Improved face detection using skin tone and feature analysis
+    // Improved face detection - focus on upper center area (head region)
     let faceScore = 0;
     const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const centerRadius = Math.min(canvas.width, canvas.height) * 0.25;
+    const centerY = canvas.height * 0.35; // Focus on upper 35% (head area, not hand)
+    const centerRadius = Math.min(canvas.width, canvas.height) * 0.2; // Smaller radius for head
     
-    // Check center area for face-like features
-    const sampleRate = 5; // Sample every 5 pixels for better performance
+    // Check upper center area for face-like features (head region)
+    const sampleRate = 4; // Sample every 4 pixels for better accuracy
+    let skinToneCount = 0;
+    let totalSamples = 0;
+    
+    // Upper region (head area)
     for (let y = centerY - centerRadius; y < centerY + centerRadius; y += sampleRate) {
       for (let x = centerX - centerRadius; x < centerX + centerRadius; x += sampleRate) {
         if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+          totalSamples++;
           const idx = (Math.floor(y) * canvas.width + Math.floor(x)) * 4;
           const r = data[idx];
           const g = data[idx + 1];
           const b = data[idx + 2];
           
-          // Improved skin tone detection
+          // Improved skin tone detection (more strict for face)
           if (r > 95 && g > 40 && b > 20 && 
               Math.max(r, g, b) - Math.min(r, g, b) > 15 &&
               Math.abs(r - g) > 15 && r > g && r > b &&
               r < 250 && g < 250 && b < 250) {
-            faceScore++;
+            skinToneCount++;
           }
         }
       }
     }
     
-    // Threshold for face detection
-    const sampleCount = ((centerRadius * 2 / sampleRate) * (centerRadius * 2 / sampleRate));
-    const threshold = sampleCount * 0.15; // 15% of samples should match skin tone
-    const detected = faceScore > threshold;
+    // Check for face-like structure: need significant skin tone in upper center
+    // Also check for darker regions (eyes, hair) around the face area
+    let darkRegionCount = 0;
+    const faceAreaRadius = centerRadius * 1.2;
+    for (let y = centerY - faceAreaRadius; y < centerY + faceAreaRadius; y += sampleRate * 2) {
+      for (let x = centerX - faceAreaRadius; x < centerX + faceAreaRadius; x += sampleRate * 2) {
+        if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+          const idx = (Math.floor(y) * canvas.width + Math.floor(x)) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const brightness = (r + g + b) / 3;
+          
+          // Dark regions (eyes, hair) should be present around face
+          if (brightness < 80) {
+            darkRegionCount++;
+          }
+        }
+      }
+    }
+    
+    // Threshold: at least 20% skin tone in upper center AND some dark regions (eyes/hair)
+    const skinToneRatio = totalSamples > 0 ? skinToneCount / totalSamples : 0;
+    const hasDarkRegions = darkRegionCount > 5; // At least some dark regions (eyes/hair)
+    const detected = skinToneRatio > 0.20 && hasDarkRegions; // More strict: 20% skin tone + dark regions
     
     setFaceDetected(detected);
   };
@@ -1490,12 +1470,27 @@ const Punch = () => {
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexDirection: 'column'
           }}>
-            <span className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px', borderTopColor: '#3b82f6' }}></span>
-            <span style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-              Getting location...
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              {isGeocoding ? (
+                <span className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px', borderTopColor: '#3b82f6' }}></span>
+              ) : (
+                <span style={{ fontSize: '20px' }}>📍</span>
+              )}
+              <span style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                Please Enable Your Location
+              </span>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={getCurrentLocation}
+              disabled={isGeocoding}
+              style={{ minWidth: '200px' }}
+            >
+              Enable Location
+            </button>
           </div>
         )}
       </div>
@@ -1564,8 +1559,9 @@ const Punch = () => {
               <button 
                 className="btn-primary" 
                 onClick={handlePunchClick}
-                disabled={loading}
-                style={{ flex: 1 }}
+                disabled={loading || !locationEnabled}
+                style={{ flex: 1, opacity: (!locationEnabled) ? 0.6 : 1 }}
+                title={!locationEnabled ? 'Please enable location first' : ''}
               >
                 {loading ? 'Processing...' : 'Punch In'}
               </button>
@@ -1573,8 +1569,9 @@ const Punch = () => {
               <button 
                 className="btn-primary" 
                 onClick={handlePunchClick}
-                disabled={loading}
-                style={{ flex: 1, background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' }}
+                disabled={loading || !locationEnabled}
+                style={{ flex: 1, background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', opacity: (!locationEnabled) ? 0.6 : 1 }}
+                title={!locationEnabled ? 'Please enable location first' : ''}
               >
                 {loading ? 'Processing...' : 'Punch Out'}
               </button>

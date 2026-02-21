@@ -2238,6 +2238,43 @@ def get_google_maps_key(
     """Get Google Maps API key for frontend"""
     return {"api_key": settings.GOOGLE_MAPS_API_KEY}
 
+@router.get("/attendance/geocode")
+def reverse_geocode(
+    latitude: float,
+    longitude: float,
+    current_user: User = Depends(get_current_user)
+):
+    """Reverse geocode coordinates to address using Google Maps API (proxy to avoid CSP issues)"""
+    import requests
+    
+    if not settings.GOOGLE_MAPS_API_KEY:
+        raise HTTPException(status_code=500, detail="Google Maps API key not configured")
+    
+    try:
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={latitude},{longitude}&key={settings.GOOGLE_MAPS_API_KEY}"
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('status') == 'OK' and data.get('results') and len(data['results']) > 0:
+            return {
+                "address": data['results'][0]['formatted_address'],
+                "status": "OK"
+            }
+        else:
+            # Return coordinates as fallback
+            return {
+                "address": f"{latitude}, {longitude}",
+                "status": data.get('status', 'UNKNOWN')
+            }
+    except Exception as e:
+        # Return coordinates as fallback on error
+        return {
+            "address": f"{latitude}, {longitude}",
+            "status": "ERROR",
+            "error": str(e)
+        }
+
 @router.get("/attendance/previous")
 def get_previous_attendance(
     start_date: Optional[str] = None,

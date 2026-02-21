@@ -1163,46 +1163,49 @@ const Profile = () => {
             <form onSubmit={handlePasswordChange}>
               <div className="form-group">
                 <label className="form-label">Old Password</label>
-                <div style={{ position: 'relative', display: 'flex', gap: '8px' }}>
-                  <input
-                    type={showOldPassword ? 'text' : 'password'}
-                    className="form-input"
-                    style={{ paddingRight: '40px', flex: 1 }}
-                    value={passwordData.old_password}
-                    onChange={(e) => {
-                      setPasswordData({ ...passwordData, old_password: e.target.value });
-                      setOldPasswordVerified(false);
-                    }}
-                    placeholder="Enter old password"
-                    disabled={oldPasswordVerified}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowOldPassword(!showOldPassword)}
-                    style={{
-                      position: 'absolute',
-                      right: '12px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--text-secondary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '4px'
-                    }}
-                  >
-                    {showOldPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
-                  </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <input
+                      type={showOldPassword ? 'text' : 'password'}
+                      className="form-input"
+                      style={{ paddingRight: '40px', width: '100%' }}
+                      value={passwordData.old_password}
+                      onChange={(e) => {
+                        setPasswordData({ ...passwordData, old_password: e.target.value });
+                        setOldPasswordVerified(false);
+                      }}
+                      placeholder="Enter old password"
+                      disabled={oldPasswordVerified}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowOldPassword(!showOldPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '4px',
+                        zIndex: 1
+                      }}
+                    >
+                      {showOldPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                    </button>
+                  </div>
                   {!oldPasswordVerified && (
                     <button
                       type="button"
                       onClick={verifyOldPassword}
                       className="btn btn-secondary"
                       disabled={verifyingOldPassword || !passwordData.old_password}
-                      style={{ whiteSpace: 'nowrap' }}
+                      style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       {verifyingOldPassword ? 'Verifying...' : 'Verify'}
                     </button>
@@ -1883,10 +1886,10 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Detail Modals */}
+      {/* Detail Modals - close only via close icon or Cancel, not overlay */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => { setShowModal(null); setEditingIndex(null); setDetailFormData({}); }}>
-          <div className="modal-content detail-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal-content detail-modal">
             <div className="modal-header">
               <h3>
                 {editingIndex !== null ? 'Edit' : 'Add'} {

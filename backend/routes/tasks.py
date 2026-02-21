@@ -20,6 +20,61 @@ from sqlalchemy import extract, func as sql_func
 UTC = timezone.utc
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
+# ---------------------------------------------------------------------------
+# Schema (as per your tables):
+#   users:  id, empid, name, report_to_id (report_to_id = manager's empid)
+#   tasks:  assigned_to_id = users.id (assignee's user id, not empid)
+#
+# Under-and-under display: for current user (e.g. id=266), get their empid from
+# users; build list of users.id for self + all subordinates (report_to_id chain);
+# show tasks where tasks.assigned_to_id IN (that list).
+# ---------------------------------------------------------------------------
+
+
+def _normalize_empid(value) -> Optional[str]:
+    """Normalize empid/report_to_id for comparison (string, stripped)."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
+
+
+def get_all_subordinate_user_ids(db: Session, manager_empid, _visited: set = None) -> List[int]:
+    """
+    Returns list of users.id for: self + all direct and indirect subordinates
+    (under of under). Uses users.empid and users.report_to_id only.
+
+    tasks.assigned_to_id stores users.id → filter tasks by assigned_to_id IN (this list).
+    """
+    manager_str = _normalize_empid(manager_empid)
+    if not manager_str:
+        return []
+    if _visited is None:
+        _visited = set()
+    if manager_str in _visited:
+        return []
+    _visited.add(manager_str)
+    ids = []
+    # users table: find manager by empid, get users.id
+    manager_user = db.query(User).filter(User.empid == manager_str).first()
+    if manager_user:
+        ids.append(manager_user.id)
+    # users table: direct reports where report_to_id = this manager's empid
+    direct_reports = db.query(User).filter(
+        User.report_to_id == manager_str,
+        User.is_active == True
+    ).all()
+    for r in direct_reports:
+        if r.id not in ids:
+            ids.append(r.id)
+        # Subordinate's subordinates (users.report_to_id = r.empid)
+        sub_ids = get_all_subordinate_user_ids(db, r.empid, _visited)
+        for sid in sub_ids:
+            if sid not in ids:
+                ids.append(sid)
+    return ids
+
+
 @router.get("/calendar")
 def get_calendar_tasks(
     month: int = None,
@@ -48,14 +103,17 @@ def get_calendar_tasks(
                 )
             )
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
-            team_ids.append(current_user.id)
-            query = query.filter(
-                or_(
-                    Task.assigned_by_id == current_user.id,
-                    Task.assigned_to_id.in_(team_ids) if team_ids else False
+            # Users (empid, report_to_id) → hierarchy user ids; tasks.assigned_to_id in that list
+            team_ids = get_all_subordinate_user_ids(db, current_user.empid)
+            if team_ids:
+                query = query.filter(
+                    or_(
+                        Task.assigned_by_id == current_user.id,
+                        Task.assigned_to_id.in_(team_ids)
+                    )
                 )
-            )
+            else:
+                query = query.filter(Task.assigned_by_id == current_user.id)
         
         # Filter by month and year
         query = query.filter(
@@ -120,16 +178,18 @@ def get_tasks(
                 )
             )
         elif current_user.role == "Manager":
-            # Manager can see tasks they created or assigned to their team
-            # Limit team query for performance
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).limit(100).all()]
-            team_ids.append(current_user.id)
-            query = query.filter(
-                or_(
-                    Task.assigned_by_id == current_user.id,
-                    Task.assigned_to_id.in_(team_ids) if team_ids else False
+            # Users table: get hierarchy by empid, report_to_id → list of users.id
+            # Tasks table: show only tasks where assigned_to_id is in that list
+            team_ids = get_all_subordinate_user_ids(db, current_user.empid)
+            if team_ids:
+                query = query.filter(
+                    or_(
+                        Task.assigned_by_id == current_user.id,
+                        Task.assigned_to_id.in_(team_ids)
+                    )
                 )
-            )
+            else:
+                query = query.filter(Task.assigned_by_id == current_user.id)
         
         # Limit to 500 tasks for performance
         tasks = query.order_by(Task.created_at.desc()).limit(500).all()
@@ -174,14 +234,17 @@ def get_task_stats(
                 )
             )
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
-            team_ids.append(current_user.id)
-            query = query.filter(
-                or_(
-                    Task.assigned_by_id == current_user.id,
-                    Task.assigned_to_id.in_(team_ids) if team_ids else False
+            # Users (empid, report_to_id) → hierarchy; filter tasks by assigned_to_id
+            team_ids = get_all_subordinate_user_ids(db, current_user.empid)
+            if team_ids:
+                query = query.filter(
+                    or_(
+                        Task.assigned_by_id == current_user.id,
+                        Task.assigned_to_id.in_(team_ids)
+                    )
                 )
-            )
+            else:
+                query = query.filter(Task.assigned_by_id == current_user.id)
         
         tasks = query.all()
         
@@ -218,9 +281,12 @@ def get_tasks_by_employee(
     if current_user.role == "Employee":
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Get employees based on role
+    # Get employees based on role (Manager: full hierarchy of subordinates)
     if current_user.role == "Manager":
-        employees = db.query(User).filter(User.report_to_id == current_user.empid, User.is_active == True).all()
+        subordinate_ids = get_all_subordinate_user_ids(db, current_user.empid)
+        subordinate_ids_set = set(subordinate_ids)
+        subordinate_ids_set.discard(current_user.id)  # exclude self for "by employee" list
+        employees = db.query(User).filter(User.id.in_(subordinate_ids_set), User.is_active == True).all() if subordinate_ids_set else []
     else:
         employees = db.query(User).filter(User.role == "Employee", User.is_active == True).all()
     
@@ -384,8 +450,7 @@ def get_task_details(
             if task.assigned_to_id != current_user.id and not (task.assigned_to_ids and any(m.get("empid") == current_user.empid for m in (task.assigned_to_ids or []))):
                 raise HTTPException(status_code=403, detail="Access denied")
         elif current_user.role == "Manager":
-            team_ids = [u.id for u in db.query(User).filter(User.report_to_id == current_user.empid).all()]
-            team_ids.append(current_user.id)
+            team_ids = get_all_subordinate_user_ids(db, current_user.empid)
             if task.assigned_by_id != current_user.id and task.assigned_to_id not in team_ids:
                 raise HTTPException(status_code=403, detail="Access denied")
         # Admin has full access, no check needed

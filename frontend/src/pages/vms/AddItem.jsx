@@ -140,7 +140,8 @@ const AddItem = () => {
       autocompleteRef.current.addListener('place_changed', () => {
         const place = autocompleteRef.current.getPlace();
         if (place.formatted_address) {
-          setFormData({ ...formData, address: place.formatted_address });
+          // Use functional update to preserve all form fields
+          setFormData(prev => ({ ...prev, address: place.formatted_address }));
         }
       });
     }
@@ -503,7 +504,7 @@ const AddItem = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Visitor Management</h1>
+        <h1>VISITOR MANAGEMENT</h1>
       </div>
 
       {/* Tabs - Dashboard is first, then Add Visitor (hidden for Employee, HR, Manager, and Admin), then Visitors List */}
@@ -530,7 +531,7 @@ const AddItem = () => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              console.log('Switching to add tab');
+             
               setActiveTab('add');
             }}
           >
@@ -543,7 +544,6 @@ const AddItem = () => {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Switching to list tab');
             setActiveTab('list');
           }}
         >
@@ -819,7 +819,7 @@ const AddItem = () => {
                           type="button"
                           onClick={() => {
                             setCapturedImage(null);
-                            setFormData({ ...formData, selfie: '' });
+                            setFormData(prev => ({ ...prev, selfie: '' }));
                           }}
                           style={{
                             position: 'absolute',
@@ -828,28 +828,29 @@ const AddItem = () => {
                             background: 'rgba(239, 68, 68, 0.9)',
                             color: 'white',
                             border: 'none',
-                            borderRadius: '8px',
-                            padding: '10px 16px',
+                            borderRadius: '50%',
+                            width: '40px',
+                            height: '40px',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
-                            fontSize: '0.9rem',
-                            fontWeight: 600,
+                            justifyContent: 'center',
                             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                             transition: 'all 0.2s',
-                            zIndex: 10
+                            zIndex: 10,
+                            padding: 0
                           }}
                           onMouseEnter={(e) => {
                             e.target.style.background = 'rgba(239, 68, 68, 1)';
-                            e.target.style.transform = 'scale(1.05)';
+                            e.target.style.transform = 'scale(1.1)';
                           }}
                           onMouseLeave={(e) => {
                             e.target.style.background = 'rgba(239, 68, 68, 0.9)';
                             e.target.style.transform = 'scale(1)';
                           }}
+                          title="Remove Image"
                         >
-                          <FiX size={18} /> Remove Image
+                          <FiX size={20} />
                         </button>
                       </div>
                     </div>
@@ -934,8 +935,15 @@ const AddItem = () => {
               }} style={{ flex: '1 1 auto', minWidth: '120px' }}>
                 Clear
               </button>
-              <button type="submit" className="btn btn-primary" disabled={loading} style={{ flex: '1 1 auto', minWidth: '120px' }}>
-                {loading ? 'Submitting...' : 'Add Visitor'}
+              <button type="submit" className="btn btn-primary" disabled={loading} style={{ flex: '1 1 auto', minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                {loading ? (
+                  <>
+                    <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', borderTopColor: 'white' }}></div>
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  'Add Visitor'
+                )}
               </button>
             </div>
           </form>

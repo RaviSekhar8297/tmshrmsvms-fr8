@@ -11,9 +11,11 @@ import {
   FiPackage
 } from 'react-icons/fi';
 import './Sidebar.css';
+import logo2 from '../images/btlbluelogo.png';
 
-const LOGO_URL_DARK = 'https://www.brihaspathi.com/highbtlogo%20white-%20tm.png';
-const LOGO_URL_LIGHT = 'https://www.brihaspathi.com/highbtlogo%20tm%20(1).png';
+// Fallback if imported images fail to load
+const BTL_WHITE_LOGO_PLACEHOLDER = '/images/btlwhitelogo.svg';
+const BTL_BLUE_LOGO_PLACEHOLDER = '/images/btlbluelogo.svg';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout, isEmployee } = useAuth();
@@ -101,7 +103,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Employee'] },
     { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Employee'] },
     { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Employee'] },
-    { path: '/payroll/tax', icon: FiPercent, label: 'Tax', roles: ['Employee'] },
   ];
 
   // Self Section (for Manager, HR, Admin)
@@ -119,7 +120,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/self/work-report', icon: FiTrendingUp, label: 'Work Report', roles: ['Manager', 'HR'] },
     { path: '/self/contact-details', icon: FiPhone, label: 'Contact Details', roles: ['Manager', 'HR'] },
     { path: '/policies', icon: FiFileText, label: 'Policies', roles: ['Admin', 'Manager', 'HR'] },
-    { path: '/payroll/tax', icon: FiPercent, label: 'Tax', roles: ['Manager', 'HR'] },
   ];
 
   // Employees Section (for Manager - managing employees)
@@ -264,11 +264,15 @@ const Sidebar = ({ isOpen, onClose }) => {
       <div className="sidebar-header">
         <div className="logo">
           <div className="logo-icon">
-            <img 
-              src={isDarkMode ? LOGO_URL_DARK : LOGO_URL_LIGHT} 
-              alt="TMS Logo" 
-              className="sidebar-logo-image" 
+            <img
+              src={logo2}
+              alt="TMS Logo"
+              className="sidebar-logo-image"
               style={isDarkMode ? {} : { filter: 'none' }}
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = isDarkMode ? BTL_WHITE_LOGO_PLACEHOLDER : BTL_BLUE_LOGO_PLACEHOLDER;
+              }}
             />
           </div>
           {/* <span className="logo-text">TMS</span> */}

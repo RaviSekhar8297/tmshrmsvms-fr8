@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { weekOffsAPI, holidaysAPI } from '../../services/api';
+import { weekOffsAPI, holidaysAPI, attendanceAPI } from '../../services/api';
 import toast from 'react-hot-toast';
+import { FiCalendar } from 'react-icons/fi';
 import DatePicker from '../../components/DatePicker';
 import './Employee.css';
 
@@ -32,6 +33,7 @@ const ApplyLeave = () => {
   const [contacts, setContacts] = useState([]);
   const [invalidDatesList, setInvalidDatesList] = useState([]);
   const [disabledDates, setDisabledDates] = useState([]);
+  const [attendanceCycle, setAttendanceCycle] = useState(null);
   const [formData, setFormData] = useState({
     from_date: '',
     to_date: '',
@@ -47,6 +49,28 @@ const ApplyLeave = () => {
     fetchContacts();
     // Fetch week off dates and holidays
     fetchDisabledDates();
+    // Fetch attendance cycle
+    fetchAttendanceCycle();
+    
+    // Refresh balance when page becomes visible (e.g., after leave approval/rejection)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchLeaveBalance();
+      }
+    };
+    
+    // Refresh balance on window focus (user returns to page)
+    const handleFocus = () => {
+      fetchLeaveBalance();
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const fetchDisabledDates = async () => {
@@ -138,6 +162,71 @@ const ApplyLeave = () => {
     // Fetch leave balance
     fetchLeaveBalance();
   }, [user, contacts]);
+
+  const fetchAttendanceCycle = async () => {
+    try {
+      const response = await attendanceAPI.getCycle();
+      if (response.data) {
+        setAttendanceCycle(response.data);
+      }
+    } catch (error) {
+      // Default to 26-25 cycle if fetch fails
+      setAttendanceCycle({
+        attendance_cycle_start_date: 26,
+        attendance_cycle_end_date: 25
+      });
+    }
+  };
+
+  // Calculate valid date range based on attendance cycle (inclusive: start and end dates are both included)
+  const getValidDateRange = () => {
+    // Helper function to format date as YYYY-MM-DD in local timezone
+    const formatLocalDate = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (!attendanceCycle) {
+      // Default to 26-25 cycle
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      
+      // Previous month 26th (inclusive)
+      const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const minDate = new Date(prevYear, prevMonth, 26);
+      
+      // Current month 25th (inclusive)
+      const maxDate = new Date(currentYear, currentMonth, 25);
+      
+      return {
+        min: formatLocalDate(minDate), // Includes 26th
+        max: formatLocalDate(maxDate)  // Includes 25th
+      };
+    }
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const cycleStartDate = attendanceCycle.attendance_cycle_start_date || 26;
+    const cycleEndDate = attendanceCycle.attendance_cycle_end_date || 25;
+
+    // Previous month cycle start date (inclusive)
+    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const minDate = new Date(prevYear, prevMonth, cycleStartDate);
+    
+    // Current month cycle end date (inclusive)
+    const maxDate = new Date(currentYear, currentMonth, cycleEndDate);
+    
+    return {
+      min: formatLocalDate(minDate), // Includes cycle start date (e.g., 26th)
+      max: formatLocalDate(maxDate)  // Includes cycle end date (e.g., 25th)
+    };
+  };
 
   const fetchContacts = async () => {
     try {
@@ -544,30 +633,88 @@ const ApplyLeave = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label>From Date *</label>
-              <DatePicker
-                value={formData.from_date}
-                onChange={(date) => {
-                  setFormData(prev => ({ ...prev, from_date: date }));
-                }}
-                min={new Date().toISOString().split('T')[0]}
-                max={`${new Date().getFullYear()}-12-31`}
-                placeholder="Select from date"
-                disabledDates={disabledDates}
-              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <FiCalendar style={{ color: 'var(--primary)' }} />
+                From Date *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <DatePicker
+                  value={formData.from_date}
+                  onChange={(date) => {
+                    setFormData(prev => ({ ...prev, from_date: date }));
+                  }}
+                  min={getValidDateRange().min}
+                  max={getValidDateRange().max}
+                  placeholder="Select from date"
+                  disabledDates={disabledDates}
+                />
+                {formData.from_date && (
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 8px',
+                    background: 'var(--bg-hover)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    <FiCalendar size={14} style={{ color: 'var(--primary)' }} />
+                    <span>
+                      {new Date(formData.from_date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="form-group">
-              <label>To Date *</label>
-              <DatePicker
-                value={formData.to_date}
-                onChange={(date) => {
-                  setFormData(prev => ({ ...prev, to_date: date }));
-                }}
-                min={formData.from_date || new Date().toISOString().split('T')[0]}
-                max={`${new Date().getFullYear()}-12-31`}
-                placeholder="Select to date"
-                disabledDates={disabledDates}
-              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <FiCalendar style={{ color: 'var(--primary)' }} />
+                To Date *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <DatePicker
+                  value={formData.to_date}
+                  onChange={(date) => {
+                    setFormData(prev => ({ ...prev, to_date: date }));
+                  }}
+                  min={formData.from_date || getValidDateRange().min}
+                  max={getValidDateRange().max}
+                  placeholder="Select to date"
+                  disabledDates={disabledDates}
+                />
+                {formData.to_date && (
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 8px',
+                    background: 'var(--bg-hover)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    <FiCalendar size={14} style={{ color: 'var(--primary)' }} />
+                    <span>
+                      {new Date(formData.to_date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

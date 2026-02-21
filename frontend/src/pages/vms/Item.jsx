@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import Modal from '../../components/Modal';
-import { FiPackage, FiUsers, FiCalendar, FiPlus, FiEdit, FiTrash2, FiSave, FiX, FiSearch, FiDownload } from 'react-icons/fi';
+import { FiPackage, FiUsers, FiCalendar, FiPlus, FiEdit, FiTrash2, FiSave, FiX, FiSearch, FiDownload, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import './VMS.css';
 
@@ -45,6 +45,8 @@ const Item = () => {
   // Issues data
   const [issuesMatrix, setIssuesMatrix] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [issuesPage, setIssuesPage] = useState(1);
+  const issuesPerPage = 50;
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueForm, setIssueForm] = useState({
     item_id: '',
@@ -119,6 +121,11 @@ const Item = () => {
       }
     }
   }, [activeTab, user?.role]);
+
+  // Reset issues pagination when data / search changes
+  useEffect(() => {
+    setIssuesPage(1);
+  }, [searchTerm, issuesMatrix]);
 
   const fetchDashboard = async () => {
     setLoading(true);
@@ -515,23 +522,37 @@ const Item = () => {
   };
 
   const exportToExcel = () => {
-    if (!issuesMatrix) return;
+    if (!issuesMatrix) {
+      toast.error('No data available to export');
+      return;
+    }
     
     const data = [];
     
-    // Header row
-    const headerRow = ['Employee', ...issuesMatrix.items.map(item => item.item_name)];
+    // Header row - handle empty items array
+    const items = issuesMatrix.items || [];
+    const employees = issuesMatrix.employees || [];
+    const headerRow = ['Employee', ...items.map(item => item.item_name)];
     data.push(headerRow);
     
-    // Data rows
-    issuesMatrix.employees.forEach(employee => {
-      const row = [employee.name];
-      issuesMatrix.items.forEach(item => {
-        const count = issuesMatrix.matrix[employee.empid]?.items[item.item_id] || 0;
-        row.push(count);
+    // Data rows - handle empty employees array
+    if (employees.length === 0) {
+      // If no employees, still create a row with "No employees" and zeros
+      const row = ['No employees assigned'];
+      items.forEach(() => {
+        row.push(0);
       });
       data.push(row);
-    });
+    } else {
+      employees.forEach(employee => {
+        const row = [employee.name];
+        items.forEach(item => {
+          const count = issuesMatrix.matrix?.[employee.empid]?.items?.[item.item_id] || 0;
+          row.push(count);
+        });
+        data.push(row);
+      });
+    }
     
     // Create workbook and worksheet
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -549,6 +570,17 @@ const Item = () => {
         emp.empid.toLowerCase().includes(searchTerm.toLowerCase())
       ) || [])
     : (issuesMatrix?.employees || []); // Manager/Employee see only their own data (no search needed)
+
+  const issuesEmployeesToRender =
+    (user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123')
+      ? filteredEmployees
+      : (issuesMatrix?.employees || []);
+
+  const issuesTotalPages = Math.max(1, Math.ceil((issuesEmployeesToRender?.length || 0) / issuesPerPage));
+  const issuesPageSafe = Math.min(Math.max(1, issuesPage), issuesTotalPages);
+  const issuesStartIndex = (issuesPageSafe - 1) * issuesPerPage;
+  const issuesEndIndex = issuesStartIndex + issuesPerPage;
+  const issuesEmployeesPage = (issuesEmployeesToRender || []).slice(issuesStartIndex, issuesEndIndex);
 
   const filteredAllEmployees = allEmployees.filter(emp =>
     emp.name.toLowerCase().includes(employeeSearchTerm.toLowerCase()) ||
@@ -592,7 +624,7 @@ const Item = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Stationery Items Management</h1>
+        <h1>STATIONERY ITEMS MANAGEMENT</h1>
       </div>
 
       {/* Tabs */}
@@ -925,27 +957,34 @@ const Item = () => {
             </div>
           ) : issuesMatrix ? (
             <div className="card">
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflow: 'auto', maxHeight: '70vh' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 10 }}>Employee</th>
+                      <th style={{ position: 'sticky', left: 0, top: 0, background: 'var(--bg-card)', zIndex: 30 }}>
+                        Employee
+                      </th>
                       {issuesMatrix.items?.map((item) => (
-                        <th key={item.item_id}>{item.item_name}</th>
+                        <th
+                          key={item.item_id}
+                          style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 20 }}
+                        >
+                          {item.item_name}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {((user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') ? filteredEmployees : issuesMatrix.employees).length === 0 ? (
+                    {issuesEmployeesToRender.length === 0 ? (
                       <tr>
                         <td colSpan={(issuesMatrix.items?.length || 0) + 1} className="text-center">
                           {(user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') ? 'No employees found' : 'No items assigned'}
                         </td>
                       </tr>
                     ) : (
-                      ((user?.role === 'HR' || user?.role === 'Admin' || user?.empid === '99' || user?.empid === '123123') ? filteredEmployees : issuesMatrix.employees).map((employee) => (
+                      issuesEmployeesPage.map((employee) => (
                         <tr key={employee.empid}>
-                          <td style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', fontWeight: '600' }}>
+                          <td style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', fontWeight: '600', zIndex: 10 }}>
                             {employee.name}
                           </td>
                           {issuesMatrix.items?.map((item) => (
@@ -959,6 +998,45 @@ const Item = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination - Matching Users page style (50 records per page) */}
+              {issuesEmployeesToRender.length > 0 && (
+                <div className="pagination">
+                  <div className="pagination-info">
+                    Showing {issuesStartIndex + 1} to {Math.min(issuesEndIndex, issuesEmployeesToRender.length)} of {issuesEmployeesToRender.length} employees
+                  </div>
+                  {issuesTotalPages > 1 && (
+                    <div className="pagination-controls">
+                      <button
+                        type="button"
+                        className="pagination-btn"
+                        onClick={() => setIssuesPage(issuesPageSafe - 1)}
+                        disabled={issuesPageSafe === 1}
+                      >
+                        <FiChevronLeft />
+                      </button>
+                      {Array.from({ length: issuesTotalPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          className={`pagination-btn ${issuesPageSafe === page ? 'active' : ''}`}
+                          onClick={() => setIssuesPage(page)}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="pagination-btn"
+                        onClick={() => setIssuesPage(issuesPageSafe + 1)}
+                        disabled={issuesPageSafe === issuesTotalPages}
+                      >
+                        <FiChevronRight />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
         </div>

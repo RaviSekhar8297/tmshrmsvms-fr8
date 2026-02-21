@@ -5,8 +5,12 @@ import { FiMail, FiLock, FiEye, FiEyeOff, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import './Login.css';
+import logo1 from '../images/btlwhitelogo.jpeg';
+import logo2 from '../images/btlbluelogo.png';
 
-const LOGO_URL = 'https://www.brihaspathi.com/highbtlogo%20white-%20tm.png';
+// Fallback if imported image fails to load
+const BTL_WHITE_LOGO_PLACEHOLDER = '/images/btlwhitelogo.svg';
+
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -66,22 +70,25 @@ const Login = () => {
   };
 
   const handleForgotPassword = async () => {
-    if (!forgotPasswordEmail.trim()) {
+    const email = forgotPasswordEmail.trim().toLowerCase();
+    if (!email) {
       toast.error('Please enter your email address');
       return;
     }
-    
+    if (email.length > 40) {
+      toast.error('Email must be at most 40 characters');
+      return;
+    }
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(forgotPasswordEmail.trim())) {
+    if (!emailRegex.test(email)) {
       toast.error('Please enter a valid email address');
       return;
     }
-    
     setVerifyingEmail(true);
     try {
       await api.post('/auth/forgot-password', {
-        email: forgotPasswordEmail.trim()
+        email
       });
       toast.success('Password reset successful! Please check your email for the new password.');
       setShowForgotPassword(false);
@@ -107,8 +114,17 @@ const Login = () => {
       
       <div className="login-card">
         <div className="login-header">
+
           <div className="login-logo">
-            <img src={LOGO_URL} alt="TMS Logo" className="logo-image" />
+            <img
+              src={logo2}
+              alt="TMS Logo"
+              className="logo-image"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = BTL_WHITE_LOGO_PLACEHOLDER;
+              }}
+            />
           </div>
           <h1>Welcome Back</h1>
           <p>Sign in to your Task Management System</p>
@@ -269,10 +285,12 @@ const Login = () => {
                 <input
                   type="email"
                   value={forgotPasswordEmail}
-                  onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                  onChange={(e) => setForgotPasswordEmail(e.target.value.toLowerCase().slice(0, 40))}
                   className="form-input"
-                  placeholder="Enter your email address"
+                  placeholder="Enter your email address (lowercase, max 40 characters)"
                   style={{ width: '100%' }}
+                  maxLength={40}
+                  autoComplete="email"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       handleForgotPassword();

@@ -28,7 +28,6 @@ const PayrollStructure = () => {
       // Backend already filters by role, so we just use the response directly
       setSalaryStructures(response.data);
     } catch (error) {
-      console.error('Error fetching salary structures:', error);
       toast.error('Failed to load salary structures');
     } finally {
       setLoading(false);
@@ -109,7 +108,6 @@ const PayrollStructure = () => {
       
       toast.success('Excel file downloaded successfully');
     } catch (error) {
-      console.error('Error downloading Excel:', error);
       toast.error('Failed to download Excel file');
     }
   };
@@ -137,14 +135,12 @@ const PayrollStructure = () => {
       toast.success(`Excel uploaded successfully! Updated: ${response.data.updated}, Created: ${response.data.created}`);
       
       if (response.data.errors && response.data.errors.length > 0) {
-        console.warn('Upload errors:', response.data.errors);
         toast.error(`${response.data.errors.length} errors occurred during upload`);
       }
 
       fetchSalaryStructures();
       e.target.value = ''; // Reset file input
     } catch (error) {
-      console.error('Error uploading Excel:', error);
       toast.error(error.response?.data?.detail || 'Failed to upload Excel file');
     } finally {
       setUploading(false);
@@ -232,7 +228,7 @@ const PayrollStructure = () => {
               />
             </label>
           )}
-          {user?.role !== 'Admin' && (
+          {(user?.role === 'HR' || user?.role === 'Admin') && (
             <button className="btn btn-secondary" onClick={handleDownloadExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FiDownload />
               Download Excel

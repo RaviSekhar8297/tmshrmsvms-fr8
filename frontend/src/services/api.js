@@ -25,6 +25,21 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Handle network errors (ECONNRESET, ECONNREFUSED, etc.)
+    if (!error.response) {
+      const isNetworkError = error.code === 'ECONNRESET' || 
+                            error.code === 'ECONNREFUSED' ||
+                            error.message?.includes('Network Error') ||
+                            error.message?.includes('timeout');
+      
+      if (isNetworkError) {
+        // Log but don't show error toast for network errors - they're usually temporary
+        console.warn('Network error:', error.message || error.code);
+        // Return a rejected promise but don't throw - let the calling code handle it
+        return Promise.reject(error);
+      }
+    }
+    
     // Only redirect to login if we get 401 and we're not already on the login page
     // AND if we actually have a token (meaning we were logged in)
     if (error.response?.status === 401) {
@@ -70,6 +85,7 @@ export const usersAPI = {
   delete: (id) => api.delete(`/users/${id}`),
   getEmployees: () => api.get('/users/employees'),
   getManagers: () => api.get('/users/managers'),
+  getSubordinates: () => api.get('/users/subordinates'),
   getTeam: (userId) => api.get(`/users/${userId}/team`),
   updateDetail: (id, detailType, data) => api.put(`/users/${id}/details/${detailType}`, data),
   updatePayslipBankDetails: (empid, data) => api.put(`/payslip/bank-details/${empid}`, data),

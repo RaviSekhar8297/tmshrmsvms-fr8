@@ -15,8 +15,6 @@ const Permission = () => {
   const isEmployeesPage = location.pathname.includes('/employees/');
   const [loading, setLoading] = useState(false);
   const [permissions, setPermissions] = useState([]);
-  const [search, setSearch] = useState('');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -101,6 +99,26 @@ const Permission = () => {
     };
   };
 
+  // Get current cycle permissions count (excluding rejected)
+  const getCurrentCyclePermissions = () => {
+    if (!attendanceCycle) return { total: 2, used: 0 };
+    
+    const dateRange = getValidDateRange();
+    const minDate = new Date(dateRange.min);
+    const maxDate = new Date(dateRange.max);
+    
+    const cyclePermissions = permissions.filter(perm => {
+      if (perm.status === 'rejected') return false; // Don't count rejected
+      const permDate = new Date(perm.from_datetime || perm.applied_date);
+      return permDate >= minDate && permDate <= maxDate;
+    });
+    
+    return {
+      total: 2, // Maximum 2 permissions per cycle
+      used: cyclePermissions.length
+    };
+  };
+
   const fetchPermissions = async () => {
     setLoading(true);
     try {
@@ -163,19 +181,20 @@ const Permission = () => {
       return;
     }
     
-    // Check limit: Maximum 2 permissions per month (except rejected)
+    // Check limit: Maximum 2 permissions per cycle (except rejected)
     const fromDate = new Date(formData.from_date);
-    const month = fromDate.getMonth();
-    const year = fromDate.getFullYear();
+    const dateRange = getValidDateRange();
+    const minDate = new Date(dateRange.min);
+    const maxDate = new Date(dateRange.max);
     
-    const monthlyPermissions = permissions.filter(perm => {
+    const cyclePermissions = permissions.filter(perm => {
       if (perm.status === 'rejected') return false; // Don't count rejected
       const permDate = new Date(perm.from_datetime);
-      return permDate.getMonth() === month && permDate.getFullYear() === year;
+      return permDate >= minDate && permDate <= maxDate;
     });
     
-    if (monthlyPermissions.length >= 2) {
-      toast.error(`You can apply only 2 permissions per month. You have already applied ${monthlyPermissions.length} permission(s) for ${fromDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.`);
+    if (cyclePermissions.length >= 2) {
+      toast.error(`You can apply only 2 permissions per cycle. You have already applied ${cyclePermissions.length} permission(s) for the current cycle (${dateRange.min} to ${dateRange.max}).`);
       setLoading(false);
       return;
     }
@@ -312,25 +331,16 @@ const Permission = () => {
   };
 
   const exportToExcel = () => {
+    const dateRange = getValidDateRange();
+    const minDate = new Date(dateRange.min);
+    const maxDate = new Date(dateRange.max);
+    
     const filteredPermissions = permissions.filter((p) => {
-      // Search filter
-      const term = search.trim().toLowerCase();
-      if (term) {
-        const matchesSearch = (
-          p.type?.toLowerCase().includes(term) ||
-          p.status?.toLowerCase().includes(term) ||
-          p.reason?.toLowerCase().includes(term) ||
-          p.name?.toLowerCase().includes(term) ||
-          p.empid?.toLowerCase().includes(term)
-        );
-        if (!matchesSearch) return false;
-      }
-      
-      // Year filter
+      // Filter by current cycle date range
       const permissionDate = new Date(p.from_datetime || p.applied_date);
-      if (permissionDate.getFullYear() !== selectedYear) return false;
+      if (permissionDate < minDate || permissionDate > maxDate) return false;
       
-      // Date range filter
+      // Date range filter (if fromDate/toDate are set)
       if (fromDate || toDate) {
         const permDateStr = permissionDate.toISOString().split('T')[0];
         if (fromDate && permDateStr < fromDate) return false;
@@ -421,7 +431,8 @@ const Permission = () => {
         const to = toDate ? new Date(toDate).toISOString().split('T')[0] : 'all';
         filename += `_${from}_to_${to}`;
       } else {
-        filename += `_${selectedYear}`;
+        const dateRange = getValidDateRange();
+        filename += `_${dateRange.min}_to_${dateRange.max}`;
       }
       
       // Download
@@ -442,30 +453,6 @@ const Permission = () => {
         </div>
         <div className="header-actions filters-row toolbar">
           <div className="toolbar-left" style={{ flex: 1, display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <div className="filter-field" style={{ flex: 1, minWidth: '200px' }}>
-              <label className="filter-label">Search</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search by type, date, status or reason..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ marginBottom: 0 }}
-              />
-            </div>
-            <div className="filter-field" style={{ minWidth: '120px' }}>
-              <label className="filter-label">Year</label>
-              <select
-                className="form-input"
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                style={{ marginBottom: 0 }}
-              >
-                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
             <div className="filter-field" style={{ minWidth: '150px' }}>
               <label className="filter-label">From Date</label>
               <DatePicker
@@ -484,11 +471,35 @@ const Permission = () => {
               />
             </div>
           </div>
-          <div className="toolbar-right">
+          <div className="toolbar-right" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {isSelfPage && (
-              <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-                {showForm ? 'Cancel' : '+ Add Permission'}
-              </button>
+              <>
+                {/* This Month Permissions Card - Compact inline version */}
+                <div style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  whiteSpace: 'nowrap'
+                }}>
+                  <span style={{ opacity: 0.9 }}>This Month Your Permissions are</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    {getCurrentCyclePermissions().total}
+                  </span>
+                  <span style={{ opacity: 0.9 }}>used</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    {getCurrentCyclePermissions().used}
+                  </span>
+                </div>
+                <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+                  {showForm ? 'Cancel' : '+ Add Permission'}
+                </button>
+              </>
             )}
             <button className="btn-primary" onClick={exportToExcel}>
               Excel
@@ -653,24 +664,15 @@ const Permission = () => {
             <tbody>
               {permissions
                 .filter((p) => {
-                  // Search filter
-                  const term = search.trim().toLowerCase();
-                  if (term) {
-                    const matchesSearch = (
-                      p.type?.toLowerCase().includes(term) ||
-                      p.status?.toLowerCase().includes(term) ||
-                      p.reason?.toLowerCase().includes(term) ||
-                      p.name?.toLowerCase().includes(term) ||
-                      p.empid?.toLowerCase().includes(term)
-                    );
-                    if (!matchesSearch) return false;
-                  }
-                  
-                  // Year filter
+                  // Filter by current cycle date range
+                  const dateRange = getValidDateRange();
+                  const minDate = new Date(dateRange.min);
+                  const maxDate = new Date(dateRange.max);
                   const permissionDate = new Date(p.from_datetime || p.applied_date);
-                  if (permissionDate.getFullYear() !== selectedYear) return false;
                   
-                  // Date range filter
+                  if (permissionDate < minDate || permissionDate > maxDate) return false;
+                  
+                  // Date range filter (if fromDate/toDate are set)
                   if (fromDate || toDate) {
                     const permDateStr = permissionDate.toISOString().split('T')[0];
                     if (fromDate && permDateStr < fromDate) return false;
@@ -738,24 +740,15 @@ const Permission = () => {
                   </tr>
                 ))}
               {permissions.filter((p) => {
-                  // Search filter
-                  const term = search.trim().toLowerCase();
-                  if (term) {
-                    const matchesSearch = (
-                      p.type?.toLowerCase().includes(term) ||
-                      p.status?.toLowerCase().includes(term) ||
-                      p.reason?.toLowerCase().includes(term) ||
-                      p.name?.toLowerCase().includes(term) ||
-                      p.empid?.toLowerCase().includes(term)
-                    );
-                    if (!matchesSearch) return false;
-                  }
-                  
-                  // Year filter
+                  // Filter by current cycle date range
+                  const dateRange = getValidDateRange();
+                  const minDate = new Date(dateRange.min);
+                  const maxDate = new Date(dateRange.max);
                   const permissionDate = new Date(p.from_datetime || p.applied_date);
-                  if (permissionDate.getFullYear() !== selectedYear) return false;
                   
-                  // Date range filter
+                  if (permissionDate < minDate || permissionDate > maxDate) return false;
+                  
+                  // Date range filter (if fromDate/toDate are set)
                   if (fromDate || toDate) {
                     const permDateStr = permissionDate.toISOString().split('T')[0];
                     if (fromDate && permDateStr < fromDate) return false;

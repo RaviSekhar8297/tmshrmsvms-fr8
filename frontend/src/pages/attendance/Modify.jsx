@@ -12,13 +12,28 @@ const ModifyAttendance = () => {
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDate, setSelectedDate] = useState('');
+  
+  // Initialize with previous date (yesterday)
+  const getPreviousDate = () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+  };
+  
+  const [selectedDate, setSelectedDate] = useState(getPreviousDate());
   const [editingRows, setEditingRows] = useState({});
   const [savingRows, setSavingRows] = useState({});
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const recordsPerPage = 50;
+
+  // Fetch data on mount with initial date
+  useEffect(() => {
+    if (selectedDate) {
+      fetchAttendanceByDate();
+    }
+  }, []);
 
   useEffect(() => {
     filterRecords();

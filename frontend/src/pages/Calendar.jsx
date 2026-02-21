@@ -129,6 +129,7 @@ const Calendar = () => {
   const [participantSearch, setParticipantSearch] = useState('');
   const [useManualProject, setUseManualProject] = useState(false);
   const [manualProjectName, setManualProjectName] = useState('');
+  const [currentTime, setCurrentTime] = useState(new Date());
   
   // Meeting form data
   const [meetingFormData, setMeetingFormData] = useState({
@@ -176,6 +177,18 @@ const Calendar = () => {
     }
   }, [currentDate, user]);
 
+  // Update current time every 10 seconds to refresh join button state
+  useEffect(() => {
+    // Set initial time immediately
+    setCurrentTime(new Date());
+    
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000); // Update every 10 seconds for more responsive updates
+
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchCalendarData = async () => {
     try {
       setLoading(true);
@@ -196,7 +209,6 @@ const Calendar = () => {
         setSelectedDate(getDateKeyFromDate(today));
       }
     } catch (error) {
-      console.error('Error fetching calendar:', error);
       toast.error('Failed to load calendar data');
     } finally {
       setLoading(false);
@@ -208,7 +220,7 @@ const Calendar = () => {
       const response = await projectsAPI.getAll();
       setProjects(response.data || []);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+      // Silent error handling
     }
   };
 
@@ -217,7 +229,7 @@ const Calendar = () => {
       const response = await usersAPI.getEmployees();
       setEmployees(response.data || []);
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      // Silent error handling
     }
   };
 
@@ -226,7 +238,7 @@ const Calendar = () => {
       const response = await usersAPI.getManagers();
       setManagers(response.data || []);
     } catch (error) {
-      console.error('Error fetching managers:', error);
+      // Silent error handling
     }
   };
 
@@ -235,7 +247,7 @@ const Calendar = () => {
       const response = await meetingsAPI.getUpcoming(7);
       setUpcomingMeetings(response.data);
     } catch (error) {
-      console.error('Error fetching upcoming:', error);
+      // Silent error handling
     }
   };
 
@@ -258,7 +270,7 @@ const Calendar = () => {
       
       setWorkReportsData(reportsByDate);
     } catch (error) {
-      console.error('Error fetching work reports:', error);
+      // Silent error handling
     }
   };
 
@@ -604,7 +616,6 @@ const Calendar = () => {
       resetWorkForm();
       fetchWorkReports();
     } catch (error) {
-      console.error('Error saving work report:', error);
       toast.error(error.response?.data?.detail || 'Failed to save work report');
     } finally {
       setCreatingWork(false);
@@ -761,8 +772,15 @@ const Calendar = () => {
                           <div className="offline-badge">
                             Offline
                           </div>
-                        ) : meeting.link ? (() => {
-                          const now = new Date();
+                        ) : meeting.meeting_type === 'online' ? (() => {
+                          // Check if meeting has a valid link
+                          const hasLink = meeting.link && meeting.link.trim() !== '';
+                          
+                          if (!hasLink) {
+                            return <div className="join-btn disabled">Link pending</div>;
+                          }
+
+                          const now = currentTime; // Use state to trigger re-renders
                           const meetingTime = new Date(meeting.meeting_datetime);
                           const duration = meeting.duration_minutes || 60;
                           const fiveMinutesBefore = new Date(meetingTime.getTime() - 5 * 60 * 1000);
@@ -771,22 +789,27 @@ const Calendar = () => {
                           const isPast = now >= meetingEnd;
                           const startingSoon = now < fiveMinutesBefore;
 
+
                           if (isPast) {
                             return <div className="join-btn disabled">Closed</div>;
+                          }
+                          if (canJoin) {
+                            return (
+                              <a 
+                                href={meeting.link} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="join-btn"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <FiVideo /> Join Now
+                              </a>
+                            );
                           }
                           if (startingSoon) {
                             return <div className="join-btn disabled">Starting soon</div>;
                           }
-                          return (
-                            <a 
-                              href={meeting.link} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="join-btn"
-                            >
-                              <FiVideo /> Join
-                            </a>
-                          );
+                          return <div className="join-btn disabled">Scheduled</div>;
                         })() : null}
                       </div>
                     ))}

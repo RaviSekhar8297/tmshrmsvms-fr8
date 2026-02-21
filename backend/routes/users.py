@@ -54,6 +54,41 @@ def get_users(
     # Limit to 500 users for performance
     return query.order_by(User.created_at.desc()).limit(500).all()
 
+def _get_all_subordinate_users(db: Session, manager_empid: str, _visited: set = None) -> List[User]:
+    """Returns all direct and indirect subordinate User rows for a manager (under of under)."""
+    if not manager_empid:
+        return []
+    if _visited is None:
+        _visited = set()
+    empid_str = str(manager_empid).strip()
+    if empid_str in _visited:
+        return []
+    _visited.add(empid_str)
+    result = []
+    direct_reports = db.query(User).filter(
+        User.report_to_id == empid_str,
+        User.is_active == True
+    ).all()
+    for r in direct_reports:
+        result.append(r)
+        for sub in _get_all_subordinate_users(db, r.empid, _visited):
+            if sub not in result:
+                result.append(sub)
+    return result
+
+
+@router.get("/subordinates", response_model=List[UserResponse])
+def get_subordinates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all subordinate users (direct + indirect, e.g. 1027 and 1460 under 1541). For Manager only."""
+    if current_user.role != "Manager":
+        return []
+    subs = _get_all_subordinate_users(db, current_user.empid)
+    return subs
+
+
 @router.get("/employees", response_model=List[UserResponse])
 def get_employees(
     db: Session = Depends(get_db),

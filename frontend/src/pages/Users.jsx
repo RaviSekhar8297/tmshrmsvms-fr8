@@ -156,7 +156,7 @@ const Users = () => {
 
   useEffect(() => {
     fetchData();
-  }, [filter]);
+  }, [filter, user?.id, user?.role]);
 
   useEffect(() => {
     fetchOrgData();
@@ -164,24 +164,36 @@ const Users = () => {
 
   const fetchData = async () => {
     try {
-      const params = filter !== 'all' ? { role: filter } : {};
-      const promises = [
-        usersAPI.getAll(params),
-        usersAPI.getManagers()
-      ];
-      
-      // Fetch admins if HR is logged in
-      if (isHR) {
-        promises.push(usersAPI.getAll({ role: 'Admin' }));
-      }
-      
-      const results = await Promise.all(promises);
-      setUsers(results[0].data);
-      setManagers(results[1].data);
-      if (isHR && results[2]) {
-        setAdmins(results[2].data || []);
-      } else {
+      // Manager: show self + all subordinates (under of under); others: use getAll with role filter
+      if (user?.role === 'Manager') {
+        const [subordinatesRes, managersRes] = await Promise.all([
+          usersAPI.getSubordinates().catch(() => ({ data: [] })),
+          usersAPI.getManagers()
+        ]);
+        const subs = subordinatesRes?.data || [];
+        const byId = new Map();
+        if (user) byId.set(user.id, user);
+        subs.forEach(u => byId.set(u.id, u));
+        setUsers(Array.from(byId.values()));
+        setManagers(managersRes.data || []);
         setAdmins([]);
+      } else {
+        const params = filter !== 'all' ? { role: filter } : {};
+        const promises = [
+          usersAPI.getAll(params),
+          usersAPI.getManagers()
+        ];
+        if (isHR) {
+          promises.push(usersAPI.getAll({ role: 'Admin' }));
+        }
+        const results = await Promise.all(promises);
+        setUsers(results[0].data);
+        setManagers(results[1].data);
+        if (isHR && results[2]) {
+          setAdmins(results[2].data || []);
+        } else {
+          setAdmins([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -547,11 +559,15 @@ const Users = () => {
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(search.toLowerCase()) ||
-    user.email.toLowerCase().includes(search.toLowerCase()) ||
-    user.empid.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchRole = filter === 'all' || u.role === filter;
+    const matchSearch = !search.trim() || [
+      u.name,
+      u.email,
+      u.empid
+    ].some(f => (f || '').toLowerCase().includes(search.toLowerCase()));
+    return matchRole && matchSearch;
+  });
 
   // Pagination logic
   const totalPages = Math.ceil(filteredUsers.length / recordsPerPage);
@@ -834,7 +850,7 @@ const Users = () => {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal - close only via close icon or Cancel, not overlay */}
       <Modal
         isOpen={showModal}
         onClose={() => {
@@ -843,6 +859,7 @@ const Users = () => {
         }}
         title={editingUser ? 'Edit User' : 'Add User'}
         size="large"
+        allowClose={false}
       >
         <form onSubmit={handleSubmit}>
           <div className="form-row">

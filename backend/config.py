@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-super-secret-key-change-in-production-12345"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
+    # Google Service Account - can be file path or JSON string from .env
     GOOGLE_SERVICE_ACCOUNT_PATH: str = os.path.join(os.path.dirname(__file__), "service_account.json")
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = ""  # Alternative: JSON string from .env
     
     # Google OAuth2 Credentials
     GOOGLE_CLIENT_ID: str = ""

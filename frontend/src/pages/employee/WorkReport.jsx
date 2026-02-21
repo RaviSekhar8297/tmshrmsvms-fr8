@@ -18,7 +18,7 @@ const WorkReport = () => {
   const [toDate, setToDate] = useState('');
   const [formData, setFormData] = useState({
     work_date: new Date().toISOString().split('T')[0],
-    works: [{ work_name: '', description: '', hours_spent: '' }],
+    works: [{ work_name: '', description: '', hours_spent: '', status: 'PENDING' }],
     status: 'PENDING',
     employee_remarks: ''
   });
@@ -43,7 +43,7 @@ const WorkReport = () => {
   const handleAddWork = () => {
     setFormData({
       ...formData,
-      works: [...formData.works, { work_name: '', description: '', hours_spent: '' }]
+      works: [...formData.works, { work_name: '', description: '', hours_spent: '', status: 'PENDING' }]
     });
   };
 
@@ -123,6 +123,7 @@ const WorkReport = () => {
       work_name: work.work_name.trim(),
       description: work.description?.trim() || '',
       hours_spent: parseFloat(work.hours_spent),
+      status: work.status || 'PENDING',
       date: currentDateTime
     }));
 
@@ -156,7 +157,7 @@ const WorkReport = () => {
   const resetForm = () => {
     setFormData({
       work_date: new Date().toISOString().split('T')[0],
-      works: [{ work_name: '', description: '', hours_spent: '' }],
+      works: [{ work_name: '', description: '', hours_spent: '', status: 'PENDING' }],
       status: 'PENDING',
       employee_remarks: ''
     });
@@ -171,9 +172,10 @@ const WorkReport = () => {
         ? report.works.map(w => ({
             work_name: w.work_name || '',
             description: w.description || '',
-            hours_spent: w.hours_spent?.toString() || ''
+            hours_spent: w.hours_spent?.toString() || '',
+            status: w.status || 'PENDING'
           }))
-        : [{ work_name: '', description: '', hours_spent: '' }],
+        : [{ work_name: '', description: '', hours_spent: '', status: 'PENDING' }],
       status: report.status || 'PENDING',
       employee_remarks: report.employee_remarks || ''
     });
@@ -409,7 +411,10 @@ const WorkReport = () => {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               {report.works.map((work, idx) => (
                                 <div key={idx} style={{ fontSize: '0.85rem', padding: '4px 8px', background: 'var(--bg-hover)', borderRadius: '4px' }}>
-                                  <strong>{work.work_name}</strong>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <strong>{work.work_name}</strong>
+                                    {work.status && getStatusBadge(work.status)}
+                                  </div>
                                   {work.description && <div style={{ color: 'var(--text-secondary)', marginTop: '2px' }}>{work.description}</div>}
                                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px' }}>
                                     {work.hours_spent} hrs
@@ -553,6 +558,19 @@ const WorkReport = () => {
                           className="form-input"
                           style={{ width: '100%' }}
                         />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.85rem', marginBottom: '4px', display: 'block' }}>Status *</label>
+                        <select
+                          value={work.status || 'PENDING'}
+                          onChange={(e) => handleWorkChange(index, 'status', e.target.value)}
+                          className="form-select"
+                          style={{ width: '100%' }}
+                        >
+                          <option value="PENDING">Pending</option>
+                          <option value="INPROGRESS">In Progress</option>
+                          <option value="COMPLETED">Completed</option>
+                        </select>
                       </div>
                     </div>
                   </div>

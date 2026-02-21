@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   FiPlus, FiSearch, FiVideo, FiClock, FiUsers, 
   FiCalendar, FiEdit2, FiTrash2, FiExternalLink, FiX
@@ -12,6 +12,7 @@ import './Meetings.css';
 const Meetings = () => {
   const [meetings, setMeetings] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [subordinates, setSubordinates] = useState([]); // under-of-under for Manager (Participants)
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -25,6 +26,7 @@ const Meetings = () => {
   const [checkingCalendar, setCheckingCalendar] = useState(true);
   const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
   const [participantSearch, setParticipantSearch] = useState('');
+  const [currentTime, setCurrentTime] = useState(new Date());
   const notesPopupRef = useRef(null);
   const { isEmployee, user } = useAuth();
 
@@ -44,18 +46,48 @@ const Meetings = () => {
   useEffect(() => {
     fetchData();
     checkCalendarStatus();
-  }, [filter]);
+  }, [filter, user?.id, user?.role]);
+
+  // Participants: employees + subordinates (under-of-under) for Manager, deduped by id
+  const participantsList = useMemo(() => {
+    const byId = new Map();
+    (employees || []).forEach(e => byId.set(e.id, e));
+    (subordinates || []).forEach(s => byId.set(s.id, s));
+    return Array.from(byId.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [employees, subordinates]);
+
+  // Update current time every 10 seconds to refresh join button state
+  useEffect(() => {
+    // Set initial time immediately
+    setCurrentTime(new Date());
+    
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000); // Update every 10 seconds for more responsive updates
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-connect Google Calendar when user logs in (only once, after calendar status is checked)
   // Only if the connected email matches the logged in user's email
   useEffect(() => {
     if (user?.email && !autoConnectAttempted && !checkingCalendar && !calendarConnected) {
       // Small delay to ensure page is fully loaded and calendar status is checked
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         setAutoConnectAttempted(true);
-        // Don't auto-connect - let user connect manually if needed
-        // This prevents redirecting to email access if email doesn't match
-        console.log(`Calendar not connected for ${user.email}. User can connect manually if needed.`);
+        // Auto-connect if email matches - no permission prompt needed
+        try {
+          const response = await googleCalendarAPI.getStatus();
+          const connectedEmail = response.data.email;
+          
+          // If connected email matches user email, auto-connect silently
+          if (response.data.connected && connectedEmail && 
+              connectedEmail.toLowerCase() === user.email.toLowerCase()) {
+            setCalendarConnected(true);
+          }
+        } catch (error) {
+          // Silent error handling
+        }
       }, 2000); // Wait 2 seconds after page load
       return () => clearTimeout(timer);
     }
@@ -66,23 +98,21 @@ const Meetings = () => {
       const response = await googleCalendarAPI.getStatus();
       const isConnected = response.data.connected;
       const connectedEmail = response.data.email;
+      const autoConnected = response.data.auto_connected;
       
-      // Only set as connected if email matches user's email
+      // Auto-connect if email matches user's email (no permission prompt needed)
       if (isConnected && user?.email && connectedEmail) {
         if (connectedEmail.toLowerCase() === user.email.toLowerCase()) {
           setCalendarConnected(true);
         } else {
           // Email doesn't match - not connected for this user
-          // Don't redirect to email access, just leave it disconnected
           setCalendarConnected(false);
-          console.log(`Calendar connected to different email (${connectedEmail}), not connecting for ${user.email}`);
         }
       } else {
         setCalendarConnected(isConnected);
       }
       
     } catch (error) {
-      console.error('Error checking calendar status:', error);
       setCalendarConnected(false);
     } finally {
       setCheckingCalendar(false);
@@ -96,7 +126,6 @@ const Meetings = () => {
       // Open in same window to allow OAuth flow
       window.location.href = authUrl;
     } catch (error) {
-      console.error('Error connecting calendar:', error);
       toast.error('Failed to connect Google Calendar. Please check your credentials.');
     }
   };
@@ -113,11 +142,12 @@ const Meetings = () => {
       }
       
       const employeesRes = await usersAPI.getEmployees();
+      const subordinatesRes = user?.role === 'Manager' ? await usersAPI.getSubordinates().catch(() => ({ data: [] })) : { data: [] };
       
       setMeetings(meetingsRes.data);
       setEmployees(employeesRes.data);
+      setSubordinates(subordinatesRes?.data || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
       toast.error('Failed to load meetings');
     } finally {
       setLoading(false);
@@ -186,7 +216,6 @@ const Meetings = () => {
       fetchData();
     } catch (error) {
       const errorMessage = error.response?.data?.detail || error.message || 'Failed to save meeting';
-      console.error('Meeting creation error:', error);
       
       // Check if error is about Google Calendar
       if (errorMessage.includes('Google Calendar') || errorMessage.includes('Google Meet link') || errorMessage.includes('Failed to create')) {
@@ -396,7 +425,7 @@ const Meetings = () => {
   };
 
   const getJoinState = (meeting) => {
-    const now = new Date();
+    const now = currentTime; // Use state to trigger re-renders
     const start = new Date(meeting.meeting_datetime);
     const duration = meeting.duration_minutes || 60;
     const end = new Date(start.getTime() + duration * 60 * 1000);
@@ -405,6 +434,7 @@ const Meetings = () => {
     const isPast = now >= end;
     const canJoin = now >= fiveMinutesBefore && now < end;
     const startingSoon = now < fiveMinutesBefore;
+
 
     return { isPast, canJoin, startingSoon };
   };
@@ -421,7 +451,6 @@ const Meetings = () => {
       const response = await meetingsAPI.getNotes(meeting.id);
       setMeetingNotes(response.data.notes || '');
     } catch (error) {
-      console.error('Error fetching notes:', error);
       setMeetingNotes('');
     } finally {
       setNotesLoading(false);
@@ -446,7 +475,6 @@ const Meetings = () => {
       
       toast.success('Notes saved successfully');
     } catch (error) {
-      console.error('Error saving notes:', error);
       toast.error(error.response?.data?.detail || 'Failed to save notes');
     }
   };
@@ -619,35 +647,47 @@ const Meetings = () => {
                   meeting.location ? (
                     <div className="meeting-link disabled">📍 {meeting.location}</div>
                   ) : null
-                ) : meeting.link && (() => {
+                ) : meeting.meeting_type === 'online' ? (() => {
+                  // Check if meeting has a valid link
+                  const hasLink = meeting.link && meeting.link.trim() !== '';
+                  
+                  if (!hasLink) {
+                    return <div className="meeting-link disabled">Link pending</div>;
+                  }
+
                   const { isPast, canJoin, startingSoon } = getJoinState(meeting);
 
                   if (isPast) {
                     return <div className="meeting-link disabled">Meeting Closed</div>;
                   }
 
+                  if (canJoin) {
+                    return (
+                      <a 
+                        href={meeting.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="meeting-link"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <FiExternalLink /> Join Now
+                      </a>
+                    );
+                  }
+
                   if (startingSoon) {
                     return <div className="meeting-link disabled">Starting soon</div>;
                   }
 
-                  return (
-                    <a 
-                      href={meeting.link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="meeting-link"
-                    >
-                      <FiExternalLink /> Join Now
-                    </a>
-                  );
-                })()}
+                  return <div className="meeting-link disabled">Scheduled</div>;
+                })() : null}
               </div>
             );
           })
         )}
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal - close only via close icon or Cancel, not overlay */}
       <Modal
         isOpen={showModal}
         onClose={() => {
@@ -656,6 +696,7 @@ const Meetings = () => {
         }}
         title={editingMeeting ? 'Edit Meeting' : 'Schedule Meeting'}
         size="large"
+        allowClose={false}
       >
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -683,21 +724,95 @@ const Meetings = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Date & Time *</label>
-              <input
-                type="datetime-local"
-                className="form-input"
-                value={formData.meeting_datetime}
-                onChange={(e) => setFormData({ ...formData, meeting_datetime: e.target.value })}
-                required
-              />
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <FiCalendar style={{ color: 'var(--primary)' }} />
+                Date & Time *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="datetime-local"
+                  className="form-input"
+                  value={formData.meeting_datetime}
+                  onChange={(e) => setFormData({ ...formData, meeting_datetime: e.target.value })}
+                  min={new Date().toISOString().slice(0, 16)}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    transition: 'all 0.2s ease',
+                    outline: 'none',
+                    fontFamily: 'inherit'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                />
+                {formData.meeting_datetime && (
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <FiClock size={14} />
+                    <span>
+                      {new Date(formData.meeting_datetime).toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })} at {new Date(formData.meeting_datetime).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Duration (minutes)</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <FiClock style={{ color: 'var(--primary)' }} />
+                Duration (minutes)
+              </label>
               <select
                 className="form-select"
                 value={formData.duration_minutes}
                 onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.95rem',
+                  transition: 'all 0.2s ease',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  cursor: 'pointer'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--primary)';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-color)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               >
                 <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
@@ -877,7 +992,7 @@ const Meetings = () => {
               )}
             </div>
             <div className="participants-selector" style={{ maxHeight: '300px', overflowY: 'auto', padding: '8px' }}>
-              {employees
+              {participantsList
                 .filter(emp => {
                   if (!participantSearch.trim()) return true;
                   const searchTerm = participantSearch.toLowerCase();
@@ -904,7 +1019,7 @@ const Meetings = () => {
                     {emp.empid && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '4px' }}>({emp.empid})</span>}
                   </div>
                 ))}
-              {employees.filter(emp => {
+              {participantsList.filter(emp => {
                 if (!participantSearch.trim()) return false;
                 const searchTerm = participantSearch.toLowerCase();
                 return (

@@ -109,7 +109,6 @@ def get_upcoming_meetings(
         # Limit to 200 upcoming meetings for performance
         return query.order_by(Meeting.meeting_datetime).limit(200).all()
     except Exception as e:
-        print(f"Error in get_upcoming_meetings: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching upcoming meetings: {str(e)}")
@@ -159,7 +158,6 @@ def get_calendar_meetings(
         
         return calendar_data
     except Exception as e:
-        print(f"Error in get_calendar_meetings: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching calendar meetings: {str(e)}")
@@ -237,9 +235,7 @@ def create_meeting(
                 )
                 meeting_link = calendar_result.get('meeting_link')
                 calendar_event_id = calendar_result.get('calendar_event_id')
-                print(f"Successfully created Google Meet link using user OAuth: {meeting_link}")
             except Exception as e2:
-                print(f"Error creating Google Calendar event with user OAuth: {e2}")
                 import traceback
                 traceback.print_exc()
                 # Try service account as fallback
@@ -253,17 +249,13 @@ def create_meeting(
                     )
                     meeting_link = calendar_result.get('meeting_link')
                     calendar_event_id = calendar_result.get('calendar_event_id')
-                    print(f"Successfully created Google Meet link using service account: {meeting_link}")
                 except FileNotFoundError:
                     # Service account file not found - allow meeting creation without link
-                    print("Service account file not found. Creating meeting without Google Meet link.")
                     meeting_link = None
                 except Exception as e3:
-                    print(f"Service account also failed: {e3}")
                     import traceback
                     traceback.print_exc()
                     # Allow meeting creation without link instead of raising error
-                    print("Creating meeting without Google Meet link. User can add link manually later.")
                     meeting_link = None
         else:
             # No user OAuth credentials - try service account if available, otherwise allow meeting without link
@@ -277,25 +269,18 @@ def create_meeting(
                 )
                 meeting_link = calendar_result.get('meeting_link')
                 calendar_event_id = calendar_result.get('calendar_event_id')
-                print(f"Successfully created Google Meet link using service account: {meeting_link}")
             except FileNotFoundError:
                 # Service account file not found - allow meeting creation without link
-                print("Service account file not found. Creating meeting without Google Meet link.")
-                print("User can connect Google Calendar or provide a manual link.")
                 meeting_link = None  # Allow meeting to be created without link
             except Exception as e:
-                print(f"Service account failed: {e}")
                 import traceback
                 traceback.print_exc()
                 # If it's a credentials/permission error, allow meeting without link
                 error_str = str(e).lower()
                 if 'credentials' in error_str or 'permission' in error_str or 'not found' in error_str:
-                    print("Google Calendar credentials not available. Creating meeting without Google Meet link.")
                     meeting_link = None  # Allow meeting to be created without link
                 else:
                     # For other errors, still allow meeting creation but warn user
-                    print(f"Warning: Could not create Google Meet link: {e}")
-                    print("Creating meeting without automatic link. User can add link manually.")
                     meeting_link = None
     
     meeting = Meeting(
@@ -317,7 +302,12 @@ def create_meeting(
     db.refresh(meeting)
     
     # Send notifications to participants based on consent
-    send_meeting_notifications(db, meeting, current_user)
+    try:
+        send_meeting_notifications(db, meeting, current_user)
+    except Exception as notif_error:
+        import traceback
+        traceback.print_exc()
+        # Don't fail meeting creation if notifications fail
     
     # Log activity
     activity = Activity(
@@ -562,52 +552,107 @@ Brihaspathi Technologies
         
         return True
     except Exception as e:
-        print(f"Error sending email: {str(e)}")
         return False
 
 def send_whatsapp_notification(phone: str, participant_name: str, meeting_title: str, meeting_datetime: str, meeting_link: str):
-    """Send WhatsApp notification using API"""
+    """Send WhatsApp notification using API - Based on reference API structure"""
     try:
+        if not phone:
+            return False
+        
         api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0OWMxMDI0YTMzMGUyMGJkYTcwMzMwMyIsIm5hbWUiOiJCUklIQVNQQVRISSBURUNITk9MT0dJRVMgUFJJVkFURSBMSU1JVEVEIiwiYXBwTmFtZSI6IkFpU2Vuc3kiLCJjbGllbnRJZCI6IjY0OWMxMDIzY2FkODQ1MGI0Nzg1YzA1YyIsImFjdGl2ZVBsYW4iOiJOT05FIiwiaWF0IjoxNjg3OTQ5MzQ4fQ.oDl73wKoFu9jj-nKdzsOqaY8InWdw3RIaYy4EUZaEto"
         api_url = "https://backend.api-wa.co/campaign/smartping/api/v2"
         
         # Format phone number (remove + and ensure it starts with country code)
-        destination = phone.replace("+", "").replace(" ", "").replace("-", "")
-        if not destination.startswith("91"):
-            destination = "91" + destination
+        phone_clean = phone.replace("+", "").replace(" ", "").replace("-", "").replace("(", "").replace(")")
+        if not phone_clean.startswith("91"):
+            phone_clean = "91" + phone_clean
         
+        # Format meeting datetime for template
+        try:
+            # If datetime is already formatted, use it; otherwise format it
+            if isinstance(meeting_datetime, str):
+                formatted_datetime = meeting_datetime
+            else:
+                formatted_datetime = meeting_datetime.strftime("%B %d, %Y at %I:%M %p")
+        except:
+            formatted_datetime = str(meeting_datetime)
+        
+        # Build payload according to reference API specification
         payload = {
             "apiKey": api_key,
             "campaignName": "tms",
-            "destination": destination,
+            "destination": phone_clean,
             "userName": "BRIHASPATHI TECHNOLOGIES PRIVATE LIMITED",
             "templateParams": [
-                participant_name,  # First param: Selected Name
-                meeting_title,     # Second param: Meeting Title
-                meeting_datetime,  # Third param: Selected Date & Time
-                meeting_link       # Fourth param: Automatically created link
+                participant_name,      # First param: Participant Name
+                meeting_title,         # Second param: Meeting Title
+                formatted_datetime,    # Third param: Meeting Date & Time
+                meeting_link or "Link will be shared soon"  # Fourth param: Meeting Link
             ],
-            "source": "new-landing-page form",
-            "media": {},
-            "buttons": [],
-            "carouselCards": [],
-            "location": {},
-            "attributes": {},
-            "paramsFallbackValue": {
-                "FirstName": participant_name
+            "source": "new-landing-page form"
+        }
+        
+        # Add media object (empty for meetings)
+        payload["media"] = {}
+        
+        # Add interactive buttons (Join/Decline/Maybe)
+        payload["interactive"] = {
+            "type": "button",
+            "body": {
+                "text": "Please select an option:"
+            },
+            "action": {
+                "buttons": [
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "join",
+                            "title": "✅ Join"
+                        }
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "decline",
+                            "title": "❌ Decline"
+                        }
+                    },
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": "maybe",
+                            "title": "⏳ Maybe"
+                        }
+                    }
+                ]
             }
         }
         
         headers = {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}"
         }
         
-        response = requests.post(api_url, json=payload, headers=headers, timeout=10)
-        response.raise_for_status()
+        response = requests.post(api_url, json=payload, headers=headers, timeout=30)
         
-        return True
+        if response.status_code == 200:
+            return True
+        else:
+            # Try without Authorization header if it fails
+            if response.status_code == 401:
+                headers_no_auth = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+                response = requests.post(api_url, json=payload, headers=headers_no_auth, timeout=30)
+                if response.status_code == 200:
+                    return True
+            return False
     except Exception as e:
-        print(f"Error sending WhatsApp: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def send_meeting_notifications(db: Session, meeting: Meeting, creator: User):
@@ -631,6 +676,9 @@ Location: {meeting.location or 'N/A'}
 Description: {meeting.description or 'No description provided'}
     """
     
+    email_count = 0
+    whatsapp_count = 0
+    
     for participant in meeting.participants:
         user = db.query(User).filter(User.empid == participant.get("empid")).first()
         if not user:
@@ -639,18 +687,26 @@ Description: {meeting.description or 'No description provided'}
         participant_name = participant.get("name", user.name)
         
         # Send email if consent is given
-        if user.email_consent and user.email:
-            email_sent = send_email_notification(
-                to_email=user.email,
-                participant_name=participant_name,
-                meeting_title=meeting.title,
-                meeting_datetime=meeting_time,
-                meeting_link=meeting.link,
-                description=meeting.description or "",
-                meeting_type=meeting.meeting_type,
-                location=meeting.location,
-                month_year=meeting_month_year
-            )
+        email_consent = getattr(user, 'email_consent', False)
+        if email_consent is True and user.email:
+            try:
+                email_sent = send_email_notification(
+                    to_email=user.email,
+                    participant_name=participant_name,
+                    meeting_title=meeting.title,
+                    meeting_datetime=meeting_time,
+                    meeting_link=meeting.link or "",
+                    description=meeting.description or "",
+                    meeting_type=meeting.meeting_type,
+                    location=meeting.location,
+                    month_year=meeting_month_year
+                )
+                if email_sent:
+                    email_count += 1
+            except Exception as email_error:
+                import traceback
+                traceback.print_exc()
+            
             notification = NotificationLog(
                 user_id=user.id,
                 type="meeting",
@@ -664,14 +720,22 @@ Description: {meeting.description or 'No description provided'}
         is_offline = meeting.meeting_type == "offline"
 
         # Send WhatsApp if consent is given and meeting is online
-        if not is_offline and user.whatsapp_consent and user.phone:
-            whatsapp_sent = send_whatsapp_notification(
-                phone=user.phone,
-                participant_name=participant_name,
-                meeting_title=meeting.title,
-                meeting_datetime=meeting_time,
-                meeting_link=meeting.link
-            )
+        whatsapp_consent = getattr(user, 'whatsapp_consent', False)
+        if not is_offline and whatsapp_consent is True and user.phone:
+            try:
+                whatsapp_sent = send_whatsapp_notification(
+                    phone=user.phone,
+                    participant_name=participant_name,
+                    meeting_title=meeting.title,
+                    meeting_datetime=meeting_time,
+                    meeting_link=meeting.link or ""
+                )
+                if whatsapp_sent:
+                    whatsapp_count += 1
+            except Exception as wa_error:
+                import traceback
+                traceback.print_exc()
+            
             notification = NotificationLog(
                 user_id=user.id,
                 type="meeting",

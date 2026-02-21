@@ -762,7 +762,7 @@ def get_leave_balance(
         # Comp-Off: use balance (can be forwarded from previous months)
         comp_off_this_month = float(leave_balance.balance_comp_off_leaves) if leave_balance.balance_comp_off_leaves else 0
         
-        # Sick Leave: 12 days/year, credited 1 day/month, carried forward monthly if not used (same as casual)
+        # Sick Leave: 12 days/year, credited 1 day/month, DOES NOT carry forward (collapses at month end)
         # Get total sick leaves per year
         total_sick_per_year = float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 12
         # Calculate leaves per month (e.g., 12 per year / 12 months = 1 per month)
@@ -776,26 +776,8 @@ def get_leave_balance(
             Leave.leave_type.in_(['sick', 'Sick', 'SICK'])
         ).all()
         
-        # Start with current month's new leave
+        # Start with current month's new leave ONLY (no carry forward from previous months)
         sick_this_month = sick_per_month
-        
-        # Calculate unused sick leaves from previous months (Jan to current_month - 1)
-        for month in range(1, current_month):  # Previous months only (Jan to current_month - 1)
-            # Get sick leaves used in this month (approved only)
-            month_leaves = [leave for leave in all_sick_leaves 
-                          if leave.from_date.month == month]
-            
-            # Calculate total days used in this month
-            used_in_month = 0
-            for leave in month_leaves:
-                # Calculate actual days (handle half days if needed)
-                days = (leave.to_date - leave.from_date).days + 1
-                used_in_month += days
-            
-            # Unused leaves from this month = sick_per_month - used_in_month
-            # Only add if unused > 0 (if leaves were taken, they don't carry forward)
-            unused_from_month = max(0, sick_per_month - used_in_month)
-            sick_this_month += unused_from_month
         
         # Subtract used leaves in current month (approved only)
         current_month_sick_leaves = [leave for leave in all_sick_leaves 
@@ -819,24 +801,69 @@ def get_leave_balance(
             days = (leave.to_date - leave.from_date).days + 1
             pending_sick_days += days
         
-        # Final available = (new leave + unused from previous) - used in current month - pending in current month
+        # Final available = current month's new leave - used in current month - pending in current month
+        # Note: Sick leave does NOT carry forward from previous months (collapses at month end)
         sick_this_month = max(0, sick_this_month - used_in_current_month - pending_sick_days)
+        
+        # Calculate actual used leaves for the current year (based on approved leaves)
+        # Used Casual Leaves
+        used_casual_count = 0
+        for leave in all_casual_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            used_casual_count += days
+        
+        # Used Sick Leaves
+        used_sick_count = 0
+        for leave in all_sick_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            used_sick_count += days
+        
+        # Used Comp-Off Leaves
+        all_comp_off_leaves = db.query(Leave).filter(
+            Leave.empid == current_user.empid,
+            Leave.status == 'approved',
+            extract('year', Leave.from_date) == current_year,
+            Leave.leave_type.in_(['comp-off', 'comp_off', 'compensatory', 'Comp-Off', 'COMP-OFF'])
+        ).all()
+        
+        used_comp_off_count = 0
+        for leave in all_comp_off_leaves:
+            days = (leave.to_date - leave.from_date).days + 1
+            used_comp_off_count += days
+        
+        # Calculate balance (Total - Used)
+        total_casual = float(leave_balance.total_casual_leaves) if leave_balance.total_casual_leaves else 12
+        total_sick = float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 12
+        total_comp_off = float(leave_balance.total_comp_off_leaves) if leave_balance.total_comp_off_leaves else 0
+        
+        balance_casual = max(0, total_casual - used_casual_count)
+        balance_sick = max(0, total_sick - used_sick_count)
+        balance_comp_off = max(0, total_comp_off - used_comp_off_count)
     else:
         casual_this_month = 0
         sick_this_month = 0
         comp_off_this_month = 0
+        used_casual_count = 0
+        used_sick_count = 0
+        used_comp_off_count = 0
+        total_casual = 0
+        total_sick = 0
+        total_comp_off = 0
+        balance_casual = 0
+        balance_sick = 0
+        balance_comp_off = 0
     
     if leave_balance:
         return {
-            "total_casual_leaves": float(leave_balance.total_casual_leaves) if leave_balance.total_casual_leaves else 0,
-            "used_casual_leaves": float(leave_balance.used_casual_leaves) if leave_balance.used_casual_leaves else 0,
-            "balance_casual_leaves": float(leave_balance.balance_casual_leaves) if leave_balance.balance_casual_leaves else 0,
-            "total_sick_leaves": float(leave_balance.total_sick_leaves) if leave_balance.total_sick_leaves else 0,
-            "used_sick_leaves": float(leave_balance.used_sick_leaves) if leave_balance.used_sick_leaves else 0,
-            "balance_sick_leaves": float(leave_balance.balance_sick_leaves) if leave_balance.balance_sick_leaves else 0,
-            "total_comp_off_leaves": float(leave_balance.total_comp_off_leaves) if leave_balance.total_comp_off_leaves else 0,
-            "used_comp_off_leaves": float(leave_balance.used_comp_off_leaves) if leave_balance.used_comp_off_leaves else 0,
-            "balance_comp_off_leaves": float(leave_balance.balance_comp_off_leaves) if leave_balance.balance_comp_off_leaves else 0,
+            "total_casual_leaves": total_casual,
+            "used_casual_leaves": used_casual_count,
+            "balance_casual_leaves": balance_casual,
+            "total_sick_leaves": total_sick,
+            "used_sick_leaves": used_sick_count,
+            "balance_sick_leaves": balance_sick,
+            "total_comp_off_leaves": total_comp_off,
+            "used_comp_off_leaves": used_comp_off_count,
+            "balance_comp_off_leaves": balance_comp_off,
             "this_month": {
                 "casual": max(0, casual_this_month),
                 "sick": max(0, sick_this_month),

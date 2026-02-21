@@ -315,7 +315,7 @@ const ModifyAttendance = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Modify Attendance!!!</h1>
+        <h1>Modify Attendance</h1>
       </div>
 
       {/* Search and Filter Section */}

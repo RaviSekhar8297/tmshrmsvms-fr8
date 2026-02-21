@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FiPlus, FiSearch, FiClock, FiUser, FiCalendar,
-  FiEdit2, FiTrash2, FiPlay, FiSquare, FiFolder, FiStar, FiChevronDown, FiX
+  FiEdit2, FiTrash2, FiPlay, FiSquare, FiFolder, FiStar, FiChevronDown, FiX, FiChevronLeft, FiChevronRight
 } from 'react-icons/fi';
 import { tasksAPI, projectsAPI, usersAPI, ratingsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -103,12 +103,42 @@ const SearchableSelect = ({ value, onChange, options, placeholder, disabled }) =
   );
 };
 
+/**
+ * Get the report-to manager empid for a user (API may use report_to_id or reportid).
+ */
+const getReportToEmpid = (u) => {
+  const v = u.report_to_id ?? u.reportid;
+  return v != null ? String(v) : null;
+};
+
+/**
+ * Recursively get all user ids in the full reporting hierarchy under a manager.
+ * Example: 355 → direct 1027, 935 → under 1027: 1460, 1254; under 935: 1234.
+ * Returns Set of user ids (for task.assigned_to_id) so 355 sees tasks of 1027, 935, 1460, 1254, 1234.
+ */
+const getHierarchyAssignedToIds = (managerEmpid, allUsers, visited = new Set()) => {
+  const managerStr = String(managerEmpid);
+  if (visited.has(managerStr)) return new Set();
+  visited.add(managerStr);
+  const ids = new Set();
+  const managerUser = allUsers.find(u => u.empid != null && String(u.empid) === managerStr);
+  if (managerUser) ids.add(managerUser.id);
+  const directReports = allUsers.filter(u => getReportToEmpid(u) === managerStr);
+  directReports.forEach(r => {
+    ids.add(r.id);
+    const sub = getHierarchyAssignedToIds(r.empid, allUsers, visited);
+    sub.forEach(id => ids.add(id));
+  });
+  return ids;
+};
+
 const Tasks = () => {
   const [tasks, setTasks] = useState([]);
   const [tasksByEmployee, setTasksByEmployee] = useState([]);
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [managers, setManagers] = useState([]);
+  const [subordinates, setSubordinates] = useState([]); // all under + under-of-under for Manager
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
@@ -117,6 +147,7 @@ const Tasks = () => {
   const [managerHierarchy, setManagerHierarchy] = useState([]);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [currentPageByEmployee, setCurrentPageByEmployee] = useState(1);
   const { user, isEmployee } = useAuth();
   const [manualProjectName, setManualProjectName] = useState('');
   const [useManualProject, setUseManualProject] = useState(false);
@@ -270,11 +301,12 @@ const Tasks = () => {
         params = { status: filter };
       }
       
-      const [tasksRes, projectsRes, employeesRes, managersRes] = await Promise.all([
+      const [tasksRes, projectsRes, employeesRes, managersRes, subordinatesRes] = await Promise.all([
         tasksAPI.getAll(params),
         projectsAPI.getAll({}), // Explicitly fetch all projects including completed
         usersAPI.getEmployees(),
-        user?.role === 'Admin' ? usersAPI.getManagers() : Promise.resolve({ data: [] })
+        !isEmployee ? usersAPI.getManagers() : Promise.resolve({ data: [] }),
+        !isEmployee && user?.role === 'Manager' ? usersAPI.getSubordinates() : Promise.resolve({ data: [] })
       ]);
       
       // Filter delayed tasks if needed
@@ -294,8 +326,11 @@ const Tasks = () => {
       
       setProjects(projectsRes.data);
       setEmployees(employeesRes.data);
-      if (user?.role === 'Admin') {
-        setManagers(managersRes.data);
+      if (!isEmployee) {
+        setManagers(managersRes.data || []);
+        setSubordinates(subordinatesRes?.data || []);
+      } else {
+        setSubordinates([]);
       }
       
       if (!isEmployee) {
@@ -368,23 +403,19 @@ const Tasks = () => {
   };
 
   const validateForm = () => {
-    // Validate title (letters/spaces only, max 40)
+    // Validate title: allows letters, numbers, spaces, . @ — length 0 to 50
     const titleTrimmed = formData.title.trim();
     if (!titleTrimmed) {
       toast.error('Task title is required');
       return false;
     }
-    const titleRegex = /^[A-Za-z\s]+$/;
+    if (titleTrimmed.length > 100) {
+      toast.error('Task title must be 100 characters or less');
+      return false;
+    }
+    const titleRegex = /^[A-Za-z0-9\s.@]+$/;
     if (!titleRegex.test(titleTrimmed)) {
-      toast.error('Task title must contain only letters and spaces');
-      return false;
-    }
-    if (titleTrimmed.length < 3) {
-      toast.error('Task title must be at least 3 characters');
-      return false;
-    }
-    if (titleTrimmed.length > 40) {
-      toast.error('Task title must be 40 characters or less');
+      toast.error('Task title can only contain letters, numbers, spaces, . and @');
       return false;
     }
 
@@ -531,13 +562,7 @@ const Tasks = () => {
           toast.error('Due date cannot be before start date');
           return false;
         }
-        // Check if due date is at least 1 day after start date
-        const diffTime = dueDateOnly - startDate;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays < 1) {
-          toast.error('Due date must be at least 1 day after start date');
-          return false;
-        }
+        // Same day allowed: Due Date >= Start Date; duration = (Due - Start) + 1 day
       } else {
         if (dueDateOnly < today) {
           toast.error('Due date cannot be in the past');
@@ -570,7 +595,7 @@ const Tasks = () => {
           const startDate = new Date(formData.start_date);
           const dueDate = new Date(formData.due_date);
           const diffTime = dueDate - startDate;
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1; // (Due - Start) + 1
           if (diffDays > 0 && Math.abs(estimatedDays - diffDays) > 5) {
             // Allow some tolerance, but warn if very different
             // This is just a warning, not a hard error
@@ -959,7 +984,66 @@ const Tasks = () => {
     setManagerHierarchy(hierarchy);
   };
 
-  const filteredTasks = tasks.filter(task =>
+  // tasks.assigned_to_id = users.id. Build set of users.id (self + under and under from report_to_id). Include subordinates so 1460 under 1027 is in hierarchy.
+  const hierarchyAssignedToIds = useMemo(() => {
+    if (isEmployee || !user?.id) return null;
+    const byId = new Map();
+    [...(managers || []), ...employees, ...(subordinates || [])].forEach(u => byId.set(u.id, u));
+    if (user && !byId.has(user.id)) byId.set(user.id, user);
+    const allUsers = Array.from(byId.values());
+    const currentUser = allUsers.find(u => u.id === user.id);
+    const empid = currentUser?.empid ?? user?.empid;
+    if (!empid) return new Set([user.id]);
+    return getHierarchyAssignedToIds(empid, allUsers);
+  }, [isEmployee, user?.id, user?.empid, user, employees, managers, subordinates]);
+
+  // Display tasks list: only tasks whose assigned_to_id (users.id) is in hierarchy (under of under).
+  const tasksForView = hierarchyAssignedToIds
+    ? tasks.filter(task => hierarchyAssignedToIds.has(task.assigned_to_id))
+    : tasks;
+
+  // Console: logged empid, under employees (incl. under-of-under 1460 under 1027), each task count and tasks; plus tasks table
+  useEffect(() => {
+    const byId = new Map();
+    [...(managers || []), ...employees, ...(subordinates || [])].forEach(u => byId.set(u.id, u));
+    if (user && !byId.has(user.id)) byId.set(user.id, user);
+    const allUsers = Array.from(byId.values());
+    allUsers.forEach(u => byId.set(u.id, u));
+    const currentUser = allUsers.find(u => u.id === user?.id);
+    const loggedEmpid = currentUser?.empid ?? user?.empid ?? null;
+    const underOfUnderIds = hierarchyAssignedToIds ? Array.from(hierarchyAssignedToIds) : [];
+    const seenIds = new Set();
+    const underEmployees = [];
+    underOfUnderIds.forEach(uid => {
+      if (uid === user?.id || seenIds.has(uid)) return;
+      seenIds.add(uid);
+      const emp = byId.get(uid);
+      if (!emp) return;
+      const empTasks = tasksForView.filter(t => t.assigned_to_id === uid);
+      underEmployees.push({
+        id: emp.id,
+        empid: emp.empid,
+        name: emp.name,
+        taskCount: empTasks.length,
+        tasks: empTasks.map(t => ({ id: t.id, title: t.title, description: t.description, assigned_to_id: t.assigned_to_id, assigned_to_name: t.assigned_to_name }))
+      });
+    });
+    // Tasks table: id, title, description, assigned_to_id, assigned_to_name (so 1027 and 1460 tasks both show)
+    const tasksTable = tasksForView.map(t => ({
+      id: t.id,
+      title: t.title,
+      description: t.description || '',
+      assigned_to_id: t.assigned_to_id,
+      assigned_to_name: t.assigned_to_name
+    }));
+    console.log('[Tasks] Logged empid, under employees (1027 Ravi, 1460 under 1027, etc.), each task count and tasks:', {
+      loggedEmpid,
+      underEmployees
+    });
+    console.log('[Tasks] Tasks table (id, title, description, assigned_to_id, assigned_to_name):', tasksTable);
+  }, [user?.id, user?.empid, user, managers, employees, subordinates, hierarchyAssignedToIds, tasksForView]);
+
+  const filteredTasks = tasksForView.filter(task =>
     task.title.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -967,6 +1051,32 @@ const Tasks = () => {
     emp.name?.toLowerCase().includes(search.toLowerCase()) ||
     emp.empid?.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Pagination for By Employee tab - 50 records per page
+  const recordsPerPageByEmployee = 50;
+  const totalPagesByEmployee = Math.ceil(filteredTasksByEmployee.length / recordsPerPageByEmployee) || 1;
+  const indexOfLastRecordByEmployee = currentPageByEmployee * recordsPerPageByEmployee;
+  const indexOfFirstRecordByEmployee = indexOfLastRecordByEmployee - recordsPerPageByEmployee;
+  const paginatedTasksByEmployee = filteredTasksByEmployee.slice(indexOfFirstRecordByEmployee, indexOfLastRecordByEmployee);
+
+  const goToPageByEmployee = (page) => {
+    if (page >= 1 && page <= totalPagesByEmployee) {
+      setCurrentPageByEmployee(page);
+    }
+  };
+
+  // Reset to page 1 when search changes or view mode changes
+  useEffect(() => {
+    if (viewMode === 'employee') {
+      setCurrentPageByEmployee(1);
+    }
+  }, [search, viewMode]);
+
+  useEffect(() => {
+    if (currentPageByEmployee > totalPagesByEmployee && totalPagesByEmployee > 0) {
+      setCurrentPageByEmployee(1);
+    }
+  }, [totalPagesByEmployee, currentPageByEmployee]);
 
   const filteredManagerHierarchy = managerHierarchy.filter(manager =>
     manager.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -1258,61 +1368,129 @@ const Tasks = () => {
           )}
         </div>
       ) : viewMode === 'employee' ? (
-        <div className="employees-tasks-grid">
-          {filteredTasksByEmployee.length === 0 ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
-              <FiClock className="empty-state-icon" />
-              <h3>No employees found</h3>
-              <p>No employees match your search</p>
-            </div>
-          ) : (
-            filteredTasksByEmployee.map((emp) => (
-            <div key={emp.id} className="employee-task-card">
-              <div className="employee-info">
-                <div className="avatar avatar-lg">
-                  {emp.image_base64 ? (
-                    <img src={emp.image_base64} alt={emp.name} />
-                  ) : (
-                    emp.name?.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div>
-                  <h3>{emp.name}</h3>
-                  <p>{emp.empid}</p>
-                </div>
+        <>
+          <div className="employees-tasks-grid">
+            {paginatedTasksByEmployee.length === 0 ? (
+              <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
+                <FiClock className="empty-state-icon" />
+                <h3>No employees found</h3>
+                <p>No employees match your search</p>
               </div>
+            ) : (
+              paginatedTasksByEmployee.map((emp) => (
+              <div key={emp.id} className="employee-task-card">
+                <div className="employee-info">
+                  <div className="avatar avatar-lg">
+                    {emp.image_base64 ? (
+                      <img src={emp.image_base64} alt={emp.name} />
+                    ) : (
+                      emp.name?.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div>
+                    <h3>{emp.name}</h3>
+                    <p>{emp.empid}</p>
+                  </div>
+                </div>
 
-              <div className="employee-stats">
-                <div className="stat-item">
-                  <span className="stat-label">Pending</span>
-                  <span className="stat-value">{emp.pending}</span>
+                <div className="employee-stats">
+                  <div className="stat-item">
+                    <span className="stat-label">Pending</span>
+                    <span className="stat-value">{emp.pending}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Completed</span>
+                    <span className="stat-value success">{emp.completed}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Delayed</span>
+                    <span className="stat-value danger">{emp.delayed}</span>
+                  </div>
                 </div>
-                <div className="stat-item">
-                  <span className="stat-label">Completed</span>
-                  <span className="stat-value success">{emp.completed}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Delayed</span>
-                  <span className="stat-value danger">{emp.delayed}</span>
+
+                <div className="employee-progress">
+                  <div className="progress-header">
+                    <span>Performance</span>
+                    <span>{emp.performance}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div 
+                      className={`progress-bar-fill ${emp.performance >= 80 ? 'success' : emp.performance >= 50 ? 'warning' : 'danger'}`}
+                      style={{ width: `${emp.performance}%` }}
+                    ></div>
+                  </div>
                 </div>
               </div>
+              ))
+            )}
+          </div>
 
-              <div className="employee-progress">
-                <div className="progress-header">
-                  <span>Performance</span>
-                  <span>{emp.performance}%</span>
-                </div>
-                <div className="progress-bar">
-                  <div 
-                    className={`progress-bar-fill ${emp.performance >= 80 ? 'success' : emp.performance >= 50 ? 'warning' : 'danger'}`}
-                    style={{ width: `${emp.performance}%` }}
-                  ></div>
-                </div>
+          {/* Pagination for By Employee tab */}
+          {totalPagesByEmployee > 1 && (
+            <div className="pagination" style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div className="pagination-info" style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Showing {indexOfFirstRecordByEmployee + 1} to {Math.min(indexOfLastRecordByEmployee, filteredTasksByEmployee.length)} of {filteredTasksByEmployee.length} records
+              </div>
+              <div className="pagination-controls" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPageByEmployee(currentPageByEmployee - 1)}
+                  disabled={currentPageByEmployee === 1}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid var(--border-color)',
+                    background: currentPageByEmployee === 1 ? 'var(--bg-hover)' : 'var(--bg-primary)',
+                    color: currentPageByEmployee === 1 ? 'var(--text-disabled)' : 'var(--text-primary)',
+                    borderRadius: '6px',
+                    cursor: currentPageByEmployee === 1 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <FiChevronLeft />
+                </button>
+                {Array.from({ length: totalPagesByEmployee }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    className={`pagination-btn ${currentPageByEmployee === page ? 'active' : ''}`}
+                    onClick={() => goToPageByEmployee(page)}
+                    style={{
+                      padding: '8px 12px',
+                      minWidth: '40px',
+                      border: '1px solid var(--border-color)',
+                      background: currentPageByEmployee === page ? 'var(--primary-color)' : 'var(--bg-primary)',
+                      color: currentPageByEmployee === page ? '#fff' : 'var(--text-primary)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: currentPageByEmployee === page ? '600' : '400'
+                    }}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button 
+                  className="pagination-btn"
+                  onClick={() => goToPageByEmployee(currentPageByEmployee + 1)}
+                  disabled={currentPageByEmployee === totalPagesByEmployee}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid var(--border-color)',
+                    background: currentPageByEmployee === totalPagesByEmployee ? 'var(--bg-hover)' : 'var(--bg-primary)',
+                    color: currentPageByEmployee === totalPagesByEmployee ? 'var(--text-disabled)' : 'var(--text-primary)',
+                    borderRadius: '6px',
+                    cursor: currentPageByEmployee === totalPagesByEmployee ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <FiChevronRight />
+                </button>
               </div>
             </div>
-            ))
           )}
-        </div>
+        </>
       ) : viewMode === 'manager' ? (
         // Show different view based on role
         user?.role === 'Manager' ? (
@@ -1688,6 +1866,7 @@ const Tasks = () => {
           resetForm();
         }}
         title={editingTask ? 'Edit Task' : 'Create Task'}
+        allowClose={false}
       >
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -1698,13 +1877,13 @@ const Tasks = () => {
               value={formData.title}
               onChange={(e) => {
                 const value = e.target.value;
-                // Only allow letters and spaces
-                if (value === '' || /^[A-Za-z\s]+$/.test(value)) {
+                // Allow letters, numbers, spaces, . @ — max 100 characters
+                if (value.length <= 100 && (value === '' || /^[A-Za-z0-9\s.@]+$/.test(value))) {
                   setFormData({ ...formData, title: value });
                 }
               }}
-              placeholder="Enter task title"
-              maxLength={40}
+              placeholder="Enter task title (letters, numbers, spaces, . @ — max 100)"
+              maxLength={100}
             />
           </div>
 
@@ -1927,12 +2106,10 @@ const Tasks = () => {
                       toast.error('Due date cannot be before start date');
                       newDueDate = ''; // Clear due date if invalid
                     } else if (!estimatedDaysManuallyEdited) {
-                      // Auto-calculate estimated days only if user hasn't manually edited it
+                      // Auto-calculate: (Due Date - Start Date) + 1 (same day = 1 day)
                       const diffTime = due - start;
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      if (diffDays > 0) {
-                        newEstimatedDays = diffDays.toString();
-                      }
+                      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                      newEstimatedDays = diffDays.toString();
                     }
                   }
                   
@@ -1958,14 +2135,11 @@ const Tasks = () => {
                       toast.error('Due date cannot be before start date');
                       return; // Don't update if invalid
                     }
-                    
-                    // Auto-calculate estimated days only if user hasn't manually edited it
+                    // Auto-calculate: (Due Date - Start Date) + 1 (same day = 1 day)
                     if (!estimatedDaysManuallyEdited) {
                       const diffTime = due - start;
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      if (diffDays > 0) {
-                        newEstimatedDays = diffDays.toString();
-                      }
+                      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                      newEstimatedDays = diffDays.toString();
                     }
                   }
                   
@@ -1990,7 +2164,7 @@ const Tasks = () => {
             />
             <small className="form-hint">
               {formData.start_date && formData.due_date && !estimatedDaysManuallyEdited
-                ? `Auto-calculated: ${Math.ceil((new Date(formData.due_date) - new Date(formData.start_date)) / (1000 * 60 * 60 * 24))} days`
+                ? `Auto-calculated: ${Math.round((new Date(formData.due_date) - new Date(formData.start_date)) / (1000 * 60 * 60 * 24)) + 1} days (Due − Start + 1)`
                 : 'Enter manually or select start and due dates to auto-calculate'}
             </small>
           </div>

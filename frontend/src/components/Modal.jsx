@@ -8,9 +8,6 @@ const Modal = ({ isOpen, onClose, title, children, size = 'default', allowClose 
   const handleOverlayClick = () => {
     if (allowClose && onClose) {
       onClose();
-    } else if (onClose) {
-      // Still call onClose to show toast, but don't actually close
-      onClose();
     }
   };
 

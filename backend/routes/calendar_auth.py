@@ -32,7 +32,6 @@ def authorize_google_calendar(
             "user_email": user_email  # Return email for confirmation
         }
     except Exception as e:
-        print(f"Error getting authorization URL: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get authorization URL: {str(e)}")
@@ -59,23 +58,15 @@ def google_calendar_callback_post(
 ):
     """Handle Google OAuth2 callback via POST (from frontend)"""
     try:
-        print(f"Processing callback for user: {current_user.id}, code length: {len(callback_data.code) if callback_data.code else 0}")
-        
         # Exchange code for credentials
-        print("Exchanging code for credentials...")
         credentials = get_credentials_from_code(callback_data.code)
-        print("Credentials obtained successfully")
         
         # Convert to dict for storage
-        print("Converting credentials to dict...")
         credentials_dict = credentials_to_dict(credentials)
-        print("Credentials converted")
         
         # Store in user's record
-        print("Storing credentials in database...")
         current_user.google_calendar_credentials = credentials_dict
         db.commit()
-        print("Credentials stored successfully")
         
         return {
             "status": "success",
@@ -83,9 +74,7 @@ def google_calendar_callback_post(
         }
     except Exception as e:
         import traceback
-        error_trace = traceback.format_exc()
-        print(f"Error in callback: {e}")
-        print(f"Full traceback: {error_trace}")
+        traceback.print_exc()
         db.rollback()
         raise HTTPException(
             status_code=500, 
@@ -94,24 +83,64 @@ def google_calendar_callback_post(
 
 @router.get("/status")
 def get_calendar_status(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Check if user has Google Calendar connected and return connected email"""
+    """Check if user has Google Calendar connected and return connected email.
+    Auto-connects if logged-in email matches connected email."""
     try:
         if not current_user.google_calendar_credentials:
             return {
                 "connected": False,
-                "email": None
+                "email": None,
+                "auto_connected": False
             }
         
         # Get email from credentials
         try:
             from google_calendar import get_user_email_from_credentials
             connected_email = get_user_email_from_credentials(current_user.google_calendar_credentials)
+            
+            # If credentials are invalid, clear them
+            if connected_email is None:
+                # Check if it's an invalid credentials error
+                try:
+                    # Try again to see if we get the invalid credentials error
+                    get_user_email_from_credentials(current_user.google_calendar_credentials)
+                except ValueError as ve:
+                    if "INVALID_CREDENTIALS" in str(ve):
+                        # Clear invalid credentials
+                        current_user.google_calendar_credentials = None
+                        db.commit()
+                        return {
+                            "connected": False,
+                            "email": None,
+                            "auto_connected": False
+                        }
+            
+            # Auto-connect if logged-in email matches connected email
+            user_email = current_user.email
+            auto_connected = False
+            if user_email and connected_email:
+                if user_email.lower() == connected_email.lower():
+                    auto_connected = True
+            
             return {
                 "connected": True,
-                "email": connected_email
+                "email": connected_email,
+                "auto_connected": auto_connected,
+                "user_email": user_email
             }
+        except ValueError as ve:
+            # Invalid credentials error - clear them
+            if "INVALID_CREDENTIALS" in str(ve):
+                current_user.google_calendar_credentials = None
+                db.commit()
+                return {
+                    "connected": False,
+                    "email": None
+                }
+            raise
         except ImportError:
             # Function not available - return connected status without email
             return {
@@ -120,16 +149,26 @@ def get_calendar_status(
             }
         except Exception as e:
             # If we can't get email, still return connected status
-            print(f"Error getting email from credentials: {e}")
+            error_str = str(e).lower()
+            if 'invalid_grant' in error_str or 'account has been deleted' in error_str or 'deleted' in error_str:
+                # Clear invalid credentials
+                current_user.google_calendar_credentials = None
+                db.commit()
+                return {
+                    "connected": False,
+                    "email": None,
+                    "auto_connected": False
+                }
             return {
                 "connected": True,
-                "email": None
+                "email": None,
+                "auto_connected": False
             }
     except Exception as e:
-        print(f"Error checking calendar status: {e}")
         return {
             "connected": False,
-            "email": None
+            "email": None,
+            "auto_connected": False
         }
 
 @router.delete("/disconnect")

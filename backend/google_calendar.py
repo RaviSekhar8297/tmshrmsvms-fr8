@@ -90,8 +90,16 @@ def get_user_email_from_credentials(credentials_dict):
         else:
             # Fallback: try to refresh and get userinfo
             if credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
-                credentials_dict = credentials_to_dict(credentials)
+                try:
+                    credentials.refresh(Request())
+                    credentials_dict = credentials_to_dict(credentials)
+                except Exception as refresh_error:
+                    # Handle "Account has been deleted" or other refresh errors
+                    error_str = str(refresh_error).lower()
+                    if 'invalid_grant' in error_str or 'account has been deleted' in error_str or 'deleted' in error_str:
+                        # Return a special marker to indicate credentials are invalid
+                        raise ValueError("INVALID_CREDENTIALS: Account deleted or credentials invalid")
+                    raise
             
             # Try userinfo endpoint
             userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -102,15 +110,19 @@ def get_user_email_from_credentials(credentials_dict):
                 return user_info.get('email')
         
         return None
+    except ValueError as ve:
+        # Re-raise ValueError (invalid credentials) so caller can handle it
+        raise
     except Exception as e:
-        print(f"Error getting user email from credentials: {e}")
+        error_str = str(e).lower()
+        if 'invalid_grant' in error_str or 'account has been deleted' in error_str or 'deleted' in error_str:
+            raise ValueError("INVALID_CREDENTIALS: Account deleted or credentials invalid")
         return None
 
 def get_credentials_from_code(code: str):
     """Exchange authorization code for credentials"""
     _validate_google_credentials()
     try:
-        print(f"Exchanging code, redirect URI: {GOOGLE_REDIRECT_URI}")
         flow = Flow.from_client_config(
             {
                 "web": {
@@ -124,17 +136,13 @@ def get_credentials_from_code(code: str):
             scopes=SCOPES,
             redirect_uri=GOOGLE_REDIRECT_URI
         )
-        print("Flow created, fetching token...")
         try:
             flow.fetch_token(code=code)
-            print("Token fetched successfully")
-            print(f"Granted scopes: {flow.credentials.scopes}")
             return flow.credentials
         except Exception as scope_error:
             error_str = str(scope_error)
             # Handle scope change error - Google may grant additional scopes
             if "Scope has changed" in error_str:
-                print(f"Scope change detected, attempting workaround: {error_str}")
                 # Extract granted scopes from error message or use all possible scopes
                 # Create a new flow that accepts any scope combination
                 # Manual token exchange to bypass scope validation
@@ -159,17 +167,13 @@ def get_credentials_from_code(code: str):
                         client_secret=GOOGLE_CLIENT_SECRET,
                         scopes=token_info.get('scope', '').split() if token_info.get('scope') else SCOPES
                     )
-                    print("Token fetched successfully via manual exchange")
-                    print(f"Granted scopes: {credentials.scopes}")
                     return credentials
                 else:
-                    print(f"Manual token exchange failed: {response.text}")
                     raise Exception(f"Token exchange failed: {response.text}")
             else:
                 # Re-raise if it's not a scope change error
                 raise
     except Exception as e:
-        print(f"Error in get_credentials_from_code: {e}")
         import traceback
         traceback.print_exc()
         raise
@@ -275,22 +279,18 @@ def create_calendar_event(credentials_dict, title, description, start_datetime, 
         # Method 1: Check hangoutLink (legacy)
         if 'hangoutLink' in created_event:
             meet_link = created_event['hangoutLink']
-            print(f"Found Meet link in hangoutLink: {meet_link}")
         
         # Method 2: Check conferenceData.entryPoints
         if not meet_link and 'conferenceData' in created_event:
             conference_data = created_event['conferenceData']
-            print(f"Conference data: {json.dumps(conference_data, indent=2, default=str)}")
             
             if 'entryPoints' in conference_data:
                 for entry in conference_data['entryPoints']:
                     entry_type = entry.get('entryPointType')
                     uri = entry.get('uri')
-                    print(f"Entry point - Type: {entry_type}, URI: {uri}")
                     
                     if entry_type == 'video' and uri:
                         meet_link = uri
-                        print(f"Found Meet link in entryPoints: {meet_link}")
                         break
         
         # Method 3: Check conferenceData.hangoutLink
@@ -298,7 +298,6 @@ def create_calendar_event(credentials_dict, title, description, start_datetime, 
             conference_data = created_event['conferenceData']
             if 'hangoutLink' in conference_data:
                 meet_link = conference_data['hangoutLink']
-                print(f"Found Meet link in conferenceData.hangoutLink: {meet_link}")
         
         # Validate Meet link format
         if meet_link:
@@ -310,11 +309,7 @@ def create_calendar_event(credentials_dict, title, description, start_datetime, 
                 elif '/' not in meet_link and '-' in meet_link:
                     # If it's just the code like "abc-defg-hij", construct URL
                     meet_link = f'https://meet.google.com/{meet_link}'
-            
-            print(f"Final Meet link: {meet_link}")
         else:
-            print("WARNING: No Meet link found in created event!")
-            print(f"Event data: {json.dumps(created_event, indent=2, default=str)}")
             # Raise error if no Meet link found
             raise Exception("Failed to extract Google Meet link from created calendar event. Please check your Google Calendar API permissions.")
         
@@ -347,23 +342,35 @@ def delete_calendar_event(credentials_dict, event_id):
         return False
 
 def get_service_account_credentials():
-    """Get service account credentials from JSON file"""
+    """Get service account credentials from JSON file or .env JSON string"""
     try:
+        # Priority 1: Try JSON string from .env
+        if settings.GOOGLE_SERVICE_ACCOUNT_JSON:
+            try:
+                service_account_info = json.loads(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
+                credentials = service_account.Credentials.from_service_account_info(
+                    service_account_info,
+                    scopes=SCOPES
+                )
+                return credentials
+            except json.JSONDecodeError as e:
+                pass
+        
+        # Priority 2: Try file path
         service_account_path = settings.GOOGLE_SERVICE_ACCOUNT_PATH
-        if not os.path.exists(service_account_path):
-            print(f"Service account file not found at: {service_account_path}")
+        if os.path.exists(service_account_path):
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_path,
+                scopes=SCOPES
+            )
+            return credentials
+        else:
             raise FileNotFoundError(f"Service account file not found at: {service_account_path}")
         
-        credentials = service_account.Credentials.from_service_account_file(
-            service_account_path,
-            scopes=SCOPES
-        )
-        return credentials
     except FileNotFoundError:
         # Re-raise FileNotFoundError as-is so it can be caught specifically
         raise
     except Exception as e:
-        print(f'Error loading service account credentials: {e}')
         import traceback
         traceback.print_exc()
         raise Exception(f"Service account credentials not available: {str(e)}")
@@ -475,7 +482,6 @@ def create_calendar_event_with_service_account(title, description, start_datetim
             conference_data = created_event['conferenceData']
             if 'hangoutLink' in conference_data:
                 meet_link = conference_data['hangoutLink']
-                print(f"Found Meet link in conferenceData.hangoutLink: {meet_link}")
         
         # Validate Meet link format
         if meet_link:
@@ -487,11 +493,7 @@ def create_calendar_event_with_service_account(title, description, start_datetim
                 elif '/' not in meet_link and '-' in meet_link:
                     # If it's just the code like "abc-defg-hij", construct URL
                     meet_link = f'https://meet.google.com/{meet_link}'
-            
-            print(f"Final Meet link: {meet_link}")
         else:
-            print("WARNING: No Meet link found in created event!")
-            print(f"Event data: {json.dumps(created_event, indent=2, default=str)}")
             raise Exception("Failed to extract Google Meet link from created event")
         
         return {
@@ -501,21 +503,17 @@ def create_calendar_event_with_service_account(title, description, start_datetim
         }
         
     except HttpError as error:
-        print(f'HTTP Error creating calendar event with service account: {error}')
         try:
             if hasattr(error, 'content') and error.content:
                 error_details = json.loads(error.content.decode('utf-8'))
                 error_message = error_details.get('error', {}).get('message', str(error))
                 error_code = error_details.get('error', {}).get('code', '')
-                print(f"Error code: {error_code}, Message: {error_message}")
             else:
                 error_message = str(error)
         except Exception as parse_error:
-            print(f"Error parsing error response: {parse_error}")
             error_message = str(error)
         raise Exception(f"Failed to create calendar event: {error_message}")
     except Exception as e:
-        print(f'Error in create_calendar_event_with_service_account: {e}')
         import traceback
         traceback.print_exc()
         raise Exception(f"Failed to create calendar event: {str(e)}")
